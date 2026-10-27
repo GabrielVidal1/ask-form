@@ -34,6 +34,7 @@ const usage = `ask-form-relay — public relay for ask-form
 
   ask-form-relay serve [--listen :8080] [--machine-listen :8081] [--machines FILE] [--client-ip-header X-Real-Ip]
                        [--register open|closed] [--max-forms 50] [--register-per-ip 5] [--forget-after 2160h]
+                       [--public-url https://ask-form.xyz] [--trust-cloudflare]
   ask-form-relay machine add <name>     mint a machine token (printed once; only its hash is kept)
   ask-form-relay machine rm <name>
   ask-form-relay machine ls
@@ -82,6 +83,7 @@ func serve(args []string, machines string) int {
 	file := fs.String("machines", machines, "machines file (name → token SHA-256)")
 	ipHeader := fs.String("client-ip-header", os.Getenv("ASK_FORM_RELAY_CLIENT_IP_HEADER"), "header(s) the proxy in front sets to the visitor IP, comma-separated, first present wins (Cf-Connecting-Ip,X-Real-Ip)")
 	publicURL := fs.String("public-url", os.Getenv("ASK_FORM_RELAY_PUBLIC_URL"), "origin form links should use, announced to the machines (e.g. https://ask-form.xyz)")
+	trustCF := fs.Bool("trust-cloudflare", os.Getenv("ASK_FORM_RELAY_TRUST_CLOUDFLARE") == "1", "behind a Cloudflare-proxied domain: take the visitor from Cf-Connecting-Ip when the request comes from a Cloudflare edge")
 	register := fs.String("register", envOr("ASK_FORM_RELAY_REGISTER", "closed"), "open: machines may register themselves; closed: only `machine add` tokens")
 	maxForms := fs.Int("max-forms", envInt("ASK_FORM_RELAY_MAX_FORMS", 50), "open forms per self-registered machine")
 	perIP := fs.Int("register-per-ip", envInt("ASK_FORM_RELAY_REGISTER_PER_IP", 5), "self-registrations per address per day")
@@ -97,7 +99,7 @@ func serve(args []string, machines string) int {
 		log.Fatalf("examples: %v", err)
 	}
 	r, err := relay.New(relay.Config{
-		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), Landing: landing.Page,
+		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF, Landing: landing.Page,
 		Examples: server.ExamplesHandler(exs, *ipHeader),
 		Register: relay.Registration{
 			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,

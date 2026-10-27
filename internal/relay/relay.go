@@ -1,4 +1,4 @@
-// Package relay is `ask-form-relay`: the public face of forms.gabvdl.xyz.
+// Package relay is `ask-form-relay`: the public face of ask-form.xyz.
 //
 // It serves the landing page at / and forwards /f/<id>… to the machine
 // that created that form, over the long-poll tunnel those machines keep open
@@ -50,6 +50,10 @@ type Config struct {
 	// PublicURL is the origin form links should use; machines that weren't
 	// given one follow it (see /_relay/v1/health).
 	PublicURL string
+	// TrustCloudflare takes the visitor from Cf-Connecting-Ip when the
+	// address found above is one of Cloudflare's edges (a domain proxied by
+	// Cloudflare in front of the relay's other proxies).
+	TrustCloudflare bool
 	// Landing is the page served at /.
 	Landing []byte
 	// Examples serves /examples (demo forms, nothing stored); nil = none.
@@ -369,6 +373,18 @@ func (r *Relay) Public() http.Handler {
 }
 
 func (r *Relay) clientIP(req *http.Request) string {
+	ip := r.peerIP(req)
+	if r.cfg.TrustCloudflare {
+		if v := cloudflareVisitor(req, ip); v != "" {
+			return v
+		}
+	}
+	return ip
+}
+
+// peerIP is the address the proxy in front reports (ClientIPHeader), else
+// the socket peer.
+func (r *Relay) peerIP(req *http.Request) string {
 	for _, h := range strings.Split(r.cfg.ClientIPHeader, ",") {
 		if h = strings.TrimSpace(h); h == "" {
 			continue

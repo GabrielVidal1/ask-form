@@ -179,3 +179,34 @@ func TestForgetIdle(t *testing.T) {
 		t.Fatal("a machine added by hand was forgotten")
 	}
 }
+
+func TestClientIPCloudflare(t *testing.T) {
+	r, err := New(Config{MachinesFile: filepath.Join(t.TempDir(), "m.json"), ClientIPHeader: "X-Forwarded-For", TrustCloudflare: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := func(xff, cf string) *http.Request {
+		q := httptest.NewRequest("GET", "/", nil)
+		q.Header.Set("X-Forwarded-For", xff)
+		if cf != "" {
+			q.Header.Set("Cf-Connecting-Ip", cf)
+		}
+		return q
+	}
+	cases := []struct{ xff, cf, want string }{
+		{"172.70.1.2", "203.0.113.9", "203.0.113.9"},     // through a Cloudflare edge
+		{"2606:4700::1", "2001:db8::5", "2001:db8::5"},   // IPv6 edge
+		{"198.51.100.7", "203.0.113.9", "198.51.100.7"},  // forged: not from Cloudflare
+		{"172.70.1.2", "not-an-ip", "172.70.1.2"},        // edge without a usable header
+		{"198.51.100.7, 172.70.1.2", "", "198.51.100.7"}, // first hop wins
+	}
+	for _, c := range cases {
+		if got := r.clientIP(req(c.xff, c.cf)); got != c.want {
+			t.Errorf("xff=%q cf=%q: got %s, want %s", c.xff, c.cf, got, c.want)
+		}
+	}
+	r.cfg.TrustCloudflare = false
+	if got := r.clientIP(req("172.70.1.2", "203.0.113.9")); got != "172.70.1.2" {
+		t.Errorf("without TrustCloudflare the header must be ignored, got %s", got)
+	}
+}

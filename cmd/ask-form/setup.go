@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultRelay       = "https://forms.gabvdl.xyz"
+	defaultRelay       = "https://ask-form.xyz"
 	defaultAutoUpgrade = "all"
 	launchdLabel       = "xyz.gabvdl.ask-form"
 	localListen        = "127.0.0.1:7462"

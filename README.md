@@ -4,21 +4,21 @@ Your coding agent asks, you answer from anywhere. `ask-form` lets Claude Code
 (or any CLI agent) put structured questions in a private web form. You answer
 in a browser, phone included, and the answers come back to the agent as JSON.
 
-Try the example forms at [forms.gabvdl.xyz/examples](https://forms.gabvdl.xyz/examples).
+Try the example forms at [ask-form.xyz/examples](https://ask-form.xyz/examples).
 
 ## Install
 
 Linux or macOS:
 
 ```bash
-curl -fsSL https://forms.gabvdl.xyz/install.sh | sh
+curl -fsSL https://ask-form.xyz/install.sh | sh
 ```
 
 This puts the binary in `~/.local/bin`, connects the machine to the relay at
-forms.gabvdl.xyz, starts `ask-form serve` as a background service, and adds
+ask-form.xyz, starts `ask-form serve` as a background service, and adds
 the Claude Code skill. Or let your agent do it. Paste this:
 
-> Fetch https://forms.gabvdl.xyz/agent-install and follow it to install ask-form and set it up for yourself, then ask me something with it to check it works.
+> Fetch https://ask-form.xyz/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: *what you want to be asked*
 
 Other ways: `go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest`
 then `ask-form setup`, or a binary from
@@ -30,7 +30,7 @@ machine only.
 
 ```bash
 ask-form create --title "Project setup" --fields-file spec.json
-# {"id":"project-setup_k3f9q2","status":"pending","url":"https://forms.gabvdl.xyz/forms/project-setup_k3f9q2?token=…",…}
+# {"id":"project-setup_k3f9q2","status":"pending","url":"https://ask-form.xyz/f/project-setup_k3f9q2?token=…",…}
 
 ask-form wait project-setup_k3f9q2 --timeout 30m     # in the background
 # {"id":"project-setup_k3f9q2","status":"submitted","answers":{"stack":"Vite","deploy":true},…}
