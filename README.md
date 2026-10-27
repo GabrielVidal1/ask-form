@@ -16,7 +16,9 @@ curl -fsSL https://ask-form.xyz/install.sh | sh
 
 This puts the binary in `~/.local/bin`, connects the machine to the relay at
 ask-form.xyz, starts `ask-form serve` as a background service, and adds
-the Claude Code skill. Or let your agent do it. Paste this:
+the Claude Code skill. Or let your agent do it: paste this into Claude Code, or
+any coding agent on your computer. A chat app's sandbox (the Claude app,
+ChatGPT) can't keep ask-form running.
 
 > Fetch https://ask-form.xyz/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: *what you want to be asked*
 

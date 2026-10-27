@@ -9,6 +9,27 @@ Before step 1, tell the user in one line what you are about to install. Then
 follow the steps in order. If a step fails in a way this page doesn't cover,
 stop and show the user the error.
 
+## 0. Check where you are running
+
+ask-form keeps a small server running in the background (`ask-form serve`)
+that holds the forms and the answers. So it needs a machine that stays on,
+and a shell that can reach {{ORIGIN}} and github.com. A coding agent on the
+user's own computer or server fits: Claude Code, Codex CLI, Cursor, opencode,
+Gemini CLI, Aider…
+
+A chat app's code sandbox does not fit, for example the Claude app or
+claude.ai, or ChatGPT. Its network only reaches an allowlist of domains, so
+`curl` to {{ORIGIN}} fails. And the sandbox is thrown away after the chat,
+taking the server and every answer with it. If that is where you are, don't
+install anything. Tell the user:
+
+> ask-form needs to run on your computer. Open Claude Code (in a terminal, or
+> the Code tab of the Claude desktop app) and paste the same prompt there.
+
+If you're not sure, run `curl -fsS {{ORIGIN}}/robots.txt`. If the network
+refuses it (a 403 from a proxy, "host not allowed", a DNS failure), you are in
+such a sandbox.
+
 ## 1. Install
 
 On Linux or macOS (x86-64 or arm64), run:
@@ -28,6 +49,15 @@ SHA-256 against the release's checksums.txt, installs it at
   if ~/.claude exists.
 
 Setup prints a JSON report. Check it for "warnings".
+
+If your tool won't pipe a downloaded script into `sh`, download it, read it
+(it is short), then run it:
+
+    curl -fsSL {{ORIGIN}}/install.sh -o /tmp/ask-form-install.sh
+    sh /tmp/ask-form-install.sh
+
+The script reaches {{ORIGIN}}, github.com and release-assets.githubusercontent.com.
+Behind a firewall or a sandbox allowlist, those three must be allowed.
 
 If ~/.local/bin is not on PATH, call ~/.local/bin/ask-form by its full path
 for the rest of these steps, and tell the user the line to add to their
