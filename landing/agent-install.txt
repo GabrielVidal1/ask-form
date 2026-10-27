@@ -1,0 +1,95 @@
+# Install ask-form (instructions for a coding agent)
+
+You are setting up ask-form for the user you work with. With it you can ask
+them structured questions through a private web form. They answer in any
+browser, phone included, and you read the answers as JSON.
+Source and license (MIT): https://github.com/GabrielVidal1/ask-form
+
+Before step 1, tell the user in one line what you are about to install. Then
+follow the steps in order. If a step fails in a way this page doesn't cover,
+stop and show the user the error.
+
+## 1. Install
+
+On Linux or macOS (x86-64 or arm64), run:
+
+    curl -fsSL {{ORIGIN}}/install.sh | sh
+
+The script downloads this machine's release binary from GitHub, checks its
+SHA-256 against the release's checksums.txt, installs it at
+~/.local/bin/ask-form, then runs `ask-form setup`. Setup does three things:
+
+- It registers this machine with the relay at {{ORIGIN}}. Forms and answers
+  stay on this machine; the relay only passes page requests through.
+- It starts `ask-form serve` as a background service (a systemd user unit on
+  Linux, a launchd agent on macOS). The service installs new releases by
+  itself.
+- It installs the Claude Code skill at ~/.claude/skills/ask-form/SKILL.md,
+  if ~/.claude exists.
+
+Setup prints a JSON report. Check it for "warnings".
+
+If ~/.local/bin is not on PATH, call ~/.local/bin/ask-form by its full path
+for the rest of these steps, and tell the user the line to add to their
+shell profile.
+
+On Windows or another OS, tell the user there is no prebuilt binary. With Go
+1.22 or newer they can build it:
+`go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest`, then run
+`ask-form setup`.
+
+Useful setup flags (pass them after `sh -s --`, as in
+`curl -fsSL {{ORIGIN}}/install.sh | sh -s -- --local`):
+- `--local`: no relay. Forms open at http://127.0.0.1:7462, so they can only
+  be answered on this machine.
+- `--no-skill`: don't install the Claude Code skill.
+- `--no-service`: don't install a service. The user then runs `ask-form serve`
+  themselves.
+
+## 2. Check that it runs
+
+    ask-form status
+
+You should see "ok": true and, under "relay", "connected": true. If it says
+connected false, wait ten seconds and run it again.
+
+## 3. Learn how to use it
+
+- In Claude Code, the skill loads in new sessions. For this session, read it
+  now with `ask-form skill print`.
+- Any other agent (Codex, Cursor, opencode, Gemini CLI, Aider…): add the
+  usage notes to the instruction file your tool reads, for example AGENTS.md
+  at the project root. Ask the user which file if you're unsure. Then:
+
+      ask-form skill print --body >> AGENTS.md
+
+## 4. Ask the user something
+
+The prompt that sent you here may end with "ask me with it:" followed by
+what the user wants to be asked. If it does, turn that into your first form:
+pick fitting field types, put your best guess in each field's `default`, and
+group the questions if there are more than four. If it doesn't, use this
+test form:
+
+    cat > /tmp/ask-form-hello.json <<'JSON'
+    [{"type":"markdown","text":"ask-form is installed. This is a test form: two quick questions."},
+     {"key":"works","label":"Did this page open fine?","type":"radio","required":true,"options":["Yes","Not really"]},
+     {"key":"use_for","label":"What should I ask you through forms?","type":"textarea","help":"Optional"}]
+    JSON
+
+Create the form and show the user the "url" field from the output:
+
+    ask-form create --title "ask-form is ready" --fields-file /tmp/ask-form-hello.json
+
+Then wait for the answer. Run this in the background if your tool can, so
+you aren't blocked:
+
+    ask-form wait <id> --timeout 15m
+
+Exit code 0 means the user answered (the answers are in the JSON), 3 means
+they declined, and 4 means a timeout (the form stays open). Act on the
+answers.
+
+Once that works, tell the user ask-form is ready, and mention that
+`ask-form upgrade` installs a newer release by hand and `ask-form uninstall`
+removes the service and the skill.

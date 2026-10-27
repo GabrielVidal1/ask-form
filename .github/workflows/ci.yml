@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Install script
+        run: sh -n install.sh
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe for the version
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Build every platform
+        run: make dist
+      - name: Smoke test
+        run: ./dist/ask-form-linux-amd64 version && ./dist/ask-form-relay-linux-amd64 version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ask-form-${{ github.sha }}
+          path: dist/
+          retention-days: 14

@@ -1,0 +1,7 @@
+/bin/
+/dist/
+.ai/
+# Private notes, kept out of the public repo
+/docs/ai-agent-forms-spec.md
+/docs/ai-agent-integration.md
+/docs/uploads.md

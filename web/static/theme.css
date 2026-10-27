@@ -1,0 +1,58 @@
+/* Theme tokens — "H S% L%" triplets used as hsl(var(--x)). The names match the
+   ai-agent PWA's, so a mockup written for its forms renders the same here. This
+   file is also inlined into every html block / mockup document. */
+:root {
+  --background: 36 33% 97%;
+  --foreground: 24 10% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 24 10% 12%;
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 30 20% 92%;
+  --secondary-foreground: 24 10% 15%;
+  --muted: 30 20% 93%;
+  --muted-foreground: 24 6% 40%;
+  --accent: 30 40% 90%;
+  --accent-foreground: 24 10% 12%;
+  --destructive: 0 72% 50%;
+  --border: 30 15% 86%;
+  --ring: 24 95% 53%;
+  --radius: 0.75rem;
+  --code-foreground: 24 10% 20%;
+  --code-comment: 30 8% 50%;
+  --code-keyword: 280 60% 45%;
+  --code-string: 140 50% 32%;
+  --code-number: 24 85% 42%;
+  --code-function: 210 70% 42%;
+  --code-tag: 0 65% 45%;
+  --code-variable: 200 60% 35%;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 24 10% 7%;
+    --foreground: 30 20% 92%;
+    --card: 24 9% 10%;
+    --card-foreground: 30 20% 92%;
+    --primary: 24 95% 56%;
+    --primary-foreground: 24 30% 8%;
+    --secondary: 24 8% 16%;
+    --secondary-foreground: 30 20% 92%;
+    --muted: 24 8% 15%;
+    --muted-foreground: 30 8% 62%;
+    --accent: 24 10% 18%;
+    --accent-foreground: 30 20% 92%;
+    --destructive: 0 70% 58%;
+    --border: 24 8% 20%;
+    --ring: 24 95% 56%;
+    --code-foreground: 30 20% 88%;
+    --code-comment: 30 6% 52%;
+    --code-keyword: 280 70% 72%;
+    --code-string: 140 45% 62%;
+    --code-number: 30 90% 65%;
+    --code-function: 210 80% 70%;
+    --code-tag: 0 75% 70%;
+    --code-variable: 200 70% 70%;
+    color-scheme: dark;
+  }
+}

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="ask-form: your coding agent asks, you answer from any browser, the answers come back as JSON.">
+<title>ask-form</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f97316'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#fbf8f4;--fg:#1f1a16;--muted:#6b625a;--card:#fff;--line:#ebe3da;--accent:#f97316;--accent-soft:#fff1e6;--code:#f4eee7}
+@media (prefers-color-scheme:dark){:root{--bg:#141110;--fg:#f0e9e1;--muted:#a59a8f;--card:#1c1816;--line:#2e2824;--accent:#fb8a3c;--accent-soft:#2a1c12;--code:#221d1a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:880px;margin:0 auto;padding:0 16px}
+header{padding:64px 0 32px}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
+.brand i{display:inline-block;width:28px;height:28px;border-radius:8px;background:var(--accent);position:relative}
+.brand i::before,.brand i::after{content:"";position:absolute;left:7px;height:3px;border-radius:2px;background:#fff}
+.brand i::before{top:9px;width:14px}.brand i::after{top:16px;width:9px}
+h1{font-size:clamp(32px,6vw,52px);line-height:1.08;letter-spacing:-.025em;margin:22px 0 14px}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{font-size:20px;color:var(--muted);max-width:640px;margin:0}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:56px 0 16px}
+.steps{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.step b{display:block;margin-bottom:4px}
+.step span{color:var(--muted);font-size:15px}
+.n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px;margin-bottom:10px}
+figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;overflow-x:auto}
+figure svg{display:block;width:100%;min-width:620px;height:auto}
+figcaption{font-size:14px;color:var(--muted);margin-top:10px}
+.svg-box{fill:var(--bg);stroke:var(--line)}.svg-acc{fill:var(--accent-soft);stroke:var(--accent)}
+.svg-t{fill:var(--fg);font:600 14px system-ui,sans-serif}.svg-s{fill:var(--muted);font:12px system-ui,sans-serif}
+.svg-l{stroke:var(--muted);stroke-width:1.5;fill:none}.svg-a{fill:var(--muted)}
+ul.facts{list-style:none;padding:0;margin:0;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+ul.facts li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;font-size:15px}
+ul.facts b{display:block}
+pre{background:var(--code);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0}
+.c{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.chips li{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:14px}
+footer{margin:64px 0 40px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
+a{color:var(--accent)}
+.cta{margin:22px 0 0;font-weight:600;display:flex;flex-wrap:wrap;gap:10px}.cta a{display:inline-block;padding:10px 16px;border-radius:12px;background:var(--accent);color:#fff;text-decoration:none}
+.cta a.ghost{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.panel+.panel{margin-top:12px}
+.panel h3{margin:0 0 6px;font-size:18px}
+.use-now{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.panel p{margin:0 0 12px;font-size:16px}
+details.panel{padding:0}
+details.panel>summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s}
+details.panel[open]>summary::before{transform:rotate(45deg)}
+details.panel>:not(summary){margin-left:18px;margin-right:18px}
+details.panel>:last-child{margin-bottom:18px}
+.ph{color:var(--muted);font-style:italic}
+.panel p.small{margin-top:12px;font-size:14px;color:var(--muted)}
+.copy{position:relative}
+.copy pre{white-space:pre-wrap;word-break:break-word}
+.copy button{display:none;position:absolute;top:9px;right:9px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:9px;padding:4px 10px;font:600 13px system-ui,sans-serif;cursor:pointer}
+.js .copy button{display:block}.js .copy pre{padding-right:84px}
+.prompt{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
+ul.alt{margin:12px 0 0;padding-left:20px;font-size:15px;color:var(--muted)}
+ul.alt li{margin:4px 0}
+code{font:0.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border-radius:6px;padding:1px 5px;word-break:break-word}
+pre code{background:none;padding:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <span class="brand"><i aria-hidden="true"></i>ask-form</span>
+  <h1>Your coding agent asks.<br><em>You answer from anywhere.</em></h1>
+  <p class="lede">A tiny Go tool that lets Claude (or any CLI agent) ask you structured questions through a private web form. Claude gets a link, you answer from your phone, and the answers come back as JSON.</p>
+  <p class="cta"><a href="#install">Get it</a><a class="ghost" href="/examples">See three example forms →</a></p>
+</header>
+
+<h2 id="install">Get it</h2>
+<section class="panel use-now">
+  <h3>Use now</h3>
+  <p>Paste this into Claude Code or any coding agent, then finish the sentence with what you want to be asked. The agent reads <a href="/agent-install">/agent-install</a>, installs ask-form, sets itself up to use it and sends you that first form.</p>
+  <div class="copy"><pre class="prompt"><span id="cmd-prompt">Fetch {{ORIGIN}}/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: </span><span class="ph" aria-hidden="true">what you want to be asked</span></pre><button type="button" data-copy="cmd-prompt">Copy</button></div>
+</section>
+<details class="panel manual">
+  <summary>Manual install</summary>
+  <p>Linux and macOS, x86-64 or arm64. One command installs the binary in <code>~/.local/bin</code>, connects your machine to this relay, starts the background service and adds the Claude Code skill.</p>
+  <div class="copy"><pre id="cmd-install">curl -fsSL {{ORIGIN}}/install.sh | sh</pre><button type="button" data-copy="cmd-install">Copy</button></div>
+  <ul class="alt">
+    <li>Without the relay (forms answerable on this machine only): <code>curl -fsSL {{ORIGIN}}/install.sh | sh -s -- --local</code></li>
+    <li>With Go 1.22+: <code>go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest</code>, then <code>ask-form setup</code></li>
+    <li>Or take a binary from <a href="https://github.com/GabrielVidal1/ask-form/releases">GitHub Releases</a>, then run <code>ask-form setup</code></li>
+  </ul>
+  <p class="small">The service installs new releases by itself (<code>ASK_FORM_AUTO_UPGRADE=notify</code> or <code>off</code> stops that). <code>ask-form upgrade</code> updates by hand; <code>ask-form uninstall</code> removes the service and the skill. Other agents than Claude Code: <code>ask-form skill print --body &gt;&gt; AGENTS.md</code>.</p>
+</details>
+
+<h2>How it works</h2>
+<div class="steps">
+  <div class="step"><span class="n">1</span><b>Claude creates a form</b><span><code>ask-form create</code> takes a JSON field spec and prints a one-time private link.</span></div>
+  <div class="step"><span class="n">2</span><b>You answer it</b><span>The form opens in any browser: one theme per page, picture choices, mockups. It works without JavaScript.</span></div>
+  <div class="step"><span class="n">3</span><b>Claude reads the answers</b><span><code>ask-form wait</code> returns the answers as one JSON object, keyed by question.</span></div>
+</div>
+
+<h2>Where things live</h2>
+<figure>
+<svg viewBox="0 0 760 210" role="img" aria-labelledby="dt">
+  <title id="dt">The browser reaches the relay; the relay forwards each request to the machine that made the form, over a connection that machine opened.</title>
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="svg-a" d="M0 0L10 5L0 10z"/></marker></defs>
+  <rect class="svg-box" x="10" y="60" width="150" height="90" rx="14"/>
+  <text class="svg-t" x="85" y="98" text-anchor="middle">Your browser</text>
+  <text class="svg-s" x="85" y="118" text-anchor="middle">phone, laptop…</text>
+  <rect class="svg-acc" x="300" y="60" width="160" height="90" rx="14"/>
+  <text class="svg-t" x="380" y="98" text-anchor="middle">relay</text>
+  <text class="svg-s" x="380" y="118" text-anchor="middle">public · stores nothing</text>
+  <rect class="svg-box" x="590" y="20" width="160" height="170" rx="14"/>
+  <text class="svg-t" x="670" y="52" text-anchor="middle">Your machine</text>
+  <rect class="svg-box" x="606" y="68" width="128" height="44" rx="10"/>
+  <text class="svg-s" x="670" y="95" text-anchor="middle">ask-form serve</text>
+  <rect class="svg-box" x="606" y="128" width="128" height="44" rx="10"/>
+  <text class="svg-s" x="670" y="155" text-anchor="middle">Claude Code</text>
+  <path class="svg-l" d="M162 105H296" marker-end="url(#ar)"/>
+  <text class="svg-s" x="229" y="96" text-anchor="middle">HTTPS /f/…</text>
+  <path class="svg-l" d="M604 90H464" marker-end="url(#ar)"/>
+  <text class="svg-s" x="534" y="82" text-anchor="middle">dials out (long-poll)</text>
+  <path class="svg-l" d="M670 126V114" marker-end="url(#ar)"/>
+  <text class="svg-s" x="560" y="200" text-anchor="middle">forms + answers stay here</text>
+</svg>
+<figcaption>Nothing listens on your machine: it dials out to the relay, which passes each visitor's request on and holds it only while it's in flight. Several machines can share one relay.</figcaption>
+</figure>
+
+<h2>Built to be boring and safe</h2>
+<ul class="facts">
+  <li><b>Unguessable links</b>A 256-bit token per form. Only its SHA-256 is stored, and it's compared in constant time.</li>
+  <li><b>One answer, then closed</b>The first submission closes the form. Every form expires (24 h by default).</li>
+  <li><b>Nothing leaks</b>An unknown form and a wrong token get the same 404. No referrer, no cache, no indexing.</li>
+  <li><b>Strict pages</b>No third-party assets and a strict CSP. Mockups run in sandboxed, script-free frames.</li>
+  <li><b>Secrets stay secret</b>A password field never appears in the answers the agent reads. It's written straight into a <code>.env</code> file instead.</li>
+  <li><b>Plain files</b>Each form is one immutable JSON file plus a JSONL of its response. There's no database.</li>
+</ul>
+
+<h2>Question types</h2>
+<ul class="chips">
+  <li>text</li><li>textarea</li><li>number</li><li>slider</li><li>date</li><li>select</li><li>radio</li><li>multiselect</li><li>checkbox</li><li>secret</li><li>picture choices</li><li>mockup choices</li><li>markdown &amp; html blocks</li><li>“Other…” on every choice</li>
+</ul>
+
+<h2>For the agent</h2>
+<pre><span class="c"># create: returns at once with the link to show the user</span>
+ask-form create --title "Project setup" --fields-file spec.json
+{"id":"project-setup_k3f9q2","status":"pending","url":"{{ORIGIN}}/f/project-setup_k3f9q2?token=…",…}
+
+<span class="c"># then wait in the background: exit 0 = answered, 3 = closed unanswered, 4 = timed out</span>
+ask-form wait project-setup_k3f9q2 --timeout 30m
+{"id":"project-setup_k3f9q2","status":"submitted","answers":{"stack":"Vite + React","deploy":true},…}</pre>
+
+<footer>
+  <span><a href="https://github.com/GabrielVidal1/ask-form">Source on GitHub</a> · MIT</span>
+  <span>Go · stdlib only · no database</span>
+</footer>
+</div>
+<script>
+document.documentElement.classList.add("js");
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-copy]");
+  if (!b || !navigator.clipboard) return;
+  navigator.clipboard.writeText(document.getElementById(b.getAttribute("data-copy")).textContent).then(function () {
+    b.textContent = "Copied";
+    setTimeout(function () { b.textContent = "Copy"; }, 1500);
+  });
+});
+</script>
+</body>
+</html>

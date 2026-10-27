@@ -1,0 +1,39 @@
+name: Release
+
+# Push a tag vX.Y.Z: builds every platform, publishes a GitHub release with
+# the raw binaries + checksums.txt. `ask-form upgrade`, the auto-upgrade in
+# `ask-form serve` and install.sh all read from there.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go vet ./... && go test ./...
+      - name: Build every platform
+        run: make dist VERSION="${GITHUB_REF_NAME}"
+      - name: Check the stamped version
+        run: test "$(./dist/ask-form-linux-amd64 version)" = "{\"version\":\"${GITHUB_REF_NAME}\"}"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/ask-form*
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes $pre

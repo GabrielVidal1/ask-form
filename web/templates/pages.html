@@ -1,0 +1,244 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>{{.Title}}</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/f/_static/theme.css">
+<link rel="stylesheet" href="/f/_static/app.css">
+{{if .PageCSS}}<style nonce="{{.Nonce}}">{{.PageCSS}}</style>{{end}}
+<script src="/f/_static/app.js" defer></script>
+</head>
+<body>
+{{end}}
+
+{{define "foot"}}
+<footer class="foot">ask-form · questions from an agent, answered by you</footer>
+</body>
+</html>
+{{end}}
+
+{{define "form"}}{{template "head" .}}
+<main class="wrap">
+  {{with .Demo}}
+  <aside class="demo-note">
+    <strong>Example form.</strong> This is what the person gets when an agent runs <code>ask-form create</code>. Try it: sending shows the JSON the agent would read back. Nothing is stored.
+    <span class="demo-links"><a href="{{.Index}}">← All examples</a> · <a href="{{.Spec}}">Field spec (JSON)</a></span>
+  </aside>
+  {{end}}
+  <header class="top">
+    <p class="eyebrow">{{if .Demo}}Example · nothing is stored{{else}}A few questions · open until {{.Expires}}{{end}}</p>
+    <h1>{{.Title}}</h1>
+    {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
+  </header>
+
+  {{if .Errors}}
+  <div class="errors" role="alert" id="errors">
+    <p><strong>Some answers need a look</strong></p>
+    <ul>{{range .Errors}}<li><a href="#{{.DOMID}}">{{.Label}}</a> — {{.Msg}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form method="post" action="{{.Base}}" id="form" class="form" accept-charset="utf-8" data-form="{{.ID}}"{{if .Errors}} data-errors{{end}}>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="hp" aria-hidden="true">
+      <label>Leave this field empty <input type="text" name="website_url" value="" tabindex="-1" autocomplete="off"></label>
+    </div>
+
+    {{range $gi, $g := .Groups}}
+    <section class="group" data-group="{{$gi}}" data-title="{{$g.Title}}">
+      {{if $g.Title}}<h2 class="group-title">{{$g.Title}}</h2>{{end}}
+      {{range $g.Fields}}{{template "field" .}}{{end}}
+    </section>
+    {{end}}
+
+    {{with .CatchAll}}<div class="catchall">{{template "field" .}}</div>{{end}}
+
+    <div class="actions">
+      <button type="submit" name="action" value="submit" class="btn primary">Send answers</button>
+    </div>
+
+    {{if not .Demo}}<details class="decline">
+      <summary>Can't or won't answer?</summary>
+      <p>Declining tells the asker you won't answer. The form closes for good.</p>
+      <button type="submit" name="action" value="decline" class="btn ghost" formnovalidate>Decline this form</button>
+    </details>{{end}}
+  </form>
+</main>
+{{template "foot" .}}{{end}}
+
+{{define "label"}}<span class="label-text">{{inline .Label}}</span>{{if .Required}}<span class="req" aria-hidden="true">*</span><span class="sr">(required)</span>{{end}}{{end}}
+
+{{define "other"}}<div class="other">
+  <input type="text" name="{{.OtherName}}" value="{{.OtherText}}" maxlength="2000" placeholder="Please specify…" aria-label="Other — please specify" data-other-for="{{.Name}}">
+</div>{{end}}
+
+{{define "field"}}
+<div class="field t-{{.Type}}{{if .Error}} has-error{{end}}{{if .Visual}} visual-field{{end}}" id="{{.DOMID}}" data-key="{{.Key}}" data-type="{{.Type}}"{{if .Required}} data-required{{end}}>
+{{if eq .Type "markdown"}}
+  {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
+  <div class="md">{{md .Text}}</div>
+{{else if eq .Type "html"}}
+  {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
+  <iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label "Illustration"}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+  <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">Open full size ⤢</a>
+{{else if eq .Type "checkbox"}}
+  <label class="check">
+    <input type="checkbox" name="{{.Name}}" value="on"{{if .Checked}} checked{{end}}>
+    <span>{{inline .Label}}</span>
+  </label>
+  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+{{else if .Choice}}
+  <fieldset>
+    <legend class="label">{{template "label" .}}</legend>
+    {{if .Visual}}
+      <div class="cards{{if eq .Type "multiselect"}} multi{{end}}">
+      {{range $i, $o := .Options}}
+        <label class="card{{if not $o.Visual}} plain{{end}}">
+          <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}{{if and $.Required (ne $.Type "multiselect")}} required{{end}}>
+          <span class="tick" aria-hidden="true"></span>
+          {{if $o.Image}}
+            <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"></span>
+          {{else if $o.HTML}}
+            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span></span>
+          {{else}}
+            <span class="visual text-card"><span>{{inline $o.Label}}</span></span>
+          {{end}}
+          {{if and $o.Visual (not $o.Bare)}}<span class="caption"><span>{{inline $o.Label}}</span>{{if $o.Description}}<small>{{inline $o.Description}}</small>{{end}}</span>{{end}}
+          {{if $o.Image}}<a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size">⤢</a>{{else if $o.HTML}}<a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" data-zoom-frame>⤢</a>{{end}}
+        </label>
+      {{end}}
+        <label class="card other-card">
+          <input class="card-input" type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
+          <span class="tick" aria-hidden="true"></span>
+          <span class="visual text-card"><span>＋ Other…</span></span>
+        </label>
+      </div>
+      {{template "other" .}}
+    {{else if eq .Type "select"}}
+      <select id="{{.DOMID}}-in" name="{{.Name}}"{{if .Required}} required{{end}}>
+        <option value="">{{or .Placeholder "Pick one…"}}</option>
+        {{range .Options}}<option value="{{.Value}}"{{if index $.Picked .Value}} selected{{end}}>{{.Label}}</option>{{end}}
+        <option value="__other__"{{if .OtherPicked}} selected{{end}}>Other…</option>
+      </select>
+      {{template "other" .}}
+    {{else}}
+      <div class="choices">
+      {{range .Options}}
+        <label class="choice">
+          <input type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{.Value}}"{{if index $.Picked .Value}} checked{{end}}{{if and $.Required (eq $.Type "radio")}} required{{end}}>
+          <span class="choice-text"><span>{{inline .Label}}</span>{{if .Description}}<small>{{inline .Description}}</small>{{end}}</span>
+        </label>
+      {{end}}
+        <label class="choice">
+          <input type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
+          <span class="choice-text"><span>Other…</span></span>
+        </label>
+      </div>
+      {{template "other" .}}
+    {{end}}
+    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+  </fieldset>
+{{else}}
+  <label class="label" for="{{.DOMID}}-in">{{template "label" .}}</label>
+  {{if eq .Type "textarea"}}
+    <textarea id="{{.DOMID}}-in" name="{{.Name}}" rows="{{if .CatchAll}}3{{else}}4{{end}}" maxlength="20000"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>{{.Value}}</textarea>
+  {{else if eq .Type "number"}}
+    <input id="{{.DOMID}}-in" type="number" inputmode="decimal" name="{{.Name}}" value="{{.Value}}"{{if .Num.Min}} min="{{.Num.Min}}"{{end}}{{if .Num.Max}} max="{{.Num.Max}}"{{end}}{{if .Num.Step}} step="{{.Num.Step}}"{{end}}{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
+  {{else if eq .Type "slider"}}
+    <div class="range">
+      <input id="{{.DOMID}}-in" type="range" name="{{.Name}}" value="{{.Value}}" min="{{.Num.Min}}" max="{{.Num.Max}}" step="{{.Num.Step}}">
+      <output for="{{.DOMID}}-in">{{.Value}}</output>
+    </div>
+    <div class="range-ends"><span>{{.Num.Min}}</span><span>{{.Num.Max}}</span></div>
+  {{else if eq .Type "date"}}
+    <input id="{{.DOMID}}-in" type="date" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
+  {{else if eq .Type "secret"}}
+    <div class="secret">
+      <input id="{{.DOMID}}-in" type="password" name="{{.Name}}" value="" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"{{if .Required}} required{{end}}>
+    </div>
+    <p class="secret-note">🔒 Kept out of the answers the agent reads — it writes the value straight where it's needed.{{if .Reenter}} <strong>Please type it again:</strong> it isn't kept after a failed send.{{end}}</p>
+  {{else}}
+    <input id="{{.DOMID}}-in" type="text" name="{{.Name}}" value="{{.Value}}" maxlength="2000"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
+  {{end}}
+  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+{{end}}
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+</div>
+{{end}}
+
+{{define "closed"}}{{template "head" .}}
+<main class="wrap closed" data-closed="{{.ID}}">
+  <header class="top">
+    <p class="eyebrow">{{.Status}}</p>
+    <h1>{{.Title}}</h1>
+  </header>
+  {{if eq .Status "submitted"}}
+    <p class="lead ok">✓ Thanks — your answers were sent{{if .When}} on {{.When}}{{end}}.</p>
+    {{if .Recap}}
+    <dl class="recap">
+      {{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}
+    </dl>
+    {{end}}
+  {{else if eq .Status "declined"}}
+    <p class="lead">You declined this form — nothing else to do.</p>
+  {{else if eq .Status "revoked"}}
+    <p class="lead">This form was withdrawn by whoever asked — no answer needed.</p>
+  {{else}}
+    <p class="lead">This form expired{{if .When}} on {{.When}}{{end}} — no answer needed any more.</p>
+  {{end}}
+</main>
+{{template "foot" .}}{{end}}
+
+{{define "message"}}{{template "head" .}}
+<main class="wrap closed">
+  <header class="top"><h1>{{.Title}}</h1></header>
+  <p class="lead">{{.Message}}</p>
+</main>
+{{template "foot" .}}{{end}}
+
+{{define "examples"}}{{template "head" .}}
+<main class="wrap">
+  <header class="top">
+    <p class="eyebrow">ask-form · examples</p>
+    <h1>Three forms an agent might send</h1>
+    <div class="md desc"><p>Each one is a real field spec, the JSON an agent passes to <code>ask-form create</code>. Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored.</p></div>
+  </header>
+  <ul class="examples">
+  {{range .Examples}}
+    <li class="example-card">
+      <a class="example-main" href="/examples/{{.Name}}">
+        <span class="example-title">{{.Title}}</span>
+        <span class="example-summary">{{.Summary}}</span>
+        <span class="example-meta">{{.Questions}} questions{{if .Groups}} · {{.Groups}} pages{{end}}</span>
+      </a>
+      <a class="example-spec" href="/examples/{{.Name}}/spec.json">spec.json</a>
+    </li>
+  {{end}}
+  </ul>
+  <p class="help"><a href="/">What is ask-form?</a></p>
+</main>
+{{template "foot" .}}{{end}}
+
+{{define "demo-result"}}{{template "head" .}}
+<main class="wrap closed">
+  <header class="top">
+    <p class="eyebrow">Example · nothing was stored</p>
+    <h1>{{.Title}}</h1>
+  </header>
+  <p class="lead ok">✓ This is what the agent's <code>ask-form wait</code> would print:</p>
+  <pre class="json">{{.JSON}}</pre>
+  <p class="help">Pretty-printed here; the CLI prints it on one line. A <code>secret</code> answer comes back as <code>{"secret": true, "chars": N}</code>: the value itself only ever goes where <code>ask-form secret … --env</code> writes it.</p>
+  {{if .Recap}}
+  <h2 class="group-title">As the person sees it</h2>
+  <dl class="recap">
+    {{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}
+  </dl>
+  {{end}}
+  <p class="actions"><a class="btn" href="/examples">All examples</a><a class="btn primary" href="{{.Back}}">Try it again</a></p>
+</main>
+{{template "foot" .}}{{end}}

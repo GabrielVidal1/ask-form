@@ -1,0 +1,472 @@
+{
+ "title": "Mechanical Music: does the game design hold?",
+ "order": 1,
+ "summary": "A game-design (GDD) check for a clockwork rhythm puzzle: the mechanics drawn as schemas, then 21 design questions in 6 themed pages.",
+ "description": "*Mechanical Music* is a clockwork rhythm toy: gears, cams and hammers on a pegboard turn a motor's rotation into a beat. Here's the design as I understood your notes, with the new mechanics sketched. Check I read them right, then answer the mechanics, sound and puzzle questions. Once they're in, I build the first version.",
+ "fields": [
+  {
+   "key": "the-updated-game",
+   "label": "The updated game",
+   "type": "markdown",
+   "group": "Overview",
+   "text": "**Mechanical Music, updated with your answers**\n\n**The game**: repair and build clockwork music machines. An input crank turns forever (one turn per bar). On a fixed pegboard you **stack** gears, belts, cams and hammers so the machine plays a rhythm, and with pitch rotators, a melody.\n\n**Two modes**\n- **Puzzles: repair the machine.** Every piece you need is already on the table. The sound pieces and the input crank are fixed (the crank only stops when something jams). Put the machine back together until it plays the target rhythm **exactly**. That match is the win; there's no score. Plus a **daily puzzle**.\n- **Sandbox**: every piece on a fixed board, saved in the browser and shared by link.\n\n**Already decided**: physical meshing; ratios via gear sizes, compound stacks, clutches and reversal; extra percussion; free orbit camera; warm workshop look; synth sounds first, samples later; **phone first**; a new project (Vite + React + three + zustand) at `mechanical-music.game.gabvdl.xyz`, public.\n\n**Mechanics as I understood your notes** (diagrams below; correct me in the notes):\n- **Stacking**: each cell is an axle. Pieces stack on it, with heights from ½ to 2. Everything that turns on one axle turns together.\n- **Physical meshing**: radii must add up to one cell (12+12, 8+16, 6+18 → 1:1, 1:2, 1:3). A gap does nothing; an overlap jams. Compound stacks chain the ratios.\n- **Belts** between two pulleys at the same height: same direction, ratio = pulley sizes.\n- **Quarter-turn gear**: one full turn in → ¼ turn out, then it waits.\n- **Cams** (rounded, wavy top) lift a **stamp hammer** that drops on the sound piece under it.\n- **Rotating hammers** strike the sound pieces in their 4 neighbouring cells.\n- **Clutch**: an axle piece that connects or disconnects when it is hit.\n- **Sound pieces**: percussion, tuned bells, **toggles** (on/off each hit) and **pitch rotators** (each hit → next value, cycling; linked tuned pieces play that pitch)."
+  },
+  {
+   "key": "mechanics-sketched",
+   "label": "Mechanics, sketched",
+   "type": "html",
+   "group": "Overview",
+   "html": "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px\"><div><div style=\"font-weight:700;margin:0 0 6px\">Stacking</div><svg viewBox=\"0 0 300 200\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><line x1=\"10\" y1=\"168\" x2=\"290\" y2=\"168\" stroke=\"#8b5a33\" stroke-width=\"6\"/><line x1=\"25\" y1=\"174\" x2=\"25\" y2=\"182\" stroke=\"#b5a184\" stroke-width=\".8\"/><line x1=\"95\" y1=\"174\" x2=\"95\" y2=\"182\" stroke=\"#b5a184\" stroke-width=\".8\"/><line x1=\"165\" y1=\"174\" x2=\"165\" y2=\"182\" stroke=\"#b5a184\" stroke-width=\".8\"/><line x1=\"235\" y1=\"174\" x2=\"235\" y2=\"182\" stroke=\"#b5a184\" stroke-width=\".8\"/><line x1=\"60\" y1=\"168\" x2=\"60\" y2=\"74.39999999999999\" stroke=\"#5a5f68\" stroke-width=\"3\"/><rect x=\"25\" y=\"155.0\" width=\"70\" height=\"13.0\" rx=\"2\" fill=\"#d2a646\" stroke=\"#00000066\" stroke-width=\".8\"/><line x1=\"29.4\" y1=\"157.0\" x2=\"29.4\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"33.8\" y1=\"157.0\" x2=\"33.8\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"38.1\" y1=\"157.0\" x2=\"38.1\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"42.5\" y1=\"157.0\" x2=\"42.5\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"46.9\" y1=\"157.0\" x2=\"46.9\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"51.2\" y1=\"157.0\" x2=\"51.2\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"55.6\" y1=\"157.0\" x2=\"55.6\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"60.0\" y1=\"157.0\" x2=\"60.0\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"64.4\" y1=\"157.0\" x2=\"64.4\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"68.8\" y1=\"157.0\" x2=\"68.8\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"73.1\" y1=\"157.0\" x2=\"73.1\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"77.5\" y1=\"157.0\" x2=\"77.5\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"81.9\" y1=\"157.0\" x2=\"81.9\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"86.2\" y1=\"157.0\" x2=\"86.2\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"90.6\" y1=\"157.0\" x2=\"90.6\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><text x=\"60\" y=\"165.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">gear ½</text><rect x=\"38\" y=\"142.0\" width=\"44\" height=\"13.0\" rx=\"2\" fill=\"#b06e3a\" stroke=\"#00000066\" stroke-width=\".8\"/><text x=\"60\" y=\"152.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">pulley ½</text><rect x=\"30\" y=\"116.0\" width=\"60\" height=\"26.0\" rx=\"2\" fill=\"#a07d3c\" stroke=\"#00000066\" stroke-width=\".8\"/><text x=\"60\" y=\"132.5\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">cam 1</text><path d=\"M30 116 q7 -7 15 0 q8 7 15 0 q7 -7 15 0 q8 7 15 0\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.2\"/><rect x=\"95\" y=\"155.0\" width=\"70\" height=\"13.0\" rx=\"2\" fill=\"#d2a646\" stroke=\"#00000066\" stroke-width=\".8\"/><line x1=\"99.4\" y1=\"157.0\" x2=\"99.4\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"103.8\" y1=\"157.0\" x2=\"103.8\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"108.1\" y1=\"157.0\" x2=\"108.1\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"112.5\" y1=\"157.0\" x2=\"112.5\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"116.9\" y1=\"157.0\" x2=\"116.9\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"121.2\" y1=\"157.0\" x2=\"121.2\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"125.6\" y1=\"157.0\" x2=\"125.6\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"130.0\" y1=\"157.0\" x2=\"130.0\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"134.4\" y1=\"157.0\" x2=\"134.4\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"138.8\" y1=\"157.0\" x2=\"138.8\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"143.1\" y1=\"157.0\" x2=\"143.1\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"147.5\" y1=\"157.0\" x2=\"147.5\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"151.9\" y1=\"157.0\" x2=\"151.9\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"156.2\" y1=\"157.0\" x2=\"156.2\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"160.6\" y1=\"157.0\" x2=\"160.6\" y2=\"166\" stroke=\"#00000033\" stroke-width=\"1\"/><text x=\"130\" y=\"165.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">½</text><line x1=\"130\" y1=\"168\" x2=\"130\" y2=\"129.0\" stroke=\"#5a5f68\" stroke-width=\"3\"/><rect x=\"118\" y=\"129.0\" width=\"24\" height=\"26\" rx=\"2\" fill=\"#5a5f68\" stroke=\"#00000066\" stroke-width=\".8\"/><text x=\"150\" y=\"144\" font-size=\"8\" fill=\"#b5a184\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">spacer 1</text><rect x=\"108\" y=\"116.0\" width=\"44\" height=\"13.0\" rx=\"2\" fill=\"#b06e3a\" stroke=\"#00000066\" stroke-width=\".8\"/><rect x=\"176\" y=\"155.0\" width=\"48\" height=\"13.0\" rx=\"2\" fill=\"#b8322a\" stroke=\"#00000066\" stroke-width=\".8\"/><text x=\"200\" y=\"165.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">drum ½</text><rect x=\"196\" y=\"116\" width=\"8\" height=\"33.0\" fill=\"#c9ced4\"/><rect x=\"186\" y=\"116\" width=\"28\" height=\"10\" rx=\"3\" fill=\"#f0e3c6\"/><text x=\"225\" y=\"129.0\" font-size=\"8\" fill=\"#b5a184\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">stamp</text><line x1=\"262\" y1=\"155.0\" x2=\"272\" y2=\"155.0\" stroke=\"#b5a184\"/><text x=\"286\" y=\"158.0\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">½</text><line x1=\"262\" y1=\"142.0\" x2=\"272\" y2=\"142.0\" stroke=\"#b5a184\"/><text x=\"286\" y=\"145.0\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">1</text><line x1=\"262\" y1=\"129.0\" x2=\"272\" y2=\"129.0\" stroke=\"#b5a184\"/><text x=\"286\" y=\"132.0\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">1½</text><line x1=\"262\" y1=\"116.0\" x2=\"272\" y2=\"116.0\" stroke=\"#b5a184\"/><text x=\"286\" y=\"119.0\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">2</text><line x1=\"267\" y1=\"168\" x2=\"267\" y2=\"116\" stroke=\"#b5a184\"/><text x=\"150\" y=\"20\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">one axle = one speed</text><text x=\"60\" y=\"194\" font-size=\"10\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">A</text><text x=\"130\" y=\"194\" font-size=\"10\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">B</text><text x=\"200\" y=\"194\" font-size=\"10\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">C</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">Each cell is an axle. Pieces stack on it (heights ½ to 2), and everything that turns on one axle turns together. A pulley on a low gear drives both at the same speed.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Physical meshing</div><svg viewBox=\"0 0 300 380\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><rect x=\"19.0\" y=\"9.0\" width=\"42\" height=\"42\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"30.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"61.0\" y=\"9.0\" width=\"42\" height=\"42\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"82.0\" cy=\"30.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><path d=\"M57.3 31.1L57.3 29.0L63.7 26.7L63.2 23.8L56.3 24.2L55.5 22.3L54.5 20.5L58.9 15.3L56.9 13.0L51.2 16.8L49.6 15.6L47.8 14.5L49.0 7.8L46.2 6.8L43.1 13.0L41.1 12.7L39.0 12.7L36.7 6.3L33.8 6.8L34.2 13.7L32.3 14.5L30.5 15.5L25.3 11.1L23.0 13.1L26.8 18.8L25.6 20.4L24.5 22.2L17.8 21.0L16.8 23.8L23.0 26.9L22.7 28.9L22.7 31.0L16.3 33.3L16.8 36.2L23.7 35.8L24.5 37.7L25.5 39.5L21.1 44.7L23.1 47.0L28.8 43.2L30.4 44.4L32.2 45.5L31.0 52.2L33.8 53.2L36.9 47.0L38.9 47.3L41.0 47.3L43.3 53.7L46.2 53.2L45.8 46.3L47.7 45.5L49.5 44.5L54.7 48.9L57.0 46.9L53.2 41.2L54.4 39.6L55.5 37.8L62.2 39.0L63.2 36.2L57.0 33.1Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"40\" cy=\"30\" r=\"3.8\" fill=\"#5a5f68\"/><path d=\"M98.9 33.6L99.3 31.6L106.0 30.3L105.8 27.3L99.0 26.7L98.5 24.7L97.7 22.7L102.9 18.3L101.3 15.8L95.1 18.6L93.6 17.2L92.0 15.8L94.3 9.4L91.6 8.0L87.7 13.6L85.6 13.1L83.6 12.7L82.3 6.0L79.3 6.2L78.7 13.0L76.7 13.5L74.7 14.3L70.3 9.1L67.8 10.7L70.6 16.9L69.2 18.4L67.8 20.0L61.4 17.7L60.0 20.4L65.6 24.3L65.1 26.4L64.7 28.4L58.0 29.7L58.2 32.7L65.0 33.3L65.5 35.3L66.3 37.3L61.1 41.7L62.7 44.2L68.9 41.4L70.4 42.8L72.0 44.2L69.7 50.6L72.4 52.0L76.3 46.4L78.4 46.9L80.4 47.3L81.7 54.0L84.7 53.8L85.3 47.0L87.3 46.5L89.3 45.7L93.7 50.9L96.2 49.3L93.4 43.1L94.8 41.6L96.2 40.0L102.6 42.3L104.0 39.6L98.4 35.7Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"82\" cy=\"30\" r=\"3.8\" fill=\"#5a5f68\"/><text x=\"118\" y=\"34\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">12 + 12 → 1:1</text><rect x=\"19.0\" y=\"79.0\" width=\"42\" height=\"42\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"100.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"61.0\" y=\"79.0\" width=\"42\" height=\"42\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"82.0\" cy=\"100.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><path d=\"M50.1 102.0L50.3 100.1L56.9 98.2L56.2 95.1L49.5 95.9L48.6 94.2L47.4 92.8L50.7 86.8L48.0 85.0L43.8 90.4L42.0 89.9L40.1 89.7L38.2 83.1L35.1 83.8L35.9 90.5L34.2 91.4L32.8 92.6L26.8 89.3L25.0 92.0L30.4 96.2L29.9 98.0L29.7 99.9L23.1 101.8L23.8 104.9L30.5 104.1L31.4 105.8L32.6 107.2L29.3 113.2L32.0 115.0L36.2 109.6L38.0 110.1L39.9 110.3L41.8 116.9L44.9 116.2L44.1 109.5L45.8 108.6L47.2 107.4L53.2 110.7L55.0 108.0L49.6 103.8Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"40\" cy=\"100\" r=\"2.5\" fill=\"#5a5f68\"/><path d=\"M106.1 103.5L106.3 101.4L113.0 99.9L112.8 97.0L106.0 96.2L105.6 94.1L105.0 92.0L110.6 88.1L109.3 85.4L102.8 87.3L101.5 85.5L100.1 83.8L103.8 78.0L101.7 76.1L96.3 80.3L94.5 79.1L92.6 78.1L93.8 71.3L91.0 70.4L87.7 76.4L85.5 75.9L83.4 75.7L81.9 69.0L79.0 69.2L78.2 76.0L76.1 76.4L74.0 77.0L70.1 71.4L67.4 72.7L69.3 79.2L67.5 80.5L65.8 81.9L60.0 78.2L58.1 80.3L62.3 85.7L61.1 87.5L60.1 89.4L53.3 88.2L52.4 91.0L58.4 94.3L57.9 96.5L57.7 98.6L51.0 100.1L51.2 103.0L58.0 103.8L58.4 105.9L59.0 108.0L53.4 111.9L54.7 114.6L61.2 112.7L62.5 114.5L63.9 116.2L60.2 122.0L62.3 123.9L67.7 119.7L69.5 120.9L71.4 121.9L70.2 128.7L73.0 129.6L76.3 123.6L78.5 124.1L80.6 124.3L82.1 131.0L85.0 130.8L85.8 124.0L87.9 123.6L90.0 123.0L93.9 128.6L96.6 127.3L94.7 120.8L96.5 119.5L98.2 118.1L104.0 121.8L105.9 119.7L101.7 114.3L102.9 112.5L103.9 110.6L110.7 111.8L111.6 109.0L105.6 105.7Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"82\" cy=\"100\" r=\"5.0\" fill=\"#5a5f68\"/><text x=\"118\" y=\"104\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">8 + 16 → 1:2</text><rect x=\"19.0\" y=\"151.0\" width=\"42\" height=\"42\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"172.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"61.0\" y=\"151.0\" width=\"42\" height=\"42\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"82.0\" cy=\"172.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><path d=\"M46.5 174.2L46.8 172.6L53.4 171.0L52.8 167.7L46.0 168.8L45.1 167.5L43.9 166.4L45.9 159.9L42.6 158.8L40.3 165.2L38.6 165.3L37.1 165.8L32.4 160.9L29.9 163.1L34.2 168.3L33.5 169.8L33.2 171.4L26.6 173.0L27.2 176.3L34.0 175.2L34.9 176.5L36.1 177.6L34.1 184.1L37.4 185.2L39.7 178.8L41.4 178.7L42.9 178.2L47.6 183.1L50.1 180.9L45.8 175.7Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"40\" cy=\"172\" r=\"2.5\" fill=\"#5a5f68\"/><path d=\"M109.6 175.5L109.8 173.2L116.5 171.7L116.3 168.8L109.5 168.0L109.1 165.8L108.5 163.6L114.3 159.9L113.2 157.3L106.5 158.8L105.4 156.9L104.1 155.1L108.2 149.6L106.3 147.5L100.5 151.2L98.8 149.8L97.0 148.5L99.0 142.0L96.4 140.7L92.3 146.2L90.2 145.4L88.0 144.8L87.7 138.0L84.8 137.6L82.8 144.2L80.6 144.2L78.4 144.4L75.7 138.1L72.9 138.7L73.3 145.6L71.2 146.4L69.2 147.3L64.5 142.3L62.1 143.9L64.8 150.2L63.1 151.6L61.5 153.2L55.4 150.1L53.7 152.4L58.3 157.4L57.2 159.3L56.3 161.3L49.5 160.5L48.7 163.2L54.8 166.3L54.4 168.5L54.2 170.8L47.5 172.3L47.7 175.2L54.5 176.0L54.9 178.2L55.5 180.4L49.7 184.1L50.8 186.7L57.5 185.2L58.6 187.1L59.9 188.9L55.8 194.4L57.7 196.5L63.5 192.8L65.2 194.2L67.0 195.5L65.0 202.0L67.6 203.3L71.7 197.8L73.8 198.6L76.0 199.2L76.3 206.0L79.2 206.4L81.2 199.8L83.4 199.8L85.6 199.6L88.3 205.9L91.1 205.3L90.7 198.4L92.8 197.6L94.8 196.7L99.5 201.7L101.9 200.1L99.2 193.8L100.9 192.4L102.5 190.8L108.6 193.9L110.3 191.6L105.7 186.6L106.8 184.7L107.7 182.7L114.5 183.5L115.3 180.8L109.2 177.7Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"82\" cy=\"172\" r=\"5.7\" fill=\"#5a5f68\"/><text x=\"118\" y=\"176\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">6 + 18 → 1:3</text><text x=\"150\" y=\"226\" font-size=\"10\" fill=\"#7fc77a\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">✓ radii add up to one cell</text><rect x=\"19.0\" y=\"235.0\" width=\"42\" height=\"42\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"256.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"61.0\" y=\"235.0\" width=\"42\" height=\"42\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"82.0\" cy=\"256.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><path d=\"M50.1 258.0L50.3 256.1L56.9 254.2L56.2 251.1L49.5 251.9L48.6 250.2L47.4 248.8L50.7 242.8L48.0 241.0L43.8 246.4L42.0 245.9L40.1 245.7L38.2 239.1L35.1 239.8L35.9 246.5L34.2 247.4L32.8 248.6L26.8 245.3L25.0 248.0L30.4 252.2L29.9 254.0L29.7 255.9L23.1 257.8L23.8 260.9L30.5 260.1L31.4 261.8L32.6 263.2L29.3 269.2L32.0 271.0L36.2 265.6L38.0 266.1L39.9 266.3L41.8 272.9L44.9 272.2L44.1 265.5L45.8 264.6L47.2 263.4L53.2 266.7L55.0 264.0L49.6 259.8Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"40\" cy=\"256\" r=\"2.5\" fill=\"#5a5f68\"/><path d=\"M98.9 259.6L99.3 257.6L106.0 256.3L105.8 253.3L99.0 252.7L98.5 250.7L97.7 248.7L102.9 244.3L101.3 241.8L95.1 244.6L93.6 243.2L92.0 241.8L94.3 235.4L91.6 234.0L87.7 239.6L85.6 239.1L83.6 238.7L82.3 232.0L79.3 232.2L78.7 239.0L76.7 239.5L74.7 240.3L70.3 235.1L67.8 236.7L70.6 242.9L69.2 244.4L67.8 246.0L61.4 243.7L60.0 246.4L65.6 250.3L65.1 252.4L64.7 254.4L58.0 255.7L58.2 258.7L65.0 259.3L65.5 261.3L66.3 263.3L61.1 267.7L62.7 270.2L68.9 267.4L70.4 268.8L72.0 270.2L69.7 276.6L72.4 278.0L76.3 272.4L78.4 272.9L80.4 273.3L81.7 280.0L84.7 279.8L85.3 273.0L87.3 272.5L89.3 271.7L93.7 276.9L96.2 275.3L93.4 269.1L94.8 267.6L96.2 266.0L102.6 268.3L104.0 265.6L98.4 261.7Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"82\" cy=\"256\" r=\"3.8\" fill=\"#5a5f68\"/><text x=\"118\" y=\"260\" font-size=\"10\" fill=\"#ff7a63\" text-anchor=\"start\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">8 + 12 → gap</text><rect x=\"19.0\" y=\"305.0\" width=\"42\" height=\"42\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"326.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"61.0\" y=\"305.0\" width=\"42\" height=\"42\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"82.0\" cy=\"326.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><path d=\"M64.3 325.9L64.2 323.7L70.6 321.3L70.0 318.4L63.2 318.7L62.4 316.6L61.5 314.6L66.5 309.9L64.8 307.5L58.6 310.4L57.1 308.7L55.5 307.3L58.3 301.0L55.9 299.4L51.2 304.4L49.2 303.5L47.2 302.8L47.4 295.9L44.5 295.4L42.1 301.8L39.9 301.7L37.7 301.8L35.3 295.4L32.4 296.0L32.7 302.8L30.6 303.6L28.6 304.5L23.9 299.5L21.5 301.2L24.4 307.4L22.7 308.9L21.3 310.5L15.0 307.7L13.4 310.1L18.4 314.8L17.5 316.8L16.8 318.8L9.9 318.6L9.4 321.5L15.8 323.9L15.7 326.1L15.8 328.3L9.4 330.7L10.0 333.6L16.8 333.3L17.6 335.4L18.5 337.4L13.5 342.1L15.2 344.5L21.4 341.6L22.9 343.3L24.5 344.7L21.7 351.0L24.1 352.6L28.8 347.6L30.8 348.5L32.8 349.2L32.6 356.1L35.5 356.6L37.9 350.2L40.1 350.3L42.3 350.2L44.7 356.6L47.6 356.0L47.3 349.2L49.4 348.4L51.4 347.5L56.1 352.5L58.5 350.8L55.6 344.6L57.3 343.1L58.7 341.5L65.0 344.3L66.6 341.9L61.6 337.2L62.5 335.2L63.2 333.2L70.1 333.4L70.6 330.5L64.2 328.1Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"40\" cy=\"326\" r=\"5.0\" fill=\"#5a5f68\"/><path d=\"M106.1 329.5L106.3 327.4L113.0 325.9L112.8 323.0L106.0 322.2L105.6 320.1L105.0 318.0L110.6 314.1L109.3 311.4L102.8 313.3L101.5 311.5L100.1 309.8L103.8 304.0L101.7 302.1L96.3 306.3L94.5 305.1L92.6 304.1L93.8 297.3L91.0 296.4L87.7 302.4L85.5 301.9L83.4 301.7L81.9 295.0L79.0 295.2L78.2 302.0L76.1 302.4L74.0 303.0L70.1 297.4L67.4 298.7L69.3 305.2L67.5 306.5L65.8 307.9L60.0 304.2L58.1 306.3L62.3 311.7L61.1 313.5L60.1 315.4L53.3 314.2L52.4 317.0L58.4 320.3L57.9 322.5L57.7 324.6L51.0 326.1L51.2 329.0L58.0 329.8L58.4 331.9L59.0 334.0L53.4 337.9L54.7 340.6L61.2 338.7L62.5 340.5L63.9 342.2L60.2 348.0L62.3 349.9L67.7 345.7L69.5 346.9L71.4 347.9L70.2 354.7L73.0 355.6L76.3 349.6L78.5 350.1L80.6 350.3L82.1 357.0L85.0 356.8L85.8 350.0L87.9 349.6L90.0 349.0L93.9 354.6L96.6 353.3L94.7 346.8L96.5 345.5L98.2 344.1L104.0 347.8L105.9 345.7L101.7 340.3L102.9 338.5L103.9 336.6L110.7 337.8L111.6 335.0L105.6 331.7Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"82\" cy=\"326\" r=\"5.0\" fill=\"#5a5f68\"/><text x=\"118\" y=\"330\" font-size=\"10\" fill=\"#ff7a63\" text-anchor=\"start\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">16 + 16 → overlap</text><path d=\"M54 314l14 24M68 314l-14 24\" stroke=\"#ff7a63\" stroke-width=\"3\"/><text x=\"150\" y=\"368\" font-size=\"10\" fill=\"#ff7a63\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">✗ gap: nothing turns · overlap: the machine jams</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">Gear sizes follow one tooth pitch, so neighbours mesh only when their radii add up to one cell: 12+12, 8+16, 6+18, giving ratios 1:1, 1:2, 1:3. Too small leaves a gap; too big collides and jams.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Compound gears</div><svg viewBox=\"0 0 300 180\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><line x1=\"5\" y1=\"150\" x2=\"295\" y2=\"150\" stroke=\"#8b5a33\" stroke-width=\"6\"/><line x1=\"50\" y1=\"150\" x2=\"50\" y2=\"84.0\" stroke=\"#5a5f68\" stroke-width=\"3\"/><line x1=\"120\" y1=\"150\" x2=\"120\" y2=\"84.0\" stroke=\"#5a5f68\" stroke-width=\"3\"/><line x1=\"190\" y1=\"150\" x2=\"190\" y2=\"84.0\" stroke=\"#5a5f68\" stroke-width=\"3\"/><rect x=\"15\" y=\"135.0\" width=\"70\" height=\"15.0\" rx=\"2\" fill=\"#d2a646\" stroke=\"#00000066\" stroke-width=\".8\"/><line x1=\"19.4\" y1=\"137.0\" x2=\"19.4\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"23.8\" y1=\"137.0\" x2=\"23.8\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"28.1\" y1=\"137.0\" x2=\"28.1\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"32.5\" y1=\"137.0\" x2=\"32.5\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"36.9\" y1=\"137.0\" x2=\"36.9\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"41.2\" y1=\"137.0\" x2=\"41.2\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"45.6\" y1=\"137.0\" x2=\"45.6\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"50.0\" y1=\"137.0\" x2=\"50.0\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"54.4\" y1=\"137.0\" x2=\"54.4\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"58.8\" y1=\"137.0\" x2=\"58.8\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"63.1\" y1=\"137.0\" x2=\"63.1\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"67.5\" y1=\"137.0\" x2=\"67.5\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"71.9\" y1=\"137.0\" x2=\"71.9\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"76.2\" y1=\"137.0\" x2=\"76.2\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"80.6\" y1=\"137.0\" x2=\"80.6\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><text x=\"50\" y=\"146.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">12</text><rect x=\"38\" y=\"121.0\" width=\"24\" height=\"14\" rx=\"3\" fill=\"#5a5f68\"/><text x=\"50\" y=\"131.0\" font-size=\"8\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">crank</text><rect x=\"85\" y=\"135.0\" width=\"70\" height=\"15.0\" rx=\"2\" fill=\"#b06e3a\" stroke=\"#00000066\" stroke-width=\".8\"/><line x1=\"89.4\" y1=\"137.0\" x2=\"89.4\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"93.8\" y1=\"137.0\" x2=\"93.8\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"98.1\" y1=\"137.0\" x2=\"98.1\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"102.5\" y1=\"137.0\" x2=\"102.5\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"106.9\" y1=\"137.0\" x2=\"106.9\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"111.2\" y1=\"137.0\" x2=\"111.2\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"115.6\" y1=\"137.0\" x2=\"115.6\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"120.0\" y1=\"137.0\" x2=\"120.0\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"124.4\" y1=\"137.0\" x2=\"124.4\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"128.8\" y1=\"137.0\" x2=\"128.8\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"133.1\" y1=\"137.0\" x2=\"133.1\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"137.5\" y1=\"137.0\" x2=\"137.5\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"141.9\" y1=\"137.0\" x2=\"141.9\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"146.2\" y1=\"137.0\" x2=\"146.2\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"150.6\" y1=\"137.0\" x2=\"150.6\" y2=\"148\" stroke=\"#00000033\" stroke-width=\"1\"/><text x=\"120\" y=\"146.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">12</text><rect x=\"102.5\" y=\"120.0\" width=\"35.0\" height=\"15.0\" rx=\"2\" fill=\"#d2a646\" stroke=\"#00000066\" stroke-width=\".8\"/><line x1=\"106.9\" y1=\"122.0\" x2=\"106.9\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"111.2\" y1=\"122.0\" x2=\"111.2\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"115.6\" y1=\"122.0\" x2=\"115.6\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"120.0\" y1=\"122.0\" x2=\"120.0\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"124.4\" y1=\"122.0\" x2=\"124.4\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"128.8\" y1=\"122.0\" x2=\"128.8\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"133.1\" y1=\"122.0\" x2=\"133.1\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><text x=\"120\" y=\"131.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">6</text><rect x=\"186\" y=\"135.0\" width=\"8\" height=\"15.0\" fill=\"#5a5f68\"/><rect x=\"137.5\" y=\"120.0\" width=\"105.0\" height=\"15.0\" rx=\"2\" fill=\"#b06e3a\" stroke=\"#00000066\" stroke-width=\".8\"/><line x1=\"141.5\" y1=\"122.0\" x2=\"141.5\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"145.6\" y1=\"122.0\" x2=\"145.6\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"149.6\" y1=\"122.0\" x2=\"149.6\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"153.7\" y1=\"122.0\" x2=\"153.7\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"157.7\" y1=\"122.0\" x2=\"157.7\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"161.7\" y1=\"122.0\" x2=\"161.7\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"165.8\" y1=\"122.0\" x2=\"165.8\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"169.8\" y1=\"122.0\" x2=\"169.8\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"173.8\" y1=\"122.0\" x2=\"173.8\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"177.9\" y1=\"122.0\" x2=\"177.9\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"181.9\" y1=\"122.0\" x2=\"181.9\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"186.0\" y1=\"122.0\" x2=\"186.0\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"190.0\" y1=\"122.0\" x2=\"190.0\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"194.0\" y1=\"122.0\" x2=\"194.0\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"198.1\" y1=\"122.0\" x2=\"198.1\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"202.1\" y1=\"122.0\" x2=\"202.1\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"206.2\" y1=\"122.0\" x2=\"206.2\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"210.2\" y1=\"122.0\" x2=\"210.2\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"214.2\" y1=\"122.0\" x2=\"214.2\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"218.3\" y1=\"122.0\" x2=\"218.3\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"222.3\" y1=\"122.0\" x2=\"222.3\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"226.3\" y1=\"122.0\" x2=\"226.3\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"230.4\" y1=\"122.0\" x2=\"230.4\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"234.4\" y1=\"122.0\" x2=\"234.4\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><line x1=\"238.5\" y1=\"122.0\" x2=\"238.5\" y2=\"133.0\" stroke=\"#00000033\" stroke-width=\"1\"/><text x=\"190\" y=\"131.0\" font-size=\"9\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">18</text><text x=\"50\" y=\"172\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">1 turn/bar</text><text x=\"120\" y=\"172\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">1×</text><text x=\"190\" y=\"172\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">⅓× → triplets</text><text x=\"150\" y=\"26\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">stacking two sizes chains ratios</text><text x=\"150\" y=\"44\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">(18→6 then 16→8 = 3:2 polyrhythm, etc.)</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">Two sizes on one axle multiply ratios. Every speed of the form 2ᵃ·3ᵇ is reachable: halves, thirds, 3:2, 4:3. Those are the musical subdivisions.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Belts</div><svg viewBox=\"0 0 300 165\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><rect x=\"10\" y=\"40\" width=\"56\" height=\"56\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"38.0\" cy=\"68.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"66\" y=\"40\" width=\"56\" height=\"56\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"94.0\" cy=\"68.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"122\" y=\"40\" width=\"56\" height=\"56\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"150.0\" cy=\"68.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"178\" y=\"40\" width=\"56\" height=\"56\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"206.0\" cy=\"68.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"234\" y=\"40\" width=\"56\" height=\"56\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"262.0\" cy=\"68.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><path d=\"M38 57 L262 49 A21 21 0 0 1 262 91 L38 83 A13 13 0 0 1 38 57Z\" fill=\"none\" stroke=\"#3a2618\" stroke-width=\"5\" stroke-linejoin=\"round\"/><circle cx=\"38\" cy=\"70\" r=\"12\" fill=\"#b06e3a\" stroke=\"#00000066\"/><circle cx=\"262\" cy=\"70\" r=\"20\" fill=\"#b06e3a\" stroke=\"#00000066\"/><circle cx=\"38\" cy=\"70\" r=\"3\" fill=\"#5a5f68\"/><circle cx=\"262\" cy=\"70\" r=\"4\" fill=\"#5a5f68\"/><path d=\"M110 36 l10 -4 l-10 -4\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.5\"/><path d=\"M190 106 l-10 4 l10 4\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.5\"/><text x=\"38\" y=\"128\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">small</text><text x=\"262\" y=\"128\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">large: ½×</text><text x=\"150\" y=\"150\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">same direction · ratio = pulley sizes</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">A belt links two pulleys at the same height, whatever the distance. Both turn the same way; the ratio is their size ratio.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Quarter-turn gear</div><svg viewBox=\"0 0 300 175\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><rect x=\"10\" y=\"30\" width=\"60\" height=\"60\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"60.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"70\" y=\"30\" width=\"60\" height=\"60\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"100.0\" cy=\"60.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"10\" y=\"90\" width=\"60\" height=\"60\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"40.0\" cy=\"120.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"70\" y=\"90\" width=\"60\" height=\"60\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"100.0\" cy=\"120.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><circle cx=\"55\" cy=\"90\" r=\"30\" fill=\"#d2a646\" stroke=\"#00000066\"/><path d=\"M55 90 L80 75\" stroke=\"#5a5f68\" stroke-width=\"5\"/><circle cx=\"80\" cy=\"75\" r=\"5\" fill=\"#b8322a\"/><circle cx=\"55\" cy=\"90\" r=\"4\" fill=\"#5a5f68\"/><g transform=\"translate(112 72)\"><circle cx=\"0\" cy=\"0\" r=\"32\" fill=\"#b06e3a\" stroke=\"#00000066\"/><rect x=\"10\" y=\"-4\" width=\"24\" height=\"8\" fill=\"#241a12\" transform=\"rotate(45)\"/><circle cx=\"0.0\" cy=\"32.0\" r=\"11\" fill=\"#241a12\"/><rect x=\"10\" y=\"-4\" width=\"24\" height=\"8\" fill=\"#241a12\" transform=\"rotate(135)\"/><circle cx=\"-32.0\" cy=\"0.0\" r=\"11\" fill=\"#241a12\"/><rect x=\"10\" y=\"-4\" width=\"24\" height=\"8\" fill=\"#241a12\" transform=\"rotate(225)\"/><circle cx=\"-0.0\" cy=\"-32.0\" r=\"11\" fill=\"#241a12\"/><rect x=\"10\" y=\"-4\" width=\"24\" height=\"8\" fill=\"#241a12\" transform=\"rotate(315)\"/><circle cx=\"32.0\" cy=\"-0.0\" r=\"11\" fill=\"#241a12\"/><circle r=\"4\" fill=\"#5a5f68\"/></g><line x1=\"170\" y1=\"150\" x2=\"292\" y2=\"150\" stroke=\"#b5a184\"/><line x1=\"170\" y1=\"150\" x2=\"170\" y2=\"40\" stroke=\"#b5a184\"/><polyline points=\"170,150 192,150 200,125 200,125 222,125 230,100 230,100 252,100 260,75 260,75 282,75 290,50\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"2.5\"/><text x=\"231\" y=\"166\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">input turns →</text><text x=\"176\" y=\"36\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">output</text><text x=\"85\" y=\"20\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">1 turn in → ¼ turn out</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">A Geneva drive: each full turn of the pin wheel kicks the slotted wheel a quarter turn, then it waits. Put a hammer on it to hit a different neighbour each bar, a built-in sequencer.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Cam + stamp hammer</div><svg viewBox=\"0 0 300 195\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><line x1=\"5\" y1=\"160\" x2=\"295\" y2=\"160\" stroke=\"#8b5a33\" stroke-width=\"6\"/><line x1=\"80\" y1=\"160\" x2=\"80\" y2=\"50\" stroke=\"#5a5f68\" stroke-width=\"3\"/><path d=\"M30 160 L30 100 q12 -22 25 0 q12 22 25 0 q12 -22 25 0 q13 22 25 0 L130 160Z\" fill=\"#a07d3c\" stroke=\"#00000066\"/><rect x=\"196\" y=\"134\" width=\"68\" height=\"26\" rx=\"3\" fill=\"#b8322a\"/><rect x=\"194\" y=\"130\" width=\"72\" height=\"6\" rx=\"2\" fill=\"#f2ead9\"/><rect x=\"226\" y=\"40\" width=\"8\" height=\"70\" fill=\"#c9ced4\"/><rect x=\"214\" y=\"104\" width=\"32\" height=\"14\" rx=\"4\" fill=\"#f0e3c6\"/><rect x=\"118\" y=\"70\" width=\"112\" height=\"7\" rx=\"2\" fill=\"#c9ced4\"/><circle cx=\"120\" cy=\"80\" r=\"4\" fill=\"#d2a646\"/><path d=\"M248 52 v-12 m-5 5 l5 -5 l5 5 M248 70 v14 m-5 -5 l5 5 l5 -5\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.5\"/><text x=\"80\" y=\"186\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">cam: wavy top, 2 lobes</text><text x=\"230\" y=\"186\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">stamp drops on the drum</text><text x=\"150\" y=\"24\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">lobe lifts the tappet → the stamp falls</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">A cam is a disc with a rounded, wavy top (an extruded profile). Its lobes lift a stamp in the next cell, which drops onto the sound piece stacked beneath it. Lobes = hits per turn, and an asymmetric cam plays its rhythm backwards when turned the other way.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Rotating hammer</div><svg viewBox=\"0 0 300 205\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><rect x=\"75\" y=\"10\" width=\"50\" height=\"50\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"100.0\" cy=\"35.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"125\" y=\"10\" width=\"50\" height=\"50\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"150.0\" cy=\"35.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"175\" y=\"10\" width=\"50\" height=\"50\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"200.0\" cy=\"35.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"75\" y=\"60\" width=\"50\" height=\"50\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"100.0\" cy=\"85.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"125\" y=\"60\" width=\"50\" height=\"50\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"150.0\" cy=\"85.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"175\" y=\"60\" width=\"50\" height=\"50\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"200.0\" cy=\"85.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"75\" y=\"110\" width=\"50\" height=\"50\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"100.0\" cy=\"135.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"125\" y=\"110\" width=\"50\" height=\"50\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"150.0\" cy=\"135.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"175\" y=\"110\" width=\"50\" height=\"50\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"200.0\" cy=\"135.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><circle cx=\"150\" cy=\"35\" r=\"18\" fill=\"#e8b83a\" stroke=\"#00000066\"/><circle cx=\"150\" cy=\"35\" r=\"4\" fill=\"#5a5f68\"/><circle cx=\"200\" cy=\"85\" r=\"18\" fill=\"#c9ced4\" stroke=\"#00000066\"/><circle cx=\"200\" cy=\"85\" r=\"13\" fill=\"#f2ead9\"/><circle cx=\"150\" cy=\"135\" r=\"21\" fill=\"#b8322a\" stroke=\"#00000066\"/><circle cx=\"150\" cy=\"135\" r=\"16\" fill=\"#f2ead9\"/><path d=\"M167.9 87.9L168.1 85.8L175.1 84.1L174.8 80.9L167.6 80.7L167.0 78.6L166.1 76.6L171.3 71.6L169.4 69.1L163.1 72.4L161.5 70.9L159.7 69.7L161.7 62.8L158.9 61.5L155.1 67.6L152.9 67.1L150.8 66.9L149.1 59.9L145.9 60.2L145.7 67.4L143.6 68.0L141.6 68.9L136.6 63.7L134.1 65.6L137.4 71.9L135.9 73.5L134.7 75.3L127.8 73.3L126.5 76.1L132.6 79.9L132.1 82.1L131.9 84.2L124.9 85.9L125.2 89.1L132.4 89.3L133.0 91.4L133.9 93.4L128.7 98.4L130.6 100.9L136.9 97.6L138.5 99.1L140.3 100.3L138.3 107.2L141.1 108.5L144.9 102.4L147.1 102.9L149.2 103.1L150.9 110.1L154.1 109.8L154.3 102.6L156.4 102.0L158.4 101.1L163.4 106.3L165.9 104.4L162.6 98.1L164.1 96.5L165.3 94.7L172.2 96.7L173.5 93.9L167.4 90.1Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><line x1=\"150\" y1=\"85\" x2=\"184.6\" y2=\"65.0\" stroke=\"#8b5a33\" stroke-width=\"4\"/><circle cx=\"186.4\" cy=\"64.0\" r=\"6\" fill=\"#f0e3c6\"/><line x1=\"150\" y1=\"85\" x2=\"115.4\" y2=\"105.0\" stroke=\"#8b5a33\" stroke-width=\"4\"/><circle cx=\"113.6\" cy=\"106.0\" r=\"6\" fill=\"#f0e3c6\"/><circle cx=\"150\" cy=\"85\" r=\"5\" fill=\"#5a5f68\"/><path d=\"M108 58 A50 50 0 0 0 108 112\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.5\" stroke-dasharray=\"3 3\"/><path d=\"M104 108 l4 5 l3 -6\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.5\"/><text x=\"150\" y=\"182\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">2 arms × 3 neighbours = 6 hits per turn</text><text x=\"150\" y=\"198\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">order: hat → snare → kick (reversed when it turns back)</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">Arms turn with the axle and strike the sound pieces in the 4 neighbouring cells at their height.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Pitch rotators & toggles</div><svg viewBox=\"0 0 300 165\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><circle cx=\"62\" cy=\"80\" r=\"38\" fill=\"#3a2c20\" stroke=\"#d2a646\" stroke-width=\"3\"/><text x=\"62.0\" y=\"60.0\" font-size=\"12\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">C</text><text x=\"86.0\" y=\"84.0\" font-size=\"12\" fill=\"#e8b83a\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">E</text><text x=\"62.0\" y=\"108.0\" font-size=\"12\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">G</text><text x=\"38.0\" y=\"84.0\" font-size=\"12\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"700\" font-family=\"system-ui,sans-serif\">E</text><path d=\"M62 80 L80 80\" stroke=\"#e8b83a\" stroke-width=\"4\" stroke-linecap=\"round\"/><circle cx=\"62\" cy=\"80\" r=\"5\" fill=\"#d2a646\"/><line x1=\"100\" y1=\"80\" x2=\"150\" y2=\"80\" stroke=\"#c9ced4\" stroke-width=\"3\" stroke-dasharray=\"6 4\"/><path d=\"M150 104 q0 -40 22 -44 q22 4 22 44Z\" fill=\"#e8b83a\" stroke=\"#00000066\"/><circle cx=\"172\" cy=\"110\" r=\"5\" fill=\"#d2a646\"/><rect x=\"232\" y=\"50\" width=\"16\" height=\"60\" rx=\"3\" fill=\"#c9ced4\"/><rect x=\"227\" y=\"104\" width=\"26\" height=\"10\" rx=\"2\" fill=\"#5a5f68\"/><path d=\"M236 60 h8\" stroke=\"#5a5f68\" stroke-width=\"3\"/><circle cx=\"240\" cy=\"38\" r=\"7\" fill=\"#7fc77a\"/><text x=\"62\" y=\"138\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">pitch rotator</text><text x=\"62\" y=\"152\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">each hit → next value</text><text x=\"172\" y=\"138\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">tuned bell</text><text x=\"172\" y=\"152\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">plays its note</text><text x=\"248\" y=\"138\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">toggle</text><text x=\"248\" y=\"152\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">hit → on/off</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">A pitch rotator holds a cycle of values; every hit moves it to the next one, and the tuned pieces linked to it play that pitch. Two hammers (one on the rotator, one on the bell) make a melody. Toggle pieces switch on and off each time they are hit.</div></div><div><div style=\"font-weight:700;margin:0 0 6px\">Puzzles: repair the machine</div><svg viewBox=\"0 0 300 218\" width=\"100%\" style=\"display:block;background:#241a12;border-radius:10px\"><rect x=\"10\" y=\"14\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"27.0\" cy=\"31.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"44\" y=\"14\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"61.0\" cy=\"31.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"78\" y=\"14\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"95.0\" cy=\"31.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"112\" y=\"14\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"129.0\" cy=\"31.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"146\" y=\"14\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"163.0\" cy=\"31.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"10\" y=\"48\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"27.0\" cy=\"65.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"44\" y=\"48\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"61.0\" cy=\"65.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"78\" y=\"48\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"95.0\" cy=\"65.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"112\" y=\"48\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"129.0\" cy=\"65.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"146\" y=\"48\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"163.0\" cy=\"65.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"10\" y=\"82\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"27.0\" cy=\"99.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"44\" y=\"82\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"61.0\" cy=\"99.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"78\" y=\"82\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"95.0\" cy=\"99.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"112\" y=\"82\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"129.0\" cy=\"99.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"146\" y=\"82\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"163.0\" cy=\"99.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"10\" y=\"116\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"27.0\" cy=\"133.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"44\" y=\"116\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"61.0\" cy=\"133.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"78\" y=\"116\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"95.0\" cy=\"133.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"112\" y=\"116\" width=\"34\" height=\"34\" fill=\"#94603a\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"129.0\" cy=\"133.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"146\" y=\"116\" width=\"34\" height=\"34\" fill=\"#8b5a33\" opacity=\".55\" stroke=\"#2a1708\" stroke-width=\".6\"/><circle cx=\"163.0\" cy=\"133.0\" r=\"1.6\" fill=\"#1c0e05\" opacity=\".7\"/><rect x=\"17\" y=\"21\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#5a5f68\"/><path d=\"M34.2 32.9L34.4 32.0L37.3 31.6L37.3 30.4L34.4 30.0L34.2 29.1L33.9 28.2L36.2 26.4L35.6 25.3L32.8 26.4L32.3 25.7L31.6 25.2L32.7 22.4L31.6 21.8L29.8 24.1L28.9 23.8L28.0 23.6L27.6 20.7L26.4 20.7L26.0 23.6L25.1 23.8L24.2 24.1L22.4 21.8L21.3 22.4L22.4 25.2L21.7 25.7L21.2 26.4L18.4 25.3L17.8 26.4L20.1 28.2L19.8 29.1L19.6 30.0L16.7 30.4L16.7 31.6L19.6 32.0L19.8 32.9L20.1 33.8L17.8 35.6L18.4 36.7L21.2 35.6L21.7 36.3L22.4 36.8L21.3 39.6L22.4 40.2L24.2 37.9L25.1 38.2L26.0 38.4L26.4 41.3L27.6 41.3L28.0 38.4L28.9 38.2L29.8 37.9L31.6 40.2L32.7 39.6L31.6 36.8L32.3 36.3L32.8 35.6L35.6 36.7L36.2 35.6L33.9 33.8Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"27\" cy=\"31\" r=\"2.5\" fill=\"#5a5f68\"/><rect x=\"36\" y=\"20\" width=\"8\" height=\"7\" rx=\"1\" fill=\"#f3e7d3\"/><path d=\"M37.5 20 v-2.5 a2.5 2.5 0 0 1 5 0 v2.5\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.3\"/><circle cx=\"163\" cy=\"31\" r=\"12\" fill=\"#b8322a\"/><circle cx=\"163\" cy=\"31\" r=\"9\" fill=\"#f2ead9\"/><rect x=\"172\" y=\"20\" width=\"8\" height=\"7\" rx=\"1\" fill=\"#f3e7d3\"/><path d=\"M173.5 20 v-2.5 a2.5 2.5 0 0 1 5 0 v2.5\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.3\"/><circle cx=\"163\" cy=\"99\" r=\"11\" fill=\"#c9ced4\"/><circle cx=\"163\" cy=\"99\" r=\"8\" fill=\"#f2ead9\"/><rect x=\"172\" y=\"88\" width=\"8\" height=\"7\" rx=\"1\" fill=\"#f3e7d3\"/><path d=\"M173.5 88 v-2.5 a2.5 2.5 0 0 1 5 0 v2.5\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.3\"/><circle cx=\"95\" cy=\"133\" r=\"11\" fill=\"#e8b83a\"/><rect x=\"104\" y=\"122\" width=\"8\" height=\"7\" rx=\"1\" fill=\"#f3e7d3\"/><path d=\"M105.5 122 v-2.5 a2.5 2.5 0 0 1 5 0 v2.5\" fill=\"none\" stroke=\"#f3e7d3\" stroke-width=\"1.3\"/><circle cx=\"61\" cy=\"31\" r=\"12\" fill=\"none\" stroke=\"#b5a184\" stroke-width=\"1\" stroke-dasharray=\"3 3\"/><circle cx=\"95\" cy=\"65\" r=\"12\" fill=\"none\" stroke=\"#b5a184\" stroke-width=\"1\" stroke-dasharray=\"3 3\"/><rect x=\"196\" y=\"14\" width=\"96\" height=\"136\" rx=\"8\" fill=\"#3a2c20\" stroke=\"#8b5a33\"/><text x=\"244\" y=\"30\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"middle\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">tray</text><path d=\"M233.4 56.4L233.2 55.0L237.1 52.7L236.3 50.9L231.9 52.0L231.1 50.9L230.2 49.9L232.4 45.9L230.8 44.7L227.6 47.9L226.3 47.3L225.0 46.9L225.0 42.3L223.0 42.0L221.8 46.5L220.4 46.6L219.0 46.8L216.7 42.9L214.9 43.7L216.0 48.1L214.9 48.9L213.9 49.8L209.9 47.6L208.7 49.2L211.9 52.4L211.3 53.7L210.9 55.0L206.3 55.0L206.0 57.0L210.5 58.2L210.6 59.6L210.8 61.0L206.9 63.3L207.7 65.1L212.1 64.0L212.9 65.1L213.8 66.1L211.6 70.1L213.2 71.3L216.4 68.1L217.7 68.7L219.0 69.1L219.0 73.7L221.0 74.0L222.2 69.5L223.6 69.4L225.0 69.2L227.3 73.1L229.1 72.3L228.0 67.9L229.1 67.1L230.1 66.2L234.1 68.4L235.3 66.8L232.1 63.6L232.7 62.3L233.1 61.0L237.7 61.0L238.0 59.0L233.5 57.8Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"222\" cy=\"58\" r=\"2.5\" fill=\"#5a5f68\"/><path d=\"M269.1 66.1L269.3 64.8L274.1 63.9L273.9 61.7L269.0 61.7L268.5 60.5L267.8 59.4L270.5 55.4L268.8 53.9L265.4 57.4L264.1 56.9L262.8 56.7L261.9 51.9L259.7 52.1L259.7 57.0L258.5 57.5L257.4 58.2L253.4 55.5L251.9 57.2L255.4 60.6L254.9 61.9L254.7 63.2L249.9 64.1L250.1 66.3L255.0 66.3L255.5 67.5L256.2 68.6L253.5 72.6L255.2 74.1L258.6 70.6L259.9 71.1L261.2 71.3L262.1 76.1L264.3 75.9L264.3 71.0L265.5 70.5L266.6 69.8L270.6 72.5L272.1 70.8L268.6 67.4Z\" fill=\"#b06e3a\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"262\" cy=\"64\" r=\"2.5\" fill=\"#5a5f68\"/><path d=\"M243.9 89.9L243.0 88.8L245.1 85.0L243.6 83.8L240.4 86.8L239.1 86.1L237.9 85.5L238.4 81.1L236.6 80.6L234.7 84.6L233.3 84.4L231.9 84.4L230.7 80.1L228.8 80.3L228.6 84.7L227.2 85.1L225.9 85.6L223.2 82.2L221.5 83.1L223.0 87.2L221.9 88.1L220.8 89.0L217.0 86.9L215.8 88.4L218.8 91.6L218.1 92.9L217.5 94.1L213.1 93.6L212.6 95.4L216.6 97.3L216.4 98.7L216.4 100.1L212.1 101.3L212.3 103.2L216.7 103.4L217.1 104.8L217.6 106.1L214.2 108.8L215.1 110.5L219.2 109.0L220.1 110.1L221.0 111.2L218.9 115.0L220.4 116.2L223.6 113.2L224.9 113.9L226.1 114.5L225.6 118.9L227.4 119.4L229.3 115.4L230.7 115.6L232.1 115.6L233.3 119.9L235.2 119.7L235.4 115.3L236.8 114.9L238.1 114.4L240.8 117.8L242.5 116.9L241.0 112.8L242.1 111.9L243.2 111.0L247.0 113.1L248.2 111.6L245.2 108.4L245.9 107.1L246.5 105.9L250.9 106.4L251.4 104.6L247.4 102.7L247.6 101.3L247.6 99.9L251.9 98.7L251.7 96.8L247.3 96.6L246.9 95.2L246.4 93.9L249.8 91.2L248.9 89.5L244.8 91.0Z\" fill=\"#d2a646\" stroke=\"#00000055\" stroke-width=\".8\"/><circle cx=\"232\" cy=\"100\" r=\"3.2\" fill=\"#5a5f68\"/><rect x=\"254\" y=\"94\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#a07d3c\" transform=\"rotate(20 265 105)\"/><circle cx=\"214\" cy=\"132\" r=\"3\" fill=\"#b5a184\" opacity=\".6\"/><circle cx=\"222\" cy=\"136\" r=\"2\" fill=\"#b5a184\" opacity=\".5\"/><text x=\"10\" y=\"174\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">target</text><text x=\"10\" y=\"192\" font-size=\"9\" fill=\"#b5a184\" text-anchor=\"start\" font-weight=\"400\" font-family=\"system-ui,sans-serif\">yours</text><circle cx=\"60\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"60\" cy=\"188\" r=\"5\" fill=\"#e8b83a\"/><circle cx=\"89\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"118\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"118\" cy=\"188\" r=\"5\" fill=\"#e8b83a\"/><circle cx=\"147\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"176\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"176\" cy=\"188\" r=\"5\" fill=\"#e8b83a\"/><circle cx=\"205\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"234\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><circle cx=\"234\" cy=\"188\" r=\"5\" fill=\"#e8b83a\"/><circle cx=\"263\" cy=\"170\" r=\"5\" fill=\"none\" stroke=\"#e8b83a\" stroke-width=\"1.5\"/><text x=\"150\" y=\"210\" font-size=\"10\" fill=\"#f3e7d3\" text-anchor=\"middle\" font-weight=\"600\" font-family=\"system-ui,sans-serif\">repair it until “yours” matches the target exactly</text></svg><div style=\"font-size:12.5px;line-height:1.45;opacity:.85;margin-top:6px\">The machine is broken: every piece you need is on the table, while the sound pieces and the input crank (🔒) stay fixed. Put it back together until it plays the target rhythm exactly. Opus Magnum engineering meets the tidy satisfaction of a repair game.</div></div></div>"
+  },
+  {
+   "key": "design_ok",
+   "label": "Did I get the game right?",
+   "type": "radio",
+   "required": true,
+   "group": "Overview",
+   "options": [
+    {
+     "value": "yes",
+     "label": "**Yes**, build this"
+    },
+    {
+     "value": "mostly",
+     "label": "**Mostly**: corrections in the notes"
+    },
+    {
+     "value": "no",
+     "label": "**No**: let's go over it again"
+    }
+   ]
+  },
+  {
+   "key": "cam_hammer",
+   "label": "How does a cam drive a hammer?",
+   "type": "radio",
+   "required": true,
+   "group": "Mechanics",
+   "options": [
+    {
+     "value": "stamp",
+     "label": "**Stamp**: a vertical hammer in the cell next to the cam drops onto the sound piece stacked beneath it *(my pick)*"
+    },
+    {
+     "value": "lever",
+     "label": "**Lever**: cam → lever → sound piece, three cells in a line (like the first mockup)"
+    },
+    {
+     "value": "both",
+     "label": "Both"
+    }
+   ]
+  },
+  {
+   "key": "quarter_turn",
+   "label": "The quarter-turn gear is…",
+   "type": "radio",
+   "required": true,
+   "group": "Mechanics",
+   "options": [
+    {
+     "value": "pair",
+     "label": "**A real Geneva pair**: pin wheel + slotted wheel in two adjacent cells *(my pick)*"
+    },
+    {
+     "value": "stack",
+     "label": "**One stack piece**: input below, intermittent output above"
+    },
+    {
+     "value": "both",
+     "label": "Both"
+    }
+   ]
+  },
+  {
+   "key": "belts",
+   "label": "Belts connect…",
+   "type": "radio",
+   "required": true,
+   "group": "Mechanics",
+   "options": [
+    {
+     "value": "line",
+     "label": "two pulleys in the same row or column; the path must be clear at that height"
+    },
+    {
+     "value": "any_clear",
+     "label": "**any two pulleys at the same height**; the path must be clear *(my pick)*"
+    },
+    {
+     "value": "over",
+     "label": "any two pulleys at the same height, passing over everything"
+    }
+   ]
+  },
+  {
+   "key": "crossed_belts",
+   "label": "Allow **crossed belts** (they reverse the direction)",
+   "type": "checkbox"
+  },
+  {
+   "key": "collisions",
+   "label": "How strict are collisions?",
+   "type": "radio",
+   "required": true,
+   "group": "Mechanics",
+   "options": [
+    {
+     "value": "strict",
+     "label": "**Strict**: any overlap at the same height jams, including gears, belts, hammer sweeps and diagonals *(my pick)*"
+    },
+    {
+     "value": "gears_only",
+     "label": "**Gears only**: overlapping gears jam; hammers and belts pass through"
+    },
+    {
+     "value": "mixed",
+     "label": "Strict in puzzles, forgiving in the sandbox"
+    }
+   ]
+  },
+  {
+   "key": "max_stack",
+   "label": "How tall can a stack get?",
+   "type": "radio",
+   "group": "Mechanics",
+   "options": [
+    {
+     "value": "2",
+     "label": "2 cells"
+    },
+    {
+     "value": "3",
+     "label": "3 cells *(my pick)*"
+    },
+    {
+     "value": "4",
+     "label": "4 cells"
+    }
+   ]
+  },
+  {
+   "key": "toggle_meaning",
+   "label": "What do toggle pieces switch?",
+   "type": "multiselect",
+   "required": true,
+   "group": "Sound pieces",
+   "options": [
+    {
+     "value": "sustain",
+     "label": "Their own **sustained sound** (drone, organ pipe, music-box spring): it starts on one hit and stops on the next"
+    },
+    {
+     "value": "mute",
+     "label": "A **mute switch** for the sound pieces linked to it"
+    },
+    {
+     "value": "clutch",
+     "label": "A **clutch**: engages or disengages an axle (song sections)"
+    },
+    {
+     "value": "lamp",
+     "label": "Just a light or flag (a visual cue)"
+    }
+   ]
+  },
+  {
+   "key": "rotator_link",
+   "label": "How does a pitch rotator reach the pieces it tunes?",
+   "type": "radio",
+   "required": true,
+   "group": "Sound pieces",
+   "options": [
+    {
+     "value": "adjacent",
+     "label": "**By touch**: it tunes the tuned pieces in its 4 neighbouring cells"
+    },
+    {
+     "value": "rod",
+     "label": "**A rod you draw** from the rotator to each tuned piece *(my pick)*"
+    },
+    {
+     "value": "stack",
+     "label": "**Stacked**: it tunes the piece in its own cell"
+    }
+   ]
+  },
+  {
+   "key": "pitch_values",
+   "label": "What values does a rotator hold?",
+   "type": "radio",
+   "required": true,
+   "group": "Sound pieces",
+   "options": [
+    {
+     "value": "scale",
+     "label": "**Scale degrees** in the puzzle's key, so it's always musical *(my pick)*"
+    },
+    {
+     "value": "chromatic",
+     "label": "Any note (chromatic)"
+    },
+    {
+     "value": "barrel",
+     "label": "A fixed melody baked into the piece (a tiny pin barrel)"
+    }
+   ]
+  },
+  {
+   "key": "rotator_steps",
+   "label": "How many positions does a rotator have?",
+   "type": "radio",
+   "group": "Sound pieces",
+   "options": [
+    {
+     "value": "4",
+     "label": "Always 4"
+    },
+    {
+     "value": "8",
+     "label": "Always 8"
+    },
+    {
+     "value": "2-8",
+     "label": "2 to 8, set per piece *(my pick)*"
+    }
+   ]
+  },
+  {
+   "key": "broken_start",
+   "label": "What does a broken machine look like at the start?",
+   "type": "multiselect",
+   "required": true,
+   "group": "Puzzle goal",
+   "options": [
+    {
+     "value": "tray",
+     "label": "Pieces scattered in a **tray** next to the board"
+    },
+    {
+     "value": "misplaced",
+     "label": "Pieces in the **wrong cells** on the board"
+    },
+    {
+     "value": "fallen",
+     "label": "Pieces **knocked over**, lying on their side"
+    },
+    {
+     "value": "dirty",
+     "label": "**Dusty and rusty**: they shine again once placed right"
+    },
+    {
+     "value": "bolted",
+     "label": "Some pieces **bolted down** as part of the puzzle"
+    }
+   ]
+  },
+  {
+   "key": "solutions",
+   "label": "Solutions",
+   "type": "radio",
+   "required": true,
+   "group": "Puzzle goal",
+   "options": [
+    {
+     "value": "unique",
+     "label": "**One intended solution**: a mechanical jigsaw"
+    },
+    {
+     "value": "open",
+     "label": "**Any arrangement that plays the target exactly wins** (Opus Magnum spirit) *(my pick)*"
+    }
+   ]
+  },
+  {
+   "key": "all_pieces",
+   "label": "Must every piece end up on the board?",
+   "type": "radio",
+   "required": true,
+   "group": "Puzzle goal",
+   "options": [
+    {
+     "value": "all",
+     "label": "Yes, all of them"
+    },
+    {
+     "value": "decoys",
+     "label": "No: some are decoys"
+    },
+    {
+     "value": "free",
+     "label": "No rule: only the rhythm counts *(my pick)*"
+    }
+   ]
+  },
+  {
+   "key": "target",
+   "label": "How is the target rhythm shown?",
+   "type": "radio",
+   "required": true,
+   "group": "Puzzle goal",
+   "options": [
+    {
+     "value": "strip",
+     "label": "**Ghost dots on the strip**, yours vs the target, live *(my pick)*"
+    },
+    {
+     "value": "ear",
+     "label": "Heard only: listen and reproduce"
+    },
+    {
+     "value": "both",
+     "label": "Heard first; the strip unlocks as a hint"
+    }
+   ]
+  },
+  {
+   "key": "campaign",
+   "label": "Puzzle structure",
+   "type": "radio",
+   "required": true,
+   "group": "Puzzle structure",
+   "options": [
+    {
+     "value": "chapters",
+     "label": "**Chapters** that each introduce one mechanic: gears → stacks → belts → cams → rotating hammers → quarter-turn → toggles → pitch *(my pick)*"
+    },
+    {
+     "value": "flat",
+     "label": "One flat list of handmade puzzles"
+    },
+    {
+     "value": "daily_first",
+     "label": "The daily puzzle first, plus a few tutorials"
+    }
+   ]
+  },
+  {
+   "key": "daily_source",
+   "label": "Where do daily puzzles come from?",
+   "type": "radio",
+   "required": true,
+   "group": "Puzzle structure",
+   "options": [
+    {
+     "value": "procedural",
+     "label": "**Procedural**: generate a working machine for a random rhythm, then break it, so it's always solvable *(my pick)*"
+    },
+    {
+     "value": "handmade",
+     "label": "A handmade queue"
+    },
+    {
+     "value": "mix",
+     "label": "Handmade at weekends, procedural on weekdays"
+    }
+   ]
+  },
+  {
+   "key": "helpers",
+   "label": "Helpers",
+   "type": "multiselect",
+   "group": "Puzzle structure",
+   "options": [
+    {
+     "value": "undo",
+     "label": "Undo / redo"
+    },
+    {
+     "value": "reset",
+     "label": "Reset the puzzle"
+    },
+    {
+     "value": "hint",
+     "label": "Hint: snaps one piece into place"
+    },
+    {
+     "value": "xray",
+     "label": "X-ray: speed and direction on every gear"
+    },
+    {
+     "value": "slowmo",
+     "label": "Slow motion"
+    }
+   ]
+  },
+  {
+   "key": "sandbox_extras",
+   "label": "Sandbox extras",
+   "type": "multiselect",
+   "group": "Sandbox & v0.1",
+   "options": [
+    {
+     "value": "edit",
+     "label": "Edit cam lobes and rotator values"
+    },
+    {
+     "value": "tempo",
+     "label": "Change the tempo"
+    },
+    {
+     "value": "multi_input",
+     "label": "Several input cranks"
+    },
+    {
+     "value": "make_puzzle",
+     "label": "**Turn a sandbox machine into a puzzle**: break it and share the link"
+    },
+    {
+     "value": "from_puzzle",
+     "label": "Open any solved puzzle in the sandbox"
+    }
+   ]
+  },
+  {
+   "key": "board_size",
+   "label": "Sandbox board",
+   "type": "radio",
+   "group": "Sandbox & v0.1",
+   "options": [
+    {
+     "value": "8",
+     "label": "8 × 8 *(my pick)*"
+    },
+    {
+     "value": "10",
+     "label": "10 × 10"
+    },
+    {
+     "value": "12",
+     "label": "12 × 12"
+    }
+   ]
+  },
+  {
+   "key": "v01",
+   "label": "What should the first deployed version contain?",
+   "type": "radio",
+   "required": true,
+   "group": "Sandbox & v0.1",
+   "options": [
+    {
+     "value": "sandbox_all",
+     "label": "The sandbox with every piece above"
+    },
+    {
+     "value": "sandbox_tuto",
+     "label": "**The sandbox + a first chapter of puzzles** (gears & stacks) *(my pick)*"
+    },
+    {
+     "value": "sandbox_daily",
+     "label": "The sandbox + the daily puzzle"
+    }
+   ]
+  },
+  {
+   "key": "anything_else",
+   "label": "Anything else?",
+   "type": "textarea",
+   "placeholder": "Optional — anything the questions above missed"
+  }
+ ]
+}
