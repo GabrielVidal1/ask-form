@@ -95,11 +95,13 @@ connected false, wait ten seconds and run it again.
 
 ## 4. Ask the user something
 
-The prompt that sent you here may end with "ask me with it:" followed by
-what the user wants to be asked. If it does, turn that into your first form:
-pick fitting field types, put your best guess in each field's `default`, and
-group the questions if there are more than four. If it doesn't, use this
-test form:
+The prompt that sent you here may go on after "then". If it says "ask me
+with it:" followed by what the user wants to be asked, turn that into your
+first form: pick fitting field types, put your best guess in each field's
+`default`, and group the questions if there are more than four. If it gives
+you a task instead (for example "review this branch and send me the findings
+with ask-form"), do that task, asking through ask-form where it says to. If
+it gives you neither, use this test form:
 
     cat > /tmp/ask-form-hello.json <<'JSON'
     [{"type":"markdown","text":"ask-form is installed. This is a test form: two quick questions."},

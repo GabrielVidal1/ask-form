@@ -4,52 +4,103 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="ask-form: your coding agent asks, you answer from any browser, the answers come back as JSON.">
+<meta name="description" content="ask-form: when your coding agent needs a decision, it sends you a form. You answer from any browser, phone included, and it reads the answers as JSON.">
 <title>ask-form</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f97316'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
-:root{--bg:#fbf8f4;--fg:#1f1a16;--muted:#6b625a;--card:#fff;--line:#ebe3da;--accent:#f97316;--accent-soft:#fff1e6;--code:#f4eee7}
-@media (prefers-color-scheme:dark){:root{--bg:#141110;--fg:#f0e9e1;--muted:#a59a8f;--card:#1c1816;--line:#2e2824;--accent:#fb8a3c;--accent-soft:#2a1c12;--code:#221d1a}}
+:root{--bg:#fbf8f4;--fg:#1f1a16;--muted:#6b625a;--card:#fff;--line:#ebe3da;--accent:#f97316;--accent-soft:#fff1e6;--code:#f4eee7;--ok:#2f7a4a}
+@media (prefers-color-scheme:dark){:root{--bg:#141110;--fg:#f0e9e1;--muted:#a59a8f;--card:#1c1816;--line:#2e2824;--accent:#fb8a3c;--accent-soft:#2a1c12;--code:#221d1a;--ok:#6fcf8f}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.wrap{max-width:880px;margin:0 auto;padding:0 16px}
-header{padding:64px 0 32px}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+header{padding:56px 0 8px}
 .brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
 .brand i{display:inline-block;width:28px;height:28px;border-radius:8px;background:var(--accent);position:relative}
 .brand i::before,.brand i::after{content:"";position:absolute;left:7px;height:3px;border-radius:2px;background:#fff}
 .brand i::before{top:9px;width:14px}.brand i::after{top:16px;width:9px}
 h1{font-size:clamp(32px,6vw,52px);line-height:1.08;letter-spacing:-.025em;margin:22px 0 14px}
 h1 em{font-style:normal;color:var(--accent)}
-.lede{font-size:20px;color:var(--muted);max-width:640px;margin:0}
-h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:56px 0 16px}
-.steps{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
-.step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
-.step b{display:block;margin-bottom:4px}
-.step span{color:var(--muted);font-size:15px}
-.n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px;margin-bottom:10px}
-figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;overflow-x:auto}
-figure svg{display:block;width:100%;min-width:620px;height:auto}
-figcaption{font-size:14px;color:var(--muted);margin-top:10px}
-.svg-box{fill:var(--bg);stroke:var(--line)}.svg-acc{fill:var(--accent-soft);stroke:var(--accent)}
-.svg-t{fill:var(--fg);font:600 14px system-ui,sans-serif}.svg-s{fill:var(--muted);font:12px system-ui,sans-serif}
-.svg-l{stroke:var(--muted);stroke-width:1.5;fill:none}.svg-a{fill:var(--muted)}
-ul.facts{list-style:none;padding:0;margin:0;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-ul.facts li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;font-size:15px}
-ul.facts b{display:block}
-pre{background:var(--code);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0}
-.c{color:var(--muted)}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
-.chips li{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:14px}
-footer{margin:64px 0 40px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
+.lede{font-size:20px;color:var(--muted);max-width:660px;margin:0}
+.agents{font-size:15px;color:var(--muted);margin:14px 0 0}
+.agents b{color:var(--fg);font-weight:600}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:56px 0 6px}
+.sub{margin:0 0 18px;color:var(--muted)}
 a{color:var(--accent)}
-.cta{margin:22px 0 0;font-weight:600;display:flex;flex-wrap:wrap;gap:10px}.cta a{display:inline-block;padding:10px 16px;border-radius:12px;background:var(--accent);color:#fff;text-decoration:none}
+.cta{margin:24px 0 0;font-weight:600;display:flex;flex-wrap:wrap;gap:10px}.cta a{display:inline-block;padding:10px 16px;border-radius:12px;background:var(--accent);color:#fff;text-decoration:none}
 .cta a.ghost{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+code{font:0.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border-radius:6px;padding:1px 5px;word-break:break-word}
+pre{background:var(--code);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0}
+pre code{background:none;padding:0}
+.c{color:var(--muted)}
+/* examples: CSS-only tabs (radio inputs), so they work without JavaScript */
+.demo>input{position:absolute;opacity:0;pointer-events:none}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.tabs label{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 14px;font-size:15px;font-weight:600;cursor:pointer;user-select:none}
+.tabs label:hover{border-color:var(--accent)}
+#t1:checked~.tabs [for=t1],#t2:checked~.tabs [for=t2],#t3:checked~.tabs [for=t3]{background:var(--accent);border-color:var(--accent);color:#fff}
+#t1:focus-visible~.tabs [for=t1],#t2:focus-visible~.tabs [for=t2],#t3:focus-visible~.tabs [for=t3]{outline:2px solid var(--accent);outline-offset:2px}
+.ex{display:none;gap:14px 20px;grid-template-columns:minmax(0,5fr) minmax(0,6fr);grid-template-rows:auto 1fr;grid-template-areas:"prompt form" "back form";align-items:start}
+#t1:checked~.x1,#t2:checked~.x2,#t3:checked~.x3{display:grid}
+.step-t{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px}
+.prompt-box{grid-area:prompt}.back{grid-area:back}.fp-wrap{grid-area:form}
+.bubble{background:var(--card);border:1px solid var(--line);border-radius:16px 16px 16px 4px;padding:14px 16px;font-size:16px;line-height:1.5}
+.bubble .who{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.try{display:none;margin-top:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:9px;padding:5px 11px;font:600 13px system-ui,sans-serif;cursor:pointer}
+.js .try{display:inline-block}
+.try-note{font-size:13px;color:var(--muted);margin:6px 0 0}
+.back pre{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;padding:12px 14px}
+.back p{font-size:14px;color:var(--muted);margin:8px 0 0}
+.k{color:var(--muted)}.s{color:var(--ok)}
+/* a static look-alike of the answer page */
+.fp{position:relative;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;font-size:15px;line-height:1.5}
+.fp-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--card);font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);white-space:nowrap;overflow:hidden}
+.fp-bar i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--line)}
+.fp-bar span{overflow:hidden;text-overflow:ellipsis}
+.fp-body{padding:16px 16px 0;max-height:450px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 78%,transparent);mask-image:linear-gradient(#000 78%,transparent)}
+.fp-eye{margin:0 0 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.fp h3{margin:0 0 6px;font-size:21px;line-height:1.2;letter-spacing:-.01em}
+.fp-desc{margin:0 0 14px;color:var(--muted);font-size:14px}
+.fp-group{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.fp-gt{margin:0 0 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.fp-q{margin:0 0 14px}
+.fp-l{display:block;font-weight:600;margin-bottom:6px}
+.fp-l i{color:#dc2626;font-style:normal}
+.fp-o{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin-bottom:6px}
+.fp-o::before{content:"";flex:none;width:14px;height:14px;margin-top:4px;border-radius:50%;border:2px solid var(--line);box-sizing:border-box}
+.fp-o.sq::before{border-radius:4px}
+.fp-o.on{border-color:var(--accent);background:var(--accent-soft)}
+.fp-o.on::before{border-color:var(--accent);background:radial-gradient(var(--accent) 45%,transparent 50%)}
+.fp-o.sq.on::before{background:var(--accent)}
+.fp-o small{display:block;color:var(--muted);font-size:12px;line-height:1.4}
+.fp-md{margin:0 0 10px;font-size:14px}
+.fp-md pre{font-size:12px;padding:8px 10px;border-radius:9px;margin-top:6px;white-space:pre;overflow:hidden}
+.fp-in{height:36px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:6px 10px;color:var(--muted);letter-spacing:.2em;font-size:14px;overflow:hidden}
+.fp-note{margin:5px 0 0;font-size:12px;color:var(--muted)}
+.fp-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid var(--line);background:var(--card);font-size:14px}
+.fp-foot span{color:var(--muted)}
+.fp-foot a{font-weight:600;text-decoration:none;white-space:nowrap}
+.fp-foot a::after{content:"";position:absolute;inset:0}
+.fp:hover{border-color:var(--accent)}
+.more{margin:14px 0 0;font-size:15px;color:var(--muted)}
+/* terminal vs ask-form */
+.vs{display:grid;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--card)}
+.vs>div{display:grid;grid-template-columns:180px 1fr 1fr;border-top:1px solid var(--line)}
+.vs>div:first-child{border-top:0}
+.vs>div>*{padding:12px 16px;font-size:15px}
+.vs .h>*{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:10px;padding-bottom:10px}
+.vs .h>:last-child{color:var(--accent)}
+.vs b{font-weight:600}
+.vs span{color:var(--muted)}
+.vs em{font-style:normal;background:var(--accent-soft)}
+/* get it */
 .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
 .panel+.panel{margin-top:12px}
 .panel h3{margin:0 0 6px;font-size:18px}
 .use-now{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .panel p{margin:0 0 12px;font-size:16px}
 details.panel{padding:0}
+details.live{margin-top:12px}
 details.panel>summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
 details.panel>summary::-webkit-details-marker{display:none}
 details.panel>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s}
@@ -65,8 +116,24 @@ details.panel>:last-child{margin-bottom:18px}
 .prompt{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
 ul.alt{margin:12px 0 0;padding-left:20px;font-size:15px;color:var(--muted)}
 ul.alt li{margin:4px 0}
-code{font:0.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border-radius:6px;padding:1px 5px;word-break:break-word}
-pre code{background:none;padding:0}
+/* safety */
+ul.facts{list-style:none;padding:0;margin:0;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+ul.facts li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;font-size:15px}
+ul.facts b{display:block}
+figure{margin:0;overflow-x:auto}
+figure svg{display:block;width:100%;min-width:620px;height:auto}
+figcaption{font-size:14px;color:var(--muted);margin-top:10px}
+.svg-box{fill:var(--bg);stroke:var(--line)}.svg-acc{fill:var(--accent-soft);stroke:var(--accent)}
+.svg-t{fill:var(--fg);font:600 14px system-ui,sans-serif}.svg-s{fill:var(--muted);font:12px system-ui,sans-serif}
+.svg-l{stroke:var(--muted);stroke-width:1.5;fill:none}.svg-a{fill:var(--muted)}
+footer{margin:64px 0 40px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
+@media (max-width:760px){
+  .ex{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"prompt" "form" "back"}
+  .vs>div{grid-template-columns:1fr 1fr}
+  .vs>div>:first-child{grid-column:1/-1;padding-bottom:0}
+  .vs .h>:first-child{display:none}
+  .vs>div>*{padding:10px 12px;font-size:14px}
+}
 </style>
 </head>
 <body>
@@ -74,15 +141,152 @@ pre code{background:none;padding:0}
 <header>
   <span class="brand"><i aria-hidden="true"></i>ask-form</span>
   <h1>Your coding agent asks.<br><em>You answer from anywhere.</em></h1>
-  <p class="lede">A tiny Go tool that lets Claude (or any CLI agent) ask you structured questions through a private web form. Claude gets a link, you answer from your phone, and the answers come back as JSON.</p>
-  <p class="cta"><a href="#install">Get it</a><a class="ghost" href="/examples">See three example forms →</a></p>
+  <p class="lede">When your coding agent needs your call (a stack, a review, an API key), it sends you a link instead of waiting at the terminal. You answer from your phone. It reads your answers as JSON and gets back to work.</p>
+  <p class="cta"><a href="#install">Try it on your setup</a><a class="ghost" href="#examples">See it in action ↓</a></p>
+  <p class="agents">Works with any coding agent that can run a shell command.</p>
 </header>
 
-<h2 id="install">Get it</h2>
+<h2 id="examples">One prompt, one form</h2>
+<p class="sub">You ask your agent for something. It sends you everything it needs to know in one form, its own picks already selected.</p>
+<div class="demo">
+  <input type="radio" name="ex" id="t1" checked aria-label="New project">
+  <input type="radio" name="ex" id="t2" aria-label="Code review">
+  <input type="radio" name="ex" id="t3" aria-label="API keys">
+  <div class="tabs" aria-hidden="true">
+    <label for="t1">New project</label><label for="t2">Code review</label><label for="t3">API keys</label>
+  </div>
+
+  <div class="ex x1">
+    <div class="prompt-box">
+      <p class="step-t"><span class="n">1</span>You, to your agent</p>
+      <div class="bubble" id="p1">I want a habit tracker for me and a few friends. Before you scaffold anything, ask me everything you need with ask-form, your picks pre-selected.</div>
+      <button type="button" class="try" data-try="p1">Copy, with the install line</button>
+    </div>
+    <div class="fp-wrap">
+      <p class="step-t"><span class="n">2</span>You, on your phone</p>
+      <div class="fp">
+        <div class="fp-bar"><i></i><span>ask-form.xyz/f/habit-tracker_k3f9q2?token=…</span></div>
+        <div class="fp-body" aria-hidden="true">
+          <p class="fp-eye">A few questions · open for 24 h</p>
+          <h3>Habit tracker: before I scaffold</h3>
+          <p class="fp-desc">The repo is empty, so a few choices before I generate anything. I pre-selected what fits what you told me.</p>
+          <div class="fp-group">
+            <p class="fp-gt">Stack · 1 of 3</p>
+            <div class="fp-q"><span class="fp-l">Front end <i>*</i></span>
+              <div class="fp-o on"><span>Vite + React<small>A static SPA: cheapest to host, fastest dev loop</small></span></div>
+              <div class="fp-o"><span>Next.js<small>Server rendering and API routes in one app</small></span></div>
+              <div class="fp-o"><span>SvelteKit</span></div>
+            </div>
+            <div class="fp-q"><span class="fp-l">Database <i>*</i></span>
+              <div class="fp-o on"><span>SQLite<small>One file, backed up with the app</small></span></div>
+              <div class="fp-o"><span>Postgres</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="fp-foot"><span>11 questions · 3 pages</span><a href="/examples/new-project">Answer it yourself →</a></div>
+      </div>
+    </div>
+    <div class="back">
+      <p class="step-t"><span class="n">3</span>Your agent, reading the answers</p>
+<pre>{<span class="k">"framework"</span>:<span class="s">"vite-react"</span>, <span class="k">"backend"</span>:<span class="s">"hono"</span>, <span class="k">"database"</span>:<span class="s">"sqlite"</span>, <span class="k">"auth"</span>:<span class="s">"magic-link"</span>, <span class="k">"features"</span>:[<span class="s">"streaks"</span>,<span class="s">"share"</span>,<span class="s">"dark"</span>], <span class="k">"offline"</span>:true, <span class="k">"deploy"</span>:<span class="s">"fly"</span>, …}</pre>
+      <p>Eleven decisions in one round trip, then it scaffolds.</p>
+    </div>
+  </div>
+
+  <div class="ex x2">
+    <div class="prompt-box">
+      <p class="step-t"><span class="n">1</span>You, to your agent</p>
+      <div class="bubble" id="p2">Review this branch against main. Send me the findings with ask-form, worst first, and fix the ones I pick.</div>
+      <button type="button" class="try" data-try="p2">Copy, with the install line</button>
+    </div>
+    <div class="fp-wrap">
+      <p class="step-t"><span class="n">2</span>You, on your phone</p>
+      <div class="fp">
+        <div class="fp-bar"><i></i><span>ask-form.xyz/f/review-feat-invoices_p81xq0?token=…</span></div>
+        <div class="fp-body" aria-hidden="true">
+          <p class="fp-eye">A few questions · open for 24 h</p>
+          <h3>Review of feat/invoices: 6 findings</h3>
+          <p class="fp-desc">14 files changed (+612 −88). Six findings, worst first, each with the code. My call is pre-selected.</p>
+          <div class="fp-group">
+            <p class="fp-gt">Must fix · 1 of 3</p>
+            <div class="fp-md"><b>1 · Anyone can read any invoice</b><br><code>api/invoices/[id].ts:18</code> never checks the invoice belongs to the caller.
+<pre>const invoice = await db.invoice
+  .findUnique({ where: { id } })
+return json(invoice)</pre></div>
+            <div class="fp-q"><span class="fp-l">What should I do? <i>*</i></span>
+              <div class="fp-o on"><span>Fix it<small>Scope the query to the caller's account, add a test</small></span></div>
+              <div class="fp-o"><span>Leave it</span></div>
+              <div class="fp-o"><span>Open an issue for later</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="fp-foot"><span>7 questions · 3 pages</span><a href="/examples/review-findings">Answer it yourself →</a></div>
+      </div>
+    </div>
+    <div class="back">
+      <p class="step-t"><span class="n">3</span>Your agent, reading the answers</p>
+<pre>{<span class="k">"f1_idor"</span>:<span class="s">"fix"</span>, <span class="k">"f2_rounding"</span>:<span class="s">"fix"</span>, <span class="k">"f3_n_plus_one"</span>:<span class="s">"fix"</span>, <span class="k">"f4_pdf_sync"</span>:<span class="s">"issue"</span>, <span class="k">"f5_dead_code"</span>:<span class="s">"fix"</span>, <span class="k">"f6_test_gap"</span>:<span class="s">"fix"</span>, <span class="k">"push"</span>:true}</pre>
+      <p>Triage the review from the train; the fixes are pushed when you're back.</p>
+    </div>
+  </div>
+
+  <div class="ex x3">
+    <div class="prompt-box">
+      <p class="step-t"><span class="n">1</span>You, to your agent</p>
+      <div class="bubble" id="p3">Add Stripe checkout and Sentry. Ask me for the keys with ask-form, never in the chat.</div>
+      <button type="button" class="try" data-try="p3">Copy, with the install line</button>
+    </div>
+    <div class="fp-wrap">
+      <p class="step-t"><span class="n">2</span>You, on your phone</p>
+      <div class="fp">
+        <div class="fp-bar"><i></i><span>ask-form.xyz/f/stripe-sentry_7cw2ma?token=…</span></div>
+        <div class="fp-body" aria-hidden="true">
+          <p class="fp-eye">A few questions · open for 24 h</p>
+          <h3>Stripe + Sentry: keys and settings</h3>
+          <p class="fp-desc">The billing code is ready; it needs your keys. Secret fields never reach me: they go straight into <code>.env.local</code>.</p>
+          <div class="fp-group">
+            <p class="fp-gt">Stripe · 1 of 2</p>
+            <div class="fp-q"><span class="fp-l">Stripe secret key (<code>sk_test_…</code>) <i>*</i></span>
+              <div class="fp-in">••••••••••••••••••••••••</div>
+              <p class="fp-note">🔒 Kept out of the answers the agent reads. It writes the value straight where it's needed.</p>
+            </div>
+            <div class="fp-q"><span class="fp-l">What do people pay for? <i>*</i></span>
+              <div class="fp-o"><span>A one-time purchase</span></div>
+              <div class="fp-o on"><span>A monthly subscription</span></div>
+              <div class="fp-o"><span>Monthly or yearly<small>Yearly = two months free</small></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="fp-foot"><span>10 questions · 2 pages</span><a href="/examples/api-keys">Answer it yourself →</a></div>
+      </div>
+    </div>
+    <div class="back">
+      <p class="step-t"><span class="n">3</span>Your agent, reading the answers</p>
+<pre>{<span class="k">"stripe_secret_key"</span>:{<span class="k">"secret"</span>:true, <span class="k">"chars"</span>:107}, <span class="k">"billing_model"</span>:<span class="s">"monthly"</span>, <span class="k">"price"</span>:9, <span class="k">"currency"</span>:<span class="s">"eur"</span>, <span class="k">"trace_rate"</span>:10, …}</pre>
+      <p>The key itself never enters the transcript: <code>ask-form secret … --env .env.local STRIPE_SECRET_KEY</code> writes it.</p>
+    </div>
+  </div>
+</div>
+<p class="more">Each preview opens the real form: answer it and see the exact JSON your agent would get. Three more, a refactor plan, a data model and a dependency upgrade, are in <a href="/examples">the examples</a>.</p>
+<span id="try-prefix" hidden>Fetch {{ORIGIN}}/agent-install and follow it to install ask-form and set it up, then: </span>
+
+<h2>Why not just ask in the terminal?</h2>
+<p class="sub">Your agent can already ask you questions. Here's what changes when it sends a form instead.</p>
+<div class="vs">
+  <div class="h"><span></span><span>In the terminal</span><span>With ask-form</span></div>
+  <div><b>Where you answer</b><span>At the keyboard. Step away and the agent waits.</span><em>Any browser, phone included. The agent keeps working meanwhile.</em></div>
+  <div><b>How many questions</b><span>A few at a time, turn after turn.</span><em>Twenty at once, in pages, with its picks pre-selected.</em></div>
+  <div><b>What you see</b><span>Text.</span><em>Mockups, diagrams, tables and code.</em></div>
+  <div><b>What it gets back</b><span>“1b, yes, the second one”, to interpret.</span><em>JSON, keyed by question.</em></div>
+  <div><b>Secrets</b><span>Pasted into the chat and kept in the transcript.</span><em>Written straight to <code>.env</code>. The model never sees them.</em></div>
+</div>
+
+<h2 id="install">Try it on your setup</h2>
 <section class="panel use-now">
-  <h3>Use now</h3>
-  <p>Paste this into Claude Code, or any coding agent running on your computer, then finish the sentence with what you want to be asked. Not the Claude chat app: its sandbox can't keep ask-form running. The agent reads <a href="/agent-install">/agent-install</a>, installs ask-form, sets itself up to use it and sends you that first form.</p>
+  <h3>Paste this into your coding agent</h3>
+  <p>Any coding agent running on your computer will do. Finish the sentence with what you want to be asked. The agent reads <a href="/agent-install">/agent-install</a>, installs ask-form, sets itself up to use it and sends you that first form. Not a chat app such as claude.ai or ChatGPT: its sandbox can't keep ask-form running.</p>
   <div class="copy"><pre class="prompt"><span id="cmd-prompt">Fetch {{ORIGIN}}/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: </span><span class="ph" aria-hidden="true">what you want to be asked</span></pre><button type="button" data-copy="cmd-prompt">Copy</button></div>
+  <p class="small">Or take one of the examples above: its copy button adds this install line in front.</p>
 </section>
 <details class="panel manual">
   <summary>Manual install</summary>
@@ -95,15 +299,26 @@ pre code{background:none;padding:0}
   </ul>
   <p class="small">The service installs new releases by itself (<code>ASK_FORM_AUTO_UPGRADE=notify</code> or <code>off</code> stops that). <code>ask-form upgrade</code> updates by hand; <code>ask-form uninstall</code> removes the service and the skill. Other agents than Claude Code: <code>ask-form skill print --body &gt;&gt; AGENTS.md</code>.</p>
 </details>
+<details class="panel">
+  <summary>What the agent runs</summary>
+<pre><span class="c"># create: returns at once with the link to show you</span>
+ask-form create --title "Project setup" --fields-file spec.json
+{"id":"project-setup_k3f9q2","status":"pending","url":"{{ORIGIN}}/f/project-setup_k3f9q2?token=…",…}
 
-<h2>How it works</h2>
-<div class="steps">
-  <div class="step"><span class="n">1</span><b>Claude creates a form</b><span><code>ask-form create</code> takes a JSON field spec and prints a one-time private link.</span></div>
-  <div class="step"><span class="n">2</span><b>You answer it</b><span>The form opens in any browser: one theme per page, picture choices, mockups. It works without JavaScript.</span></div>
-  <div class="step"><span class="n">3</span><b>Claude reads the answers</b><span><code>ask-form wait</code> returns the answers as one JSON object, keyed by question.</span></div>
-</div>
+<span class="c"># then wait in the background: exit 0 = answered, 3 = closed unanswered, 4 = timed out</span>
+ask-form wait project-setup_k3f9q2 --timeout 30m
+{"id":"project-setup_k3f9q2","status":"submitted","answers":{"stack":"Vite + React","deploy":true},…}</pre>
+  <p class="small">Field types: text, textarea, number, slider, date, select, radio, multiselect, checkbox, secret, picture and mockup choices, markdown and HTML blocks, and “Other…” on every choice. The full reference is the <a href="https://github.com/GabrielVidal1/ask-form/blob/main/skill/SKILL.md">skill</a>.</p>
+</details>
 
-<h2>Where things live</h2>
+<h2>Private by design</h2>
+<ul class="facts">
+  <li><b>Forms stay on your machine</b>The relay only passes page requests through. It stores no form and no answer.</li>
+  <li><b>One private link per form</b>A 256-bit token, answered once, then closed. Every form expires (24 h by default).</li>
+  <li><b>Secrets go to <code>.env</code></b>A secret field's value never appears in the answers the agent reads.</li>
+</ul>
+<details class="panel live">
+  <summary>Where things live</summary>
 <figure>
 <svg viewBox="0 0 760 210" role="img" aria-labelledby="dt">
   <title id="dt">The browser reaches the relay; the relay forwards each request to the machine that made the form, over a connection that machine opened.</title>
@@ -119,7 +334,7 @@ pre code{background:none;padding:0}
   <rect class="svg-box" x="606" y="68" width="128" height="44" rx="10"/>
   <text class="svg-s" x="670" y="95" text-anchor="middle">ask-form serve</text>
   <rect class="svg-box" x="606" y="128" width="128" height="44" rx="10"/>
-  <text class="svg-s" x="670" y="155" text-anchor="middle">Claude Code</text>
+  <text class="svg-s" x="670" y="155" text-anchor="middle">your agent</text>
   <path class="svg-l" d="M162 105H296" marker-end="url(#ar)"/>
   <text class="svg-s" x="229" y="96" text-anchor="middle">HTTPS /f/…</text>
   <path class="svg-l" d="M604 90H464" marker-end="url(#ar)"/>
@@ -129,30 +344,8 @@ pre code{background:none;padding:0}
 </svg>
 <figcaption>Nothing listens on your machine: it dials out to the relay, which passes each visitor's request on and holds it only while it's in flight. Several machines can share one relay.</figcaption>
 </figure>
-
-<h2>Built to be boring and safe</h2>
-<ul class="facts">
-  <li><b>Unguessable links</b>A 256-bit token per form. Only its SHA-256 is stored, and it's compared in constant time.</li>
-  <li><b>One answer, then closed</b>The first submission closes the form. Every form expires (24 h by default).</li>
-  <li><b>Nothing leaks</b>An unknown form and a wrong token get the same 404. No referrer, no cache, no indexing.</li>
-  <li><b>Strict pages</b>No third-party assets and a strict CSP. Mockups run in sandboxed, script-free frames.</li>
-  <li><b>Secrets stay secret</b>A password field never appears in the answers the agent reads. It's written straight into a <code>.env</code> file instead.</li>
-  <li><b>Plain files</b>Each form is one immutable JSON file plus a JSONL of its response. There's no database.</li>
-</ul>
-
-<h2>Question types</h2>
-<ul class="chips">
-  <li>text</li><li>textarea</li><li>number</li><li>slider</li><li>date</li><li>select</li><li>radio</li><li>multiselect</li><li>checkbox</li><li>secret</li><li>picture choices</li><li>mockup choices</li><li>markdown &amp; html blocks</li><li>“Other…” on every choice</li>
-</ul>
-
-<h2>For the agent</h2>
-<pre><span class="c"># create: returns at once with the link to show the user</span>
-ask-form create --title "Project setup" --fields-file spec.json
-{"id":"project-setup_k3f9q2","status":"pending","url":"{{ORIGIN}}/f/project-setup_k3f9q2?token=…",…}
-
-<span class="c"># then wait in the background: exit 0 = answered, 3 = closed unanswered, 4 = timed out</span>
-ask-form wait project-setup_k3f9q2 --timeout 30m
-{"id":"project-setup_k3f9q2","status":"submitted","answers":{"stack":"Vite + React","deploy":true},…}</pre>
+  <p class="small">Same 404 for an unknown form and a wrong token, no referrer, no cache, no indexing, a strict CSP, mockups in sandboxed script-free frames. More in <a href="https://github.com/GabrielVidal1/ask-form/blob/main/docs/how-it-works.md">how it works</a>.</p>
+</details>
 
 <footer>
   <span><a href="https://github.com/GabrielVidal1/ask-form">Source on GitHub</a> · MIT</span>
@@ -161,13 +354,19 @@ ask-form wait project-setup_k3f9q2 --timeout 30m
 </div>
 <script>
 document.documentElement.classList.add("js");
+function copied(b, text) {
+  if (!navigator.clipboard) return;
+  navigator.clipboard.writeText(text).then(function () {
+    var was = b.textContent;
+    b.textContent = "Copied";
+    setTimeout(function () { b.textContent = was; }, 1500);
+  });
+}
 document.addEventListener("click", function (e) {
   var b = e.target.closest("button[data-copy]");
-  if (!b || !navigator.clipboard) return;
-  navigator.clipboard.writeText(document.getElementById(b.getAttribute("data-copy")).textContent).then(function () {
-    b.textContent = "Copied";
-    setTimeout(function () { b.textContent = "Copy"; }, 1500);
-  });
+  if (b) return copied(b, document.getElementById(b.getAttribute("data-copy")).textContent);
+  b = e.target.closest("button[data-try]");
+  if (b) copied(b, document.getElementById("try-prefix").textContent + document.getElementById(b.getAttribute("data-try")).textContent);
 });
 </script>
 </body>
