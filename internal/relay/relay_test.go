@@ -236,3 +236,38 @@ func mustReq(t *testing.T, method, u string) *http.Request {
 	}
 	return req
 }
+
+func TestRobotsTxt(t *testing.T) {
+	rg := newRig(t)
+	res, err := http.Get(rg.pub.URL + "/robots.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	if string(body) != RobotsTxt {
+		t.Fatalf("robots.txt = %q", body)
+	}
+	// RFC 9309: the longest matching rule wins, Allow on a tie.
+	allowed := func(path string) bool {
+		best, allow := -1, true
+		for _, l := range strings.Split(RobotsTxt, "\n") {
+			k, v, ok := strings.Cut(l, ":")
+			v = strings.TrimSpace(v)
+			if !ok || (k != "Allow" && k != "Disallow") || !strings.HasPrefix(path, v) {
+				continue
+			}
+			if len(v) > best || (len(v) == best && k == "Allow") {
+				best, allow = len(v), k == "Allow"
+			}
+		}
+		return allow
+	}
+	for path, want := range map[string]bool{
+		"/agent-install": true, "/install.sh": true,
+		"/": false, "/f/x_aaaaaa": false, "/forms/x_aaaaaa": false, "/_relay/v1/poll": false, "/examples": false,
+	} {
+		if allowed(path) != want {
+			t.Errorf("%s: allowed=%v, want %v", path, !want, want)
+		}
+	}
+}

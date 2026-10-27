@@ -329,6 +329,17 @@ func (r *Relay) prune() {
 	}
 }
 
+// RobotsTxt opens only the two files meant for agents (an agent's fetch
+// tool honours robots.txt, and /agent-install is where "Use now" sends it);
+// everything else, form pages first, stays out of crawlers' reach. The Allow
+// lines come first, so first-match parsers (Python's urllib.robotparser)
+// and longest-match ones (RFC 9309, Google) agree.
+const RobotsTxt = `User-agent: *
+Allow: /agent-install
+Allow: /install.sh
+Disallow: /
+`
+
 // ── public side ──────────────────────────────────────────────────────────────
 
 // Public is the internet-facing handler: /, /robots.txt, /f/* (and /forms/*),
@@ -338,7 +349,7 @@ func (r *Relay) Public() http.Handler {
 	mux.HandleFunc("GET /{$}", r.serveLanding)
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte("User-agent: *\nDisallow: /\n"))
+		w.Write([]byte(RobotsTxt))
 	})
 	mux.Handle("GET /f/_static/{file}", server.StaticHandler())
 	mux.Handle("GET /forms/_static/{file}", server.StaticHandler())
