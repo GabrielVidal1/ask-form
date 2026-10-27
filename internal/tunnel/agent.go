@@ -37,6 +37,7 @@ type Agent struct {
 	lastOK    time.Time
 	publicURL string // the relay's own idea of its public origin
 	haveInfo  atomic.Bool
+	infoAt    atomic.Int64 // unix time of the last health call that worked
 	infoBusy  atomic.Bool
 	served    atomic.Int64
 	wake      chan struct{}
@@ -88,7 +89,10 @@ func (a *Agent) loop(ctx context.Context) {
 		}
 		backoff = time.Second
 		a.ok()
-		if !a.haveInfo.Load() && a.infoBusy.CompareAndSwap(false, true) {
+		// Re-read the relay's info now and then: its public origin can move
+		// (forms.gabvdl.xyz → ask-form.xyz) while this machine stays connected.
+		stale := time.Since(time.Unix(a.infoAt.Load(), 0)) > infoEvery
+		if (!a.haveInfo.Load() || stale) && a.infoBusy.CompareAndSwap(false, true) {
 			go func() { defer a.infoBusy.Store(false); a.fetchInfo(ctx) }()
 		}
 		if req != nil {
@@ -219,8 +223,12 @@ func (a *Agent) fetchInfo(ctx context.Context) {
 	a.publicURL = strings.TrimRight(h.PublicURL, "/")
 	a.mu.Unlock()
 	a.haveInfo.Store(true)
+	a.infoAt.Store(time.Now().Unix())
 	a.ok()
 }
+
+// infoEvery is how often a connected machine re-reads the relay's info.
+const infoEvery = 10 * time.Minute
 
 // PublicURL is the origin the relay announced ("" = it announced none).
 func (a *Agent) PublicURL() string {
