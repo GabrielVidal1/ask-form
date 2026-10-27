@@ -16,18 +16,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24"
+          cache: false # stdlib only: no go.sum to key a cache on
       - run: go vet ./... && go test ./...
       - name: Build every platform
         run: make dist VERSION="${GITHUB_REF_NAME}"
       - name: Check the stamped version
         run: test "$(./dist/ask-form-linux-amd64 version)" = "{\"version\":\"${GITHUB_REF_NAME}\"}"
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/ask-form*
       - name: Publish the release
