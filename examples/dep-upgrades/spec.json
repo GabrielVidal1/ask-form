@@ -1,0 +1,120 @@
+{
+ "title": "Dependencies: 14 behind",
+ "order": 6,
+ "summary": "Upgrade round: the outdated packages with what each major bump breaks in this code, then which ones go in now.",
+ "description": "`npm outdated` lists 14 packages. The 10 minor and patch updates pass the tests together. I read the changelogs of the 4 major ones against this codebase: here's what each would touch. Pick this round's scope.",
+ "fields": [
+  {
+   "type": "markdown",
+   "group": "What's behind",
+   "label": "The four majors",
+   "text": "| Package | Now → latest | What it breaks here | Work |\n|---|---|---|---|\n| react, react-dom | 18.3 → 19.2 | `forwardRef` in 3 components (`ref` is a prop now) | ~1 h |\n| vite | 5.4 → 7.1 | Node 20.19+ needed; our config is fine | ~15 min |\n| eslint | 8.57 → 9.36 | `.eslintrc` must become a flat `eslint.config.js` | ~30 min |\n| zod | 3.23 → 4.1 | error-message API renamed, 41 call sites | ~2 h |"
+  },
+  {
+   "key": "majors",
+   "label": "Which major upgrades now?",
+   "type": "multiselect",
+   "group": "What's behind",
+   "default": [
+    "vite",
+    "eslint",
+    "react"
+   ],
+   "help": "Zod 4 is the only one with real churn; I'd give it its own round.",
+   "options": [
+    {
+     "value": "react",
+     "label": "React 19",
+     "description": "3 components"
+    },
+    {
+     "value": "vite",
+     "label": "Vite 7"
+    },
+    {
+     "value": "eslint",
+     "label": "ESLint 9",
+     "description": "I rewrite the config"
+    },
+    {
+     "value": "zod",
+     "label": "Zod 4",
+     "description": "41 call sites"
+    }
+   ]
+  },
+  {
+   "key": "minor",
+   "label": "Apply the 10 minor and patch updates too",
+   "type": "checkbox",
+   "group": "What's behind",
+   "default": true
+  },
+  {
+   "key": "delivery",
+   "label": "How do you want them?",
+   "type": "radio",
+   "required": true,
+   "group": "Delivery",
+   "default": "pr-each",
+   "options": [
+    {
+     "value": "pr-each",
+     "label": "One PR per major, one for the rest",
+     "description": "Easy to revert one"
+    },
+    {
+     "value": "one-pr",
+     "label": "One PR for everything"
+    },
+    {
+     "value": "main",
+     "label": "Straight to main once the tests pass"
+    }
+   ]
+  },
+  {
+   "key": "node",
+   "label": "Node version (.nvmrc and CI)",
+   "type": "select",
+   "group": "Delivery",
+   "default": "22",
+   "options": [
+    {
+     "value": "20",
+     "label": "20 (needs ≥ 20.19 for Vite 7)"
+    },
+    {
+     "value": "22",
+     "label": "22 LTS"
+    },
+    {
+     "value": "24",
+     "label": "24"
+    }
+   ]
+  },
+  {
+   "key": "keep_current",
+   "label": "After this round",
+   "type": "radio",
+   "group": "Delivery",
+   "default": "renovate",
+   "options": [
+    {
+     "value": "renovate",
+     "label": "Set up Renovate",
+     "description": "Weekly grouped PRs; patches merge themselves when CI is green"
+    },
+    {
+     "value": "dependabot",
+     "label": "Set up Dependabot"
+    },
+    {
+     "value": "nothing",
+     "label": "Nothing: ask me again in a few months"
+    }
+   ]
+  }
+ ]
+}

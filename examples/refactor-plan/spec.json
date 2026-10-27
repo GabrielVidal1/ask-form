@@ -1,0 +1,127 @@
+{
+ "title": "Splitting server.ts: the plan",
+ "order": 4,
+ "summary": "Sign off a refactor before any code moves: the plan drawn, then scope, PR strategy and how strict to be about behaviour.",
+ "description": "`api/server.ts` has grown to 2,412 lines: routes, validation, queries and emails in one file. Here is how I'd split it. Nothing moves until you've answered; my picks are pre-selected.",
+ "fields": [
+  {
+   "type": "html",
+   "group": "The plan",
+   "label": "Before → after",
+   "html": "<svg viewBox=\"0 0 400 300\" xmlns=\"http://www.w3.org/2000/svg\" style=\"display:block;width:100%;max-width:520px;height:auto;margin:0 auto;font:14px system-ui,sans-serif\">\n<text x=\"8\" y=\"16\" fill=\"hsl(var(--muted-foreground))\" font-size=\"12\" letter-spacing=\".06em\">TODAY</text>\n<rect x=\"8\" y=\"26\" width=\"384\" height=\"52\" rx=\"12\" fill=\"hsl(var(--destructive) / .08)\" stroke=\"hsl(var(--destructive) / .5)\"/>\n<text x=\"24\" y=\"57\" fill=\"hsl(var(--foreground))\" font-weight=\"700\" font-size=\"16\">server.ts</text>\n<text x=\"376\" y=\"57\" text-anchor=\"end\" fill=\"hsl(var(--muted-foreground))\">2,412 lines · 38 routes · 0 tests</text>\n<path d=\"M200 86V104\" stroke=\"hsl(var(--muted-foreground))\" stroke-width=\"1.5\"/><path d=\"M194 104l6 10 6-10z\" fill=\"hsl(var(--muted-foreground))\"/>\n<text x=\"8\" y=\"134\" fill=\"hsl(var(--muted-foreground))\" font-size=\"12\" letter-spacing=\".06em\">AFTER</text>\n<rect x=\"8\" y=\"144\" width=\"384\" height=\"34\" rx=\"10\" fill=\"hsl(var(--card))\" stroke=\"hsl(var(--border))\"/>\n<text x=\"200\" y=\"166\" text-anchor=\"middle\" fill=\"hsl(var(--foreground))\">server.ts · app + middleware · 60 lines</text>\n<g fill=\"hsl(var(--primary) / .1)\" stroke=\"hsl(var(--primary))\">\n<rect x=\"8\" y=\"188\" width=\"122\" height=\"54\" rx=\"10\"/><rect x=\"139\" y=\"188\" width=\"122\" height=\"54\" rx=\"10\"/><rect x=\"270\" y=\"188\" width=\"122\" height=\"54\" rx=\"10\"/></g>\n<g text-anchor=\"middle\" fill=\"hsl(var(--foreground))\" font-weight=\"600\">\n<text x=\"69\" y=\"211\">users/</text><text x=\"200\" y=\"211\">billing/</text><text x=\"331\" y=\"211\">projects/</text></g>\n<g text-anchor=\"middle\" fill=\"hsl(var(--muted-foreground))\" font-size=\"12\">\n<text x=\"69\" y=\"230\">9 routes</text><text x=\"200\" y=\"230\">14 routes</text><text x=\"331\" y=\"230\">15 routes</text></g>\n<rect x=\"8\" y=\"252\" width=\"384\" height=\"34\" rx=\"10\" fill=\"hsl(var(--muted))\" stroke=\"hsl(var(--border))\"/>\n<text x=\"200\" y=\"274\" text-anchor=\"middle\" fill=\"hsl(var(--foreground))\">shared/ · db · errors · validate · mail</text>\n</svg>"
+  },
+  {
+   "type": "markdown",
+   "group": "The plan",
+   "label": "What changes",
+   "text": "| | Before | After |\n|---|---|---|\n| Largest file | 2,412 lines | ~300 lines |\n| Routes with a test | 0 of 38 | 38 of 38 (snapshot) |\n| Circular imports | 4 | 0 |\n\nEvery route keeps its path, its input and its response. I record all 38 routes' responses before the move and diff them after."
+  },
+  {
+   "key": "layout",
+   "label": "How should the code be grouped?",
+   "type": "radio",
+   "required": true,
+   "group": "The plan",
+   "default": "domain",
+   "options": [
+    {
+     "value": "domain",
+     "label": "By domain",
+     "description": "users/, billing/, projects/: a change to billing stays in billing/"
+    },
+    {
+     "value": "layer",
+     "label": "By layer",
+     "description": "routes/, services/, repos/: closer to today's habits"
+    }
+   ]
+  },
+  {
+   "key": "delivery",
+   "label": "How do you want to review it?",
+   "type": "radio",
+   "required": true,
+   "group": "Delivery",
+   "default": "stacked",
+   "options": [
+    {
+     "value": "one-pr",
+     "label": "One PR",
+     "description": "~3,000 lines moved, hard to read"
+    },
+    {
+     "value": "stacked",
+     "label": "Four stacked PRs",
+     "description": "shared/ first, then one per domain, each green on its own"
+    },
+    {
+     "value": "main",
+     "label": "Straight to main",
+     "description": "One commit per step, no PR"
+    }
+   ]
+  },
+  {
+   "key": "behaviour",
+   "label": "How strict about behaviour?",
+   "type": "radio",
+   "required": true,
+   "group": "Delivery",
+   "default": "identical",
+   "options": [
+    {
+     "value": "identical",
+     "label": "Byte-identical responses",
+     "description": "A pure move; the bugs I find go in a list"
+    },
+    {
+     "value": "fixes",
+     "label": "Small fixes allowed",
+     "description": "Status codes and error shapes, each listed in the PR"
+    }
+   ]
+  },
+  {
+   "key": "extras",
+   "label": "While I'm in there",
+   "type": "multiselect",
+   "group": "Delivery",
+   "default": [
+    "snapshot-tests"
+   ],
+   "options": [
+    {
+     "value": "snapshot-tests",
+     "label": "Keep the 38 snapshot tests",
+     "description": "They cost nothing once recorded"
+    },
+    {
+     "value": "zod",
+     "label": "Replace hand-written validation with zod"
+    },
+    {
+     "value": "kysely",
+     "label": "Typed queries (Kysely) in the repos"
+    }
+   ]
+  },
+  {
+   "key": "freeze",
+   "label": "Other branches touching server.ts",
+   "type": "radio",
+   "group": "Delivery",
+   "default": "rebase",
+   "help": "`feat/teams` and `fix/login-redirect` both edit server.ts.",
+   "options": [
+    {
+     "value": "rebase",
+     "label": "I rebase them onto the split when it lands"
+    },
+    {
+     "value": "wait",
+     "label": "Wait until they're merged, then split"
+    }
+   ]
+  }
+ ]
+}

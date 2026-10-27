@@ -1,0 +1,254 @@
+{
+ "title": "Habit tracker: before I scaffold",
+ "order": 1,
+ "summary": "Kick off a project: stack, data, accounts, tooling and deploy in one form, my recommendations pre-selected.",
+ "description": "The repo is empty, so a few choices before I generate anything. I pre-selected what fits what you told me: a small app for you and a few friends, cheap to run. Accept a page in one tap or change anything.",
+ "fields": [
+  {
+   "key": "framework",
+   "label": "Front end",
+   "type": "radio",
+   "required": true,
+   "group": "Stack",
+   "default": "vite-react",
+   "help": "A habit tracker is mostly client-side; its API fits in one small server.",
+   "options": [
+    {
+     "value": "vite-react",
+     "label": "Vite + React",
+     "description": "A static SPA: cheapest to host, fastest dev loop"
+    },
+    {
+     "value": "next",
+     "label": "Next.js",
+     "description": "Server rendering and API routes in one app"
+    },
+    {
+     "value": "sveltekit",
+     "label": "SvelteKit",
+     "description": "Less code per screen, smaller bundles"
+    },
+    {
+     "value": "astro",
+     "label": "Astro + islands",
+     "description": "Best when most pages are content"
+    }
+   ]
+  },
+  {
+   "key": "backend",
+   "label": "Back end",
+   "type": "radio",
+   "required": true,
+   "group": "Stack",
+   "default": "hono",
+   "options": [
+    {
+     "value": "hono",
+     "label": "Hono on Node",
+     "description": "One small typed API server"
+    },
+    {
+     "value": "pocketbase",
+     "label": "PocketBase",
+     "description": "Auth, database and admin UI in one binary"
+    },
+    {
+     "value": "supabase",
+     "label": "Supabase",
+     "description": "Hosted Postgres + auth, generous free tier"
+    }
+   ]
+  },
+  {
+   "key": "database",
+   "label": "Database",
+   "type": "radio",
+   "required": true,
+   "group": "Stack",
+   "default": "sqlite",
+   "help": "SQLite holds this app's data for years; moving to Postgres later is a driver swap with the ORM I'd use (Drizzle).",
+   "options": [
+    {
+     "value": "sqlite",
+     "label": "SQLite",
+     "description": "One file, backed up with the app"
+    },
+    {
+     "value": "postgres",
+     "label": "Postgres",
+     "description": "A separate service to run"
+    }
+   ]
+  },
+  {
+   "key": "auth",
+   "label": "How do people sign in?",
+   "type": "radio",
+   "required": true,
+   "group": "Accounts & features",
+   "default": "magic-link",
+   "options": [
+    {
+     "value": "magic-link",
+     "label": "Email magic link",
+     "description": "No passwords to store"
+    },
+    {
+     "value": "oauth",
+     "label": "Google / GitHub",
+     "description": "One tap, needs OAuth apps"
+    },
+    {
+     "value": "passkeys",
+     "label": "Passkeys"
+    },
+    {
+     "value": "none",
+     "label": "No accounts: one shared board"
+    }
+   ]
+  },
+  {
+   "key": "features",
+   "label": "What goes in the first version?",
+   "type": "multiselect",
+   "group": "Accounts & features",
+   "default": [
+    "streaks",
+    "share",
+    "dark"
+   ],
+   "options": [
+    {
+     "value": "streaks",
+     "label": "Streaks and a monthly heatmap"
+    },
+    {
+     "value": "share",
+     "label": "Share a habit with friends",
+     "description": "They see your streak, you see theirs"
+    },
+    {
+     "value": "reminders",
+     "label": "Daily reminders",
+     "description": "Web push, needs the PWA"
+    },
+    {
+     "value": "dark",
+     "label": "Dark mode"
+    },
+    {
+     "value": "export",
+     "label": "CSV export"
+    }
+   ]
+  },
+  {
+   "key": "offline",
+   "label": "Works offline (installable PWA, syncs when back online)",
+   "type": "checkbox",
+   "group": "Accounts & features",
+   "default": true
+  },
+  {
+   "key": "language",
+   "label": "Language",
+   "type": "radio",
+   "group": "Tooling & delivery",
+   "default": "ts-strict",
+   "options": [
+    {
+     "value": "ts-strict",
+     "label": "TypeScript, strict"
+    },
+    {
+     "value": "ts",
+     "label": "TypeScript, relaxed"
+    },
+    {
+     "value": "js",
+     "label": "JavaScript"
+    }
+   ]
+  },
+  {
+   "key": "styling",
+   "label": "Styling",
+   "type": "select",
+   "group": "Tooling & delivery",
+   "default": "tailwind",
+   "options": [
+    {
+     "value": "tailwind",
+     "label": "Tailwind CSS"
+    },
+    {
+     "value": "shadcn",
+     "label": "Tailwind + shadcn/ui components"
+    },
+    {
+     "value": "css-modules",
+     "label": "CSS modules"
+    }
+   ]
+  },
+  {
+   "key": "tests",
+   "label": "Tests and CI",
+   "type": "multiselect",
+   "group": "Tooling & delivery",
+   "default": [
+    "unit",
+    "ci"
+   ],
+   "options": [
+    {
+     "value": "unit",
+     "label": "Unit tests (Vitest)"
+    },
+    {
+     "value": "e2e",
+     "label": "End-to-end tests of the main flows (Playwright)"
+    },
+    {
+     "value": "ci",
+     "label": "CI on every push (GitHub Actions)"
+    }
+   ]
+  },
+  {
+   "key": "deploy",
+   "label": "Where does it run?",
+   "type": "radio",
+   "group": "Tooling & delivery",
+   "default": "fly",
+   "options": [
+    {
+     "value": "fly",
+     "label": "Fly.io",
+     "description": "One container plus a volume for SQLite, about $2/month"
+    },
+    {
+     "value": "vps",
+     "label": "My own VPS, with Docker"
+    },
+    {
+     "value": "local",
+     "label": "Nowhere yet: local only"
+    }
+   ]
+  },
+  {
+   "key": "scope",
+   "label": "How far should I take the first pass?",
+   "type": "slider",
+   "group": "Tooling & delivery",
+   "min": 1,
+   "max": 5,
+   "step": 1,
+   "default": 3,
+   "help": "1 = a clickable skeleton · 3 = the features above, working, plain looks · 5 = polished and deployed"
+  }
+ ]
+}

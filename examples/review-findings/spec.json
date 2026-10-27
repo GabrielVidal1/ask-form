@@ -1,0 +1,189 @@
+{
+ "title": "Review of feat/invoices: 6 findings",
+ "order": 2,
+ "summary": "Code review triage: what the agent found in a branch, worst first, with a fix / leave / later call on each.",
+ "description": "I read the 14 files `feat/invoices` changes against `main` (+612 −88). Six findings, worst first, each with the code. Pick what I fix; my call is pre-selected. I'll fix them on the branch, one commit each, and rerun the tests.",
+ "fields": [
+  {
+   "type": "markdown",
+   "group": "Must fix",
+   "label": "1 · Anyone can read any invoice",
+   "text": "`api/invoices/[id].ts:18` loads the invoice by id and never checks it belongs to the caller's account. Any signed-in user can read every invoice by counting up ids.\n\n```ts\nconst invoice = await db.invoice.findUnique({ where: { id } })\nreturn json(invoice)\n```\n\nThe fix scopes the query to `session.accountId` and returns 404 otherwise, plus a test."
+  },
+  {
+   "key": "f1_idor",
+   "label": "What should I do?",
+   "type": "radio",
+   "required": true,
+   "group": "Must fix",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Fix it",
+     "description": "Scope the query to the caller's account, add a test"
+    },
+    {
+     "value": "skip",
+     "label": "Leave it"
+    },
+    {
+     "value": "issue",
+     "label": "Open an issue for later"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Must fix",
+   "label": "2 · Totals drift by a cent",
+   "text": "`lib/totals.ts:41` rounds each line before summing, so a 3-line invoice can be 0.01 off the PDF the accountant gets.\n\n```ts\nconst total = lines.reduce((s, l) => s + round(l.qty * l.price), 0)\n```"
+  },
+  {
+   "key": "f2_rounding",
+   "label": "What should I do?",
+   "type": "radio",
+   "required": true,
+   "group": "Must fix",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Fix it",
+     "description": "Work in integer cents, round once"
+    },
+    {
+     "value": "skip",
+     "label": "Leave it"
+    },
+    {
+     "value": "issue",
+     "label": "Open an issue for later"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Worth fixing",
+   "label": "3 · 51 queries per invoice list",
+   "text": "`listInvoices` loads each invoice's customer in its own query: a 50-row page makes 51 round trips (380 ms on the staging data)."
+  },
+  {
+   "key": "f3_n_plus_one",
+   "label": "What should I do?",
+   "type": "radio",
+   "required": true,
+   "group": "Worth fixing",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Fix it",
+     "description": "One query with a join; about 20 ms"
+    },
+    {
+     "value": "skip",
+     "label": "Leave it"
+    },
+    {
+     "value": "issue",
+     "label": "Open an issue for later"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Worth fixing",
+   "label": "4 · PDFs render inside the request",
+   "text": "`POST /invoices/:id/send` renders the PDF before answering: 2–3 s for a long invoice, and a timeout above ~200 lines."
+  },
+  {
+   "key": "f4_pdf_sync",
+   "label": "What should I do?",
+   "type": "radio",
+   "required": true,
+   "group": "Worth fixing",
+   "default": "issue",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Fix it",
+     "description": "Render in a background job and email when ready (half a day of work)"
+    },
+    {
+     "value": "skip",
+     "label": "Leave it"
+    },
+    {
+     "value": "issue",
+     "label": "Open an issue for later"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Cleanups",
+   "label": "5 · Dead code",
+   "text": "`formatCurrencyOld` and `legacyTaxRate` have no callers left since this branch."
+  },
+  {
+   "key": "f5_dead_code",
+   "label": "What should I do?",
+   "type": "radio",
+   "required": true,
+   "group": "Cleanups",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Fix it",
+     "description": "Delete both"
+    },
+    {
+     "value": "skip",
+     "label": "Leave it"
+    },
+    {
+     "value": "issue",
+     "label": "Open an issue for later"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Cleanups",
+   "label": "6 · Credit notes aren't tested",
+   "text": "Negative totals (credit notes) go through a branch of `computeTotals` that no test reaches."
+  },
+  {
+   "key": "f6_test_gap",
+   "label": "What should I do?",
+   "type": "radio",
+   "required": true,
+   "group": "Cleanups",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Fix it",
+     "description": "Add three cases: full credit, partial credit, credit above the balance"
+    },
+    {
+     "value": "skip",
+     "label": "Leave it"
+    },
+    {
+     "value": "issue",
+     "label": "Open an issue for later"
+    }
+   ]
+  },
+  {
+   "key": "push",
+   "label": "Push the fixes to the branch when the tests pass",
+   "type": "checkbox",
+   "group": "Cleanups",
+   "default": true
+  }
+ ]
+}

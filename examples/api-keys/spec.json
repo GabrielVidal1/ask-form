@@ -1,0 +1,139 @@
+{
+ "title": "Stripe + Sentry: keys and settings",
+ "order": 3,
+ "summary": "Credentials without the chat: secret fields go straight into .env, the agent only learns they're set.",
+ "description": "The billing code is ready on `feat/billing`; it needs your keys. **Secret fields never reach me**: I only learn they're set and how long they are, and they go straight into `.env.local`. Test-mode keys are fine for now.",
+ "fields": [
+  {
+   "type": "markdown",
+   "group": "Stripe",
+   "label": "Where to find them",
+   "text": "Stripe dashboard → **Developers → API keys**, test mode on. The webhook secret can wait: if you leave it empty, I create the endpoint with the Stripe CLI and fill it in myself."
+  },
+  {
+   "key": "stripe_secret_key",
+   "label": "Stripe secret key (`sk_test_…`)",
+   "type": "secret",
+   "required": true,
+   "group": "Stripe"
+  },
+  {
+   "key": "stripe_webhook_secret",
+   "label": "Webhook signing secret (`whsec_…`)",
+   "type": "secret",
+   "group": "Stripe"
+  },
+  {
+   "key": "billing_model",
+   "label": "What do people pay for?",
+   "type": "radio",
+   "required": true,
+   "group": "Stripe",
+   "default": "monthly",
+   "options": [
+    {
+     "value": "one-time",
+     "label": "A one-time purchase"
+    },
+    {
+     "value": "monthly",
+     "label": "A monthly subscription"
+    },
+    {
+     "value": "monthly-yearly",
+     "label": "Monthly or yearly",
+     "description": "Yearly = two months free"
+    }
+   ]
+  },
+  {
+   "key": "price",
+   "label": "Price per month",
+   "type": "number",
+   "required": true,
+   "group": "Stripe",
+   "min": 1,
+   "step": 0.5,
+   "default": 9
+  },
+  {
+   "key": "currency",
+   "label": "Currency",
+   "type": "select",
+   "group": "Stripe",
+   "default": "eur",
+   "options": [
+    {
+     "value": "eur",
+     "label": "EUR (€)"
+    },
+    {
+     "value": "usd",
+     "label": "USD ($)"
+    },
+    {
+     "value": "gbp",
+     "label": "GBP (£)"
+    }
+   ]
+  },
+  {
+   "key": "stripe_tax",
+   "label": "Let Stripe Tax work out VAT and sales tax",
+   "type": "checkbox",
+   "group": "Stripe",
+   "default": true
+  },
+  {
+   "key": "sentry_dsn",
+   "label": "Sentry DSN",
+   "type": "text",
+   "required": true,
+   "group": "Sentry",
+   "placeholder": "https://…@o123456.ingest.sentry.io/789",
+   "help": "Sentry → Project settings → Client Keys. Not a secret: it ships in the browser bundle."
+  },
+  {
+   "key": "sentry_auth_token",
+   "label": "Sentry auth token, for uploading source maps",
+   "type": "secret",
+   "group": "Sentry",
+   "help": "Optional. Without it, stack traces point into minified code."
+  },
+  {
+   "key": "environments",
+   "label": "Report errors from",
+   "type": "multiselect",
+   "group": "Sentry",
+   "default": [
+    "production",
+    "staging"
+   ],
+   "options": [
+    {
+     "value": "production",
+     "label": "Production"
+    },
+    {
+     "value": "staging",
+     "label": "Staging"
+    },
+    {
+     "value": "local",
+     "label": "Local dev"
+    }
+   ]
+  },
+  {
+   "key": "trace_rate",
+   "label": "Share of requests to trace (%)",
+   "type": "slider",
+   "group": "Sentry",
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "default": 10,
+   "help": "10 % stays well inside the free plan's quota at your traffic."
+  }
+ ]
+}
