@@ -5,6 +5,7 @@
 //	                            and for a multi form answered… then closed | revoked
 //	<dir>/secrets/<id>.json     a submitted form's secret values, purged after SecretTTL
 //	<dir>/assets/<id>/<file>    images the spec references as {{asset:<file>}}
+//	<dir>/uploads/<id>/…        files respondents upload (uploads.go)
 //
 // The first terminal event closes a form for good: a form takes one answer,
 // unless it was made `Multi`, which takes one `answered` event per respondent
@@ -156,6 +157,7 @@ func (e *entry) state(now time.Time) State {
 type Store struct {
 	dir   string
 	mu    sync.Mutex
+	upMu  sync.Mutex // chunk writes and assembly (uploads.go); never taken with mu held
 	forms map[string]*entry
 	// dummy is compared against when a form is unknown, so a miss costs what
 	// a hit costs.
@@ -191,6 +193,7 @@ func Open(dir string) (*Store, error) {
 		s.forms[f.ID] = e
 	}
 	s.purgeSecrets()
+	s.PurgeUploads()
 	return s, nil
 }
 
@@ -294,6 +297,10 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 				// One link for many people: a key typed by one of them would
 				// be anyone's to overwrite, and theirs to read back.
 				return State{}, "", fmt.Errorf("field %q: a multi form can't hold secret fields", f.Key)
+			}
+			if f.Type == form.File {
+				// Anyone with the link could fill this computer's disk.
+				return State{}, "", fmt.Errorf("field %q: a multi form can't hold file fields (anyone with the link could fill this computer's disk)", f.Key)
 			}
 		}
 	} else if p.MaxAnswers != 0 || p.HideCount {
@@ -501,6 +508,7 @@ func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string
 	}
 	e.event = &ev
 	close(e.done)
+	s.settleUploads(id, answers)
 	return e.state(now), nil
 }
 
