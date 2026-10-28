@@ -94,7 +94,8 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 				}
 			}
 			if f.Columns > 0 {
-				fmt.Fprintf(&css, "#%s .cards{grid-template-columns:repeat(%d,minmax(0,1fr))}", pf.DOMID, f.Columns)
+				// From the width the grid gets 2 columns at (app.css); a phone keeps 1.
+				fmt.Fprintf(&css, "@media (min-width:560px){#%s .cards{grid-template-columns:repeat(%d,minmax(0,1fr))}}", pf.DOMID, f.Columns)
 			}
 			aspect := f.Aspect
 			if aspect == "" {

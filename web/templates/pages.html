@@ -113,7 +113,7 @@
           {{if $o.Image}}
             <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"><a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size">{{template "zoom-icon"}}</a></span>
           {{else if $o.HTML}}
-            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size" data-zoom-frame>{{template "zoom-icon"}}</a></span>
+            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size" data-zoom-frame>{{template "zoom-icon"}}</a></span>
           {{else}}
             <span class="visual text-card"><span>{{inline $o.Label}}</span></span>
           {{end}}

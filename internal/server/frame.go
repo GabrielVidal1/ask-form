@@ -16,17 +16,24 @@ import (
 // access to the page, its cookie or the form. Its policy allows inline styles
 // and data: images (the form's assets are inlined), and exactly one script —
 // ours, pinned by hash — which reports the document's height to the page and
-// scales a fixed-width mockup down to its card. Any <script> or on* handler
-// the agent wrote is refused by that policy: blocks are script-free.
+// fits a fixed-width mockup to its card. Any <script> or on* handler the agent
+// wrote is refused by that policy: blocks are script-free.
 
-// frameScript: dark-mode class, fit-to-width (mockups), height beacon. The
-// height is the body's, not the document's: the document is never shorter
-// than its frame, so measuring it could only ever grow the frame.
+// frameScript: dark-mode class, fit-to-width (mockups), height beacon. Fit
+// measures the mockup's own box (its top-level content, not what spills out
+// of it; a fluid one that fills the frame: its overflow). Wider than the
+// frame, it is scaled down to it; narrower, it is scaled up (at most 3×) only
+// inside its card (src ending in #card), so the full-size view keeps it at
+// its own size. The height is the body's, not the document's: the document
+// is never shorter than its frame, so measuring it could only ever grow the
+// frame.
 const frameScript = `(function(){var d=document.documentElement;` +
 	`try{if(matchMedia("(prefers-color-scheme: dark)").matches)d.classList.add("dark")}catch(e){}` +
-	`var fit=d.hasAttribute("data-fit"),last=0;` +
+	`var fit=d.hasAttribute("data-fit"),up=fit&&location.hash==="#card",last=0;` +
 	`function size(){var b=document.body;if(!b)return;` +
-	`if(fit){b.style.zoom="";var w=Math.max(d.scrollWidth,b.scrollWidth),v=d.clientWidth;if(w>v+1&&v>0)b.style.zoom=String(v/w)}` +
+	`if(fit){b.style.zoom="";var v=d.clientWidth,r=document.createRange();r.selectNodeContents(b);var w=r.getBoundingClientRect().right;` +
+	`if(Math.abs(w-v)<=1)w=Math.max(d.scrollWidth,b.scrollWidth);` +
+	`if(w>v+1&&v>0)b.style.zoom=String(v/w);else if(up&&w>0&&w<v-1)b.style.zoom=String(Math.min(3,v/w))}` +
 	`var h=Math.ceil(Math.max(b.scrollHeight,b.getBoundingClientRect().height));` +
 	`if(h!==last){last=h;parent.postMessage({type:"ask-form:frame",h:h},"*")}}` +
 	`if(window.ResizeObserver){new ResizeObserver(size).observe(d)}` +

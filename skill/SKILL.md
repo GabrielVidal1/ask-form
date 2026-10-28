@@ -86,6 +86,9 @@ ask-form get <id>                  # the answers so far, any time
   with an optional `anything_else` textarea. Don't add your own.
 - Pictures only through `--asset <file>` plus `{{asset:<basename>}}`. Remote
   images are blocked.
+- Picture and mockup choices show one card per row on a phone, two from 560 px
+  (`columns` 1–6 changes that count, never the phone's). Draw a mockup at a
+  fixed width (240–360 px): it is scaled to fill its card.
 - Put your recommendation in `default` and say why in `help`, so the user can
   accept it in one tap.
 

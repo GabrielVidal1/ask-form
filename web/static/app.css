@@ -94,9 +94,11 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .js .frame.autosize { resize: none; }
 .js .frame-open { display: none; }
 
-/* choice cards */
-.cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
-.cards:has(.mock) { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+/* choice cards: a picture or a mockup is what's being judged, so it gets the
+   room — one per row on a phone, two on anything wider. A field's `columns`
+   (the page's <style>) replaces the two, never the phone's one. */
+.cards { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 560px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .card { position: relative; display: flex; flex-direction: column; border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; cursor: pointer; background: hsl(var(--background)); }
 .card-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .card:has(.card-input:checked) { border-color: hsl(var(--primary)); box-shadow: 0 0 0 2px hsl(var(--primary) / .55); }
