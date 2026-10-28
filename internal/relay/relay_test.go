@@ -324,6 +324,10 @@ func TestMultiAnswersThroughRelay(t *testing.T) {
 		if err != nil || res.StatusCode != 200 {
 			t.Fatalf("visit: %v %v", err, res)
 		}
+		// The link stays in the address bar: no redirect drops the token.
+		if res.Request.URL.String() != link {
+			t.Fatalf("visit landed on %s, not the shared link", res.Request.URL)
+		}
 		page, _ := io.ReadAll(res.Body)
 		if strings.Contains(string(page), "Decline this form") {
 			t.Fatal("a multi form offers to decline")
@@ -340,6 +344,9 @@ func TestMultiAnswersThroughRelay(t *testing.T) {
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(res.Body)
+		if res.StatusCode == 200 && res.Request.URL.String() != link {
+			t.Fatalf("after sending: on %s, not the shared link", res.Request.URL)
+		}
 		return c, string(b)
 	}
 

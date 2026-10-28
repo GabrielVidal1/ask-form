@@ -149,17 +149,22 @@ func (s *Server) formPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Has("token") {
-		// Trade the token for a cookie scoped to this form and drop it from
-		// the address bar (history, screenshots, shoulder-surfing).
+		// Trade the token for a cookie scoped to this form (the POST reads it).
 		maxAge := int(time.Until(st.ExpiresAt).Seconds()) + 7*24*3600
 		http.SetCookie(w, &http.Cookie{
 			Name: cookieName, Value: token, Path: Prefix + st.ID, MaxAge: maxAge,
 			HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		})
-		baseHeaders(w.Header())
-		w.Header().Set("Location", Prefix+st.ID)
-		w.WriteHeader(http.StatusFound)
-		return
+		// A one-person form drops the token from the address bar (history,
+		// screenshots, shoulder-surfing). A multi form's link is meant to be
+		// passed on: it stays, so a link copied from the address bar works
+		// in another browser.
+		if !st.Multi {
+			baseHeaders(w.Header())
+			w.Header().Set("Location", Prefix+st.ID)
+			w.WriteHeader(http.StatusFound)
+			return
+		}
 	}
 	if mine := s.answered(r, st); st.Status != store.Pending || mine != nil {
 		s.renderClosed(w, st, mine)
@@ -274,7 +279,7 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		notFound(w) // a POST never carries the token
 		return
 	}
-	st, _, ok := s.authorized(w, r)
+	st, token, ok := s.authorized(w, r)
 	if !ok {
 		return
 	}
@@ -354,8 +359,13 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Post/redirect/get: a reload shows the thanks page, never re-posts.
+	// A multi form lands back on its shareable link.
+	loc := Prefix + st.ID
+	if st.Multi {
+		loc += "?token=" + url.QueryEscape(token)
+	}
 	baseHeaders(w.Header())
-	w.Header().Set("Location", Prefix+st.ID)
+	w.Header().Set("Location", loc)
 	w.WriteHeader(http.StatusSeeOther)
 }
 

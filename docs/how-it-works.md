@@ -96,7 +96,9 @@ Each release also carries a build provenance attestation:
 - **Tokens**: 32 random bytes, base64url. Only the SHA-256 is stored, and it's
   compared in constant time.
 - **First visit**: the token is traded for an `HttpOnly; Secure; SameSite=Lax`
-  cookie scoped to `/f/<id>`, followed by a 302 to the clean URL.
+  cookie scoped to `/f/<id>`, followed by a 302 to the clean URL. A `--multi`
+  form keeps the token in the address bar instead (its link is meant to be
+  shared): a link copied from there opens in any browser.
 - **One answer, then closed**: the first submission closes the form. It
   expires after 24 h by default. A `--multi` form shares one link between
   everyone who should answer: it takes one answer per submission (up to
