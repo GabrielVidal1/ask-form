@@ -31,7 +31,7 @@ func baseHeaders(h http.Header) {
 // plus the page's own <style nonce> (per-field aspect ratios, columns).
 func pageCSP(nonce string) string {
 	return "default-src 'none'; script-src 'self'; style-src 'self' 'nonce-" + nonce + "'; " +
-		"img-src 'self' data:; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; " +
+		"img-src 'self' data:; connect-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; " +
 		"base-uri 'none'; manifest-src 'none'"
 }
 

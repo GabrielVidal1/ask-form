@@ -86,6 +86,7 @@
   // never opens the confirm step only to come back with errors: "" = fine.
   function problem(f) {
     var t = f.getAttribute("data-type");
+    if (t === "file" && f.hasAttribute("data-uploading")) return "Wait for the upload to finish.";
     if (t === "checkbox" || t === "slider") return "";
     var main = f.querySelector("input:not([type=hidden]):not([data-other-for]), textarea");
     // A half-typed number or date reads as "": the browser knows better.
@@ -393,6 +394,7 @@
   }
   function answerOf(f) {
     var t = f.getAttribute("data-type");
+    if (t === "file") return $all(".file-item.done .file-name", f).map(function (n) { return n.textContent; }).join(", ");
     var o = otherInput(f);
     var oText = o && otherPicked(f) ? o.value.trim() : "";
     if (t === "checkbox") return f.querySelector("input").checked ? "Yes" : "No";

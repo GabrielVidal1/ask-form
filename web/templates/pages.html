@@ -10,8 +10,10 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/f/_static/theme.css">
 <link rel="stylesheet" href="/f/_static/app.css">
+<link rel="stylesheet" href="/f/_static/upload.css">
 {{if .PageCSS}}<style nonce="{{.Nonce}}">{{.PageCSS}}</style>{{end}}
 <script src="/f/_static/app.js" defer></script>
+<script src="/f/_static/upload.js" defer></script>
 </head>
 <body>
 {{end}}
@@ -100,6 +102,21 @@
     <input type="checkbox" name="{{.Name}}" value="on"{{if .Checked}} checked{{end}}>
     <span>{{inline .Label}}</span>
   </label>
+  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+{{else if eq .Type "file"}}
+  <div class="label" id="{{.DOMID}}-label">{{template "label" .}}</div>
+  <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-refs>
+  {{if .UploadURL}}
+  <div class="uploader" data-url="{{.UploadURL}}" data-max-bytes="{{.MaxBytes}}" data-max-files="{{.FileLimit}}" data-accept="{{.Accept}}"{{if .Multiple}} data-multiple{{end}}>
+    <label class="drop">
+      <input class="file-input" type="file"{{if .Accept}} accept="{{.Accept}}"{{end}}{{if .Multiple}} multiple{{end}} aria-labelledby="{{.DOMID}}-label">
+      <span class="drop-main">Choose {{if .Multiple}}files{{else}}a file{{end}}<span class="drop-or"> or drop {{if .Multiple}}them{{else}}it{{end}} here</span></span>
+      <small>{{.FileHint}}</small>
+    </label>
+    <ul class="files" aria-live="polite"></ul>
+  </div>
+  <noscript><p class="help">Adding a file needs a browser with JavaScript turned on.</p></noscript>
+  {{else}}<p class="help">Uploads are switched off in this demo — nothing you add is kept.</p>{{end}}
   {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
 {{else if .Choice}}
   <fieldset>

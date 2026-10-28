@@ -1,0 +1,31 @@
+/* ask-form answer page — file fields (see upload.js). The drop area only shows
+   once JavaScript is on (.js is set by app.js); until then the field's
+   <noscript> note stands in for it. */
+.uploader { display: none; }
+.js .uploader { display: block; }
+.drop {
+  display: grid; gap: 2px; justify-items: center; text-align: center; cursor: pointer;
+  padding: 18px 14px; min-height: 88px; align-content: center;
+  border: 2px dashed hsl(var(--border)); border-radius: 12px; background: hsl(var(--background));
+}
+.drop:hover, .uploader.over .drop { border-color: hsl(var(--primary)); background: hsl(var(--primary) / .06); }
+.drop:focus-within { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.drop .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.drop-main { font-weight: 600; }
+.drop-or { font-weight: 400; color: hsl(var(--muted-foreground)); }
+.drop small { color: hsl(var(--muted-foreground)); font-size: 13px; }
+.uploader.full .drop { display: none; }
+.files { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.files:empty { display: none; }
+.file-item { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 8px 10px; background: hsl(var(--background)); }
+.file-item.done { border-color: hsl(140 45% 45% / .55); }
+.file-item.error { border-color: hsl(var(--destructive) / .6); }
+.file-row { display: flex; align-items: center; gap: 10px; }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.file-size { color: hsl(var(--muted-foreground)); font-size: 13px; font-variant-numeric: tabular-nums; }
+.file-rm, .file-retry {
+  border: 0; border-radius: 7px; background: hsl(var(--muted)); color: inherit; font: inherit; font-size: 13px;
+  cursor: pointer; padding: 4px 9px; min-height: 30px;
+}
+.file-item progress { display: block; width: 100%; height: 6px; margin-top: 8px; accent-color: hsl(var(--primary)); }
+.file-err { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; color: hsl(var(--destructive)); font-size: 14px; }
