@@ -83,6 +83,21 @@ type Server struct {
 	Restart func()
 	// UpdateStatus reports the auto-upgrade state for /v1/health; nil = none.
 	UpdateStatus func() any
+	// Events gets every form's lifecycle (internal/webhook); nil = nobody
+	// listens. `created` carries the links, the only event that does.
+	Events Notifier
+}
+
+// Notifier is where form events go (a webhook, a test's recorder).
+type Notifier interface {
+	Notify(event string, form any)
+}
+
+// notify hands an event to Events, when there is one.
+func (s *Server) notify(event string, f FormJSON) {
+	if s.Events != nil {
+		s.Events.Notify(event, f)
+	}
 }
 
 // New builds a server over an open store.
@@ -116,5 +131,35 @@ func HTTPServer(addr string, h http.Handler, write time.Duration) *http.Server {
 		WriteTimeout:      write,
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    32 << 10,
+	}
+}
+
+// AnnounceExpiries sends an `expired` event for each form that lapses while
+// serve runs — expiry is lazy in the store (a state read), so this is the
+// only place it becomes an event. Forms already expired at start are not
+// announced (a restart would otherwise replay history). Blocks until ctx
+// ends; `every` is the check interval.
+func (s *Server) AnnounceExpiries(ctx context.Context, every time.Duration) {
+	seen := map[string]bool{}
+	for _, st := range s.store.List() {
+		if st.Status == store.Expired {
+			seen[st.ID] = true
+		}
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		for _, st := range s.store.List() {
+			if st.Status != store.Expired || seen[st.ID] {
+				continue
+			}
+			seen[st.ID] = true
+			s.notify("expired", toJSON(st, false, true))
+		}
 	}
 }

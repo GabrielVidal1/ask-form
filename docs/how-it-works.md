@@ -44,6 +44,35 @@ forged header on another route is ignored. `--public-url` is the origin the
 relay announces: machines set up without an explicit one use it for their
 links, and the landing page, `/install.sh` and `/agent-install` name it.
 
+## Events
+
+`ask-form serve --events-url URL` (or `ASK_FORM_EVENTS_URL` in `serve.env`,
+`ask-form setup --events-url URL` writes it) tells another program what
+happens to the forms on this machine, without that program polling the
+admin API. Every event is one `POST` with a JSON body:
+
+```json
+{"event": "created", "at": "2026-10-28T15:00:00.000Z", "version": "v0.5.0",
+ "form": {"id": "project-setup_k3f9q2", "title": "Project setup", "status": "pending",
+          "url": "http://127.0.0.1:7462/f/project-setup_k3f9q2?token=…",
+          "publicUrl": "https://ask-form.xyz/f/project-setup_k3f9q2?token=…", "meta": {"session": "…"}, …}}
+```
+
+`form` is the form as `ask-form get` prints it. The events are `created`,
+`submitted`, `declined`, `revoked`, `expired` and, for a multi form,
+`answered` (each response) and `closed`. **Only `created` carries the links**:
+the token is never stored, so the receiver must keep the link itself if it
+wants to show it later. `expired` is announced by a once-a-minute check while
+serve runs; forms that lapsed while it was down are not replayed.
+
+Delivery is best effort: one request per event, in order, three tries with a
+short backoff, a 10 s timeout, a queue of 256 while the receiver is down —
+then the event is dropped and the drop logged (never the body). The receiver
+should treat the stream as a hint and reconcile with `ask-form list` /
+`ask-form get` when it matters. The [ai-agent](ai-agent-integration.md) hub
+is the first receiver: it mirrors the forms, pushes the link to the phone
+and lists open forms.
+
 ## Upgrades
 
 Releases are GitHub releases: one binary per platform and a

@@ -34,9 +34,10 @@ const MaxAdminBody = 48 << 20
 
 // FormJSON is a form as the CLI prints it.
 type FormJSON struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"`
 	URL    string `json:"url,omitempty"`
 	// PublicURL: the link that works from any device, when url is the local one.
 	PublicURL string         `json:"publicUrl,omitempty"`
@@ -57,7 +58,7 @@ type FormJSON struct {
 
 func toJSON(st store.State, withFields, withResponses bool) FormJSON {
 	j := FormJSON{
-		ID: st.ID, Title: st.Title, Status: st.Status, CreatedAt: st.CreatedAt,
+		ID: st.ID, Title: st.Title, Description: st.Description, Status: st.Status, CreatedAt: st.CreatedAt,
 		ExpiresAt: st.ExpiresAt, ClosedAt: st.ClosedAt, Answers: st.Answers, Meta: st.Meta,
 	}
 	if st.Multi {
@@ -223,6 +224,9 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	if s.Relay != nil && !s.Relay.Connected() {
 		out.Warning = "relay not connected: the link answers once `ask-form serve` reaches it"
 	}
+	// The one event that carries the link: a listener (the ai-agent hub) can
+	// push it to the user's phone. Never stored anywhere else.
+	s.notify("created", out)
 	apiJSON(w, http.StatusCreated, out)
 }
 
@@ -330,7 +334,9 @@ func (s *Server) closeWith(w http.ResponseWriter, id, typ string) {
 	case err != nil:
 		apiError(w, http.StatusInternalServerError, err.Error())
 	default:
-		apiJSON(w, http.StatusOK, toJSON(st, false, true))
+		j := toJSON(st, false, true)
+		s.notify(st.Status, j)
+		apiJSON(w, http.StatusOK, j)
 	}
 }
 

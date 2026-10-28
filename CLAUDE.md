@@ -18,7 +18,9 @@ agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-wo
   `internal/server` (answer pages under `/f/`, admin API, security),
   `internal/tunnel` (relay ⇄ machine long-poll), `internal/relay` (public
   side, machine API, open registration in `registry.go`), `internal/update`
-  (releases: latest tag, download, checksum, atomic swap).
+  (releases: latest tag, download, checksum, atomic swap), `internal/webhook`
+  (`serve --events-url`: every form event POSTed to one URL — the ai-agent
+  hub's feed; `Server.Events`, `AnnounceExpiries`).
 - `web/` (templates, CSS, JS, embedded), `landing/` (the relay's `/` and
   `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
   `install.sh`

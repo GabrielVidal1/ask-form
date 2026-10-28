@@ -341,6 +341,18 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		s.message(w, http.StatusInternalServerError, "Not saved", "Something went wrong saving your answers — try again.")
 		return
 	}
+	if err == nil {
+		switch {
+		case st.Multi:
+			// Each response is an event; the one that fills the form closes it.
+			s.notify("answered", toJSON(st, false, true))
+			if st.Status == store.Closed {
+				s.notify("closed", toJSON(st, false, true))
+			}
+		default:
+			s.notify(st.Status, toJSON(st, false, true))
+		}
+	}
 	// Post/redirect/get: a reload shows the thanks page, never re-posts.
 	baseHeaders(w.Header())
 	w.Header().Set("Location", Prefix+st.ID)

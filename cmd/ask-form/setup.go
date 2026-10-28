@@ -82,6 +82,7 @@ type setupReport struct {
 func cmdSetup(args []string) int {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 	relayURL := fs.String("relay", envOr("ASK_FORM_SETUP_RELAY", defaultRelay), "relay to connect this machine to")
+	eventsURL := fs.String("events-url", "", "POST every form event to this URL (serve's --events-url; \"-\" clears it)")
 	local := fs.Bool("local", false, "no relay: forms are answered at http://"+localListen+" (this machine only)")
 	token := fs.String("token", "", "machine token for the relay (default: register this machine, or keep the saved one)")
 	name := fs.String("name", "", "machine name hint for the relay (default: the hostname)")
@@ -102,6 +103,16 @@ func cmdSetup(args []string) int {
 
 	// 1. Where respondents reach the forms.
 	envFile := serveEnvPath()
+	// Form events (internal/webhook): kept across setups unless given.
+	if *eventsURL != "" {
+		v := *eventsURL
+		if v == "-" {
+			v = ""
+		}
+		if err := setEnv(envFile, "ASK_FORM_EVENTS_URL", v); err != nil {
+			return fail(exitErr, "%s: %v", envFile, err)
+		}
+	}
 	if *local {
 		rep.Mode, rep.PublicURL = "local", "http://"+localListen
 		for k, v := range map[string]string{"ASK_FORM_RELAY": "", "ASK_FORM_PUBLIC_URL": rep.PublicURL, "ASK_FORM_LISTEN": localListen} {

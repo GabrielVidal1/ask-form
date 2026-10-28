@@ -37,6 +37,7 @@ import (
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
+	"github.com/GabrielVidal1/ask-form/internal/webhook"
 )
 
 const usage = `ask-form — ask a human questions through a private web form
@@ -44,6 +45,7 @@ const usage = `ask-form — ask a human questions through a private web form
 Setup (once per machine):
   ask-form setup [--relay URL | --local] [--no-service] [--no-skill]
   ask-form serve [--relay URL] [--public-url URL] [--data DIR] [--auto-upgrade minor|all|notify|off]
+                 [--events-url URL]
   ask-form upgrade [--check] [--version vX.Y.Z] [--force]
   ask-form skill install | print [--body] | refresh
   ask-form uninstall [--purge]
@@ -64,7 +66,7 @@ Client (JSON on stdout):
   ask-form status
 
 Environment: ASK_FORM_ADMIN_URL (default http://127.0.0.1:7461), ASK_FORM_ADMIN_TOKEN
-(default: the admin-token file 'serve' writes), ASK_FORM_NOTIFY_CMD, ASK_FORM_PUBLIC_URL,
+(default: the admin-token file 'serve' writes), ASK_FORM_NOTIFY_CMD, ASK_FORM_PUBLIC_URL, ASK_FORM_EVENTS_URL,
 ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE.
 `
 
@@ -203,6 +205,7 @@ func cmdServe(args []string) int {
 	relayTok := fs.String("relay-token-file", "", "this machine's relay token (default <config>/relay-token)")
 	ipHeader := fs.String("client-ip-header", os.Getenv("ASK_FORM_CLIENT_IP_HEADER"), "header a trusted proxy in front of --listen sets to the visitor IP")
 	autoMode := fs.String("auto-upgrade", envOr("ASK_FORM_AUTO_UPGRADE", defaultAutoUpgrade), "install new releases by itself: minor (minor+patch), all (majors too), notify (only report), off")
+	eventsURL := fs.String("events-url", os.Getenv("ASK_FORM_EVENTS_URL"), "POST every form event (created, submitted, …) to this URL (empty: off)")
 	fs.Parse(args)
 	if !validAutoMode(*autoMode) {
 		log.Fatalf("--auto-upgrade %q: use minor, all, notify or off", *autoMode)
@@ -251,6 +254,17 @@ func cmdServe(args []string) int {
 		}
 	}
 	srv.Restart = restart
+	// Form events for another program (the ai-agent hub…): one POST each,
+	// best effort — internal/webhook.
+	if u := strings.TrimSpace(*eventsURL); u != "" {
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			log.Fatalf("--events-url %q: an http(s) URL", u)
+		}
+		events := webhook.New(u, server.Version)
+		srv.Events = events
+		go events.Run(work)
+		go srv.AnnounceExpiries(work, time.Minute)
+	}
 	auto := &autoUpgrader{mode: *autoMode, restart: restart}
 	srv.UpdateStatus = auto.status
 	go auto.run(work)
@@ -289,8 +303,8 @@ func cmdServe(args []string) int {
 			st.PurgeSecrets()
 		}
 	}()
-	log.Printf("ask-form %s serving: admin http://%s, pages %s, public %s, data %s, auto-upgrade %s",
-		server.Version, *admin, orNone(*listen), orRelay(*publicURL, defaultURL), *data, *autoMode)
+	log.Printf("ask-form %s serving: admin http://%s, pages %s, public %s, data %s, auto-upgrade %s, events %s",
+		server.Version, *admin, orNone(*listen), orRelay(*publicURL, defaultURL), *data, *autoMode, orOff(*eventsURL))
 	restarting := false
 	select {
 	case err := <-errc:
@@ -316,6 +330,13 @@ func cmdServe(args []string) int {
 		}
 	}
 	return exitOK
+}
+
+func orOff(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "off"
+	}
+	return s
 }
 
 func isLoopback(addr string) bool {

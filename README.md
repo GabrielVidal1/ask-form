@@ -55,6 +55,14 @@ to change that.
 `ask-form upgrade` upgrades by hand, and `ask-form uninstall` removes the
 service and the skill.
 
+## Events
+
+`ask-form setup --events-url https://…` makes `serve` POST every form event
+(created with its link, submitted, declined, revoked, expired…) to that URL —
+how another program follows the forms without polling. The
+[ai-agent](https://git.gabvdl.xyz/gabrielvidal/ai-agent) hub receives them on
+the lab. Details in [how it works](docs/how-it-works.md#events).
+
 ## More
 
 - [How it works and security](docs/how-it-works.md): the relay, tokens,
