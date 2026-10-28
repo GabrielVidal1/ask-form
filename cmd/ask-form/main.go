@@ -301,6 +301,7 @@ func cmdServe(args []string) int {
 	go func() {
 		for range time.Tick(time.Hour) {
 			st.PurgeSecrets()
+			st.PurgeUploads()
 		}
 	}()
 	log.Printf("ask-form %s serving: admin http://%s, pages %s, public %s, data %s, auto-upgrade %s, events %s",

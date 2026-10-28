@@ -72,6 +72,7 @@ func (s *Server) publicHandler() http.Handler {
 		mux.Handle("GET "+p+"_static/{file}", StaticHandler())
 		mux.HandleFunc("GET "+p+"{id}", s.formPage)
 		mux.HandleFunc("POST "+p+"{id}", s.formPost)
+		mux.HandleFunc("POST "+p+"{id}/upload/{key}", s.uploadChunk)
 		mux.HandleFunc("GET "+p+"{id}/assets/{name}", s.assetFile)
 		mux.HandleFunc("GET "+p+"{id}/frame/{key}", s.frame)
 		mux.HandleFunc("GET "+p+"{id}/frame/{key}/{n}", s.frame)
@@ -319,7 +320,9 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		}
 		st, err = s.store.Close(st.ID, store.Declined, nil, nil)
 	case "submit", "":
-		res := form.Parse(st.Fields, v)
+		res := form.ParseWith(st.Fields, v, form.Hooks{File: func(key, ref string) (form.FileInfo, bool) {
+			return s.store.Upload(st.ID, key, ref)
+		}})
 		if !res.OK() {
 			s.renderForm(w, st, v, res.Errors, http.StatusUnprocessableEntity)
 			return

@@ -77,6 +77,7 @@ type Server struct {
 	general  *limiter // every public request
 	failures *limiter // unknown form / bad token
 	submits  *limiter // POSTs
+	uploads  *limiter // upload chunks
 	Relay    RelayLink
 	// Restart asks `serve` to re-exec itself (POST /v1/restart, after
 	// `ask-form upgrade` swapped the binary); nil = not supported.
@@ -107,6 +108,7 @@ func New(cfg Config, st *store.Store) *Server {
 		general:  newLimiter(300, time.Minute),
 		failures: newLimiter(20, 15*time.Minute),
 		submits:  newLimiter(20, 10*time.Minute),
+		uploads:  newLimiter(600, 10*time.Minute),
 	}
 }
 

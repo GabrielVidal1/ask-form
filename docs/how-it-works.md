@@ -126,13 +126,19 @@ Each release also carries a build provenance attestation:
 - **Logs** never contain a query string.
 - **Submissions**:
   - per-IP limits on failed token attempts, on submissions, and overall;
-  - a 64 KB body cap (`http.MaxBytesReader`, at the relay and at the machine);
+  - a 64 KB body cap (`http.MaxBytesReader`, at the relay and at the machine;
+    1 MiB on the upload path only);
   - strict server-side validation;
   - a honeypot field;
   - a CSRF MAC plus `Sec-Fetch-Site`/`Origin` checks.
   Everything is escaped by `html/template` or by the markdown renderer.
 - **Secrets**: `secret` fields stay out of the answers. They're written with
   `ask-form secret … --env` and purged 24 h after the submit.
+- **Uploads** (`file` fields, see [uploads](uploads.md)): chunked through the
+  relay (1 MiB, paced per visitor), sniffed against `accept`, hashed, stored
+  0600 on the machine and never served back; not in a `--multi` form; 50 MB
+  and 20 files per form; purged when the form closes or expires, and 7 days
+  after a submit.
 - **Hardening**: timeouts on every listener. The admin API is loopback-only
   and refuses browser requests. The relay runs as a non-root static binary on
   `scratch`, read-only, with no capabilities.

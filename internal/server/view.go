@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
@@ -25,6 +26,8 @@ type pageField struct {
 	Reenter         bool     // a secret to type again after an invalid send
 	FrameURL        string   // html block document
 	OptionFrames    []string // per option: its mockup document, "" when none
+	UploadURL       string   // file field: where its chunks go ("" in a demo: nothing is stored)
+	FileHint        string   // file field: "Images, PDF · up to 10 MB"
 	Num             struct{ Min, Max, Step string }
 	ShowIfJSON      string // the field's conditions, for the page script
 	RequiredIfJSON  string
@@ -118,6 +121,12 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 			if f.Height > 0 {
 				fmt.Fprintf(&css, "#%s .frame{resize:none}", pf.DOMID)
 			}
+		}
+		if f.Type == form.File {
+			if strings.HasPrefix(base, Prefix) {
+				pf.UploadURL = fmt.Sprintf("%s/upload/%s", base, f.Key)
+			}
+			pf.FileHint = fileHint(f)
 		}
 		if f.Visual() {
 			pf.OptionFrames = make([]string, len(f.Options))
@@ -391,4 +400,28 @@ func recap(fields []form.Field, answers map[string]any) []recapItem {
 		}
 	}
 	return out
+}
+
+// fileHint is the line under a file field's drop area: what it takes.
+func fileHint(f form.Field) string {
+	var parts []string
+	if f.Accept != "" {
+		names := map[string]string{"image/*": "images", "video/*": "videos", "audio/*": "audio", "text/*": "text files",
+			"application/pdf": "PDF", ".pdf": "PDF"}
+		var kinds []string
+		for _, t := range strings.Split(f.Accept, ",") {
+			if n, ok := names[t]; ok {
+				t = n
+			}
+			if !slices.Contains(kinds, t) {
+				kinds = append(kinds, t)
+			}
+		}
+		parts = append(parts, strings.Join(kinds, ", "))
+	}
+	parts = append(parts, "up to "+form.FormatNumber(f.MaxMB)+" MB")
+	if f.Multiple {
+		parts = append(parts, fmt.Sprintf("at most %d files", f.FileLimit()))
+	}
+	return strings.Join(parts, " · ")
 }

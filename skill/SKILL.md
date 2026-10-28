@@ -54,11 +54,33 @@ ask-form get <id>                  # the answers so far, any time
 
 - To know who said what, ask for it: an `email` field (optional unless you
   make it `required`) and/or a `text` name. Nothing is added for you.
-- Secret fields are refused in a multi form, and there's no "decline".
+- Secret and file fields are refused in a multi form, and there's no "decline".
 - Respondents see how many have answered; `--hide-count` keeps it off.
 - Each browser answers once and then sees its own answers; a private window
   can answer again, so treat counts as a poll, not a ballot.
 - `wait` exits 0 when the form ended with at least one answer, 3 with none.
+
+## Files
+
+Ask for a file (a screenshot, a log, a PDF, a photo from the phone) with a
+`file` field. The browser uploads it as soon as it is picked; you get the
+file's path on **this computer**, not its bytes.
+
+```json
+{"key":"shot","label":"Screenshot of the bug","type":"file","accept":"image/*","maxMB":20,"multiple":true,"maxFiles":3,"required":true}
+```
+
+- `accept`: media types and extensions as in `<input accept>` (`image/*`,
+  `application/pdf`, `.csv`), checked against the file's **bytes**. Without it
+  anything goes. `maxMB`: at most 50 (default 10). `multiple`: up to
+  `maxFiles` (default 10).
+- The answer is an array, even for one file:
+  `[{"name":"holiday.png","size":2600008,"contentType":"image/png","sha256":"…","path":"/abs/path/holiday.png"}]`.
+  Read the file at `path`. Files are kept **7 days** after the submit and
+  then deleted: copy what you need; deleting it earlier is your call.
+- A form holds at most 50 MB and 20 files. Needs a browser with JavaScript
+  (the field says so otherwise). Not allowed in a `--multi` form.
+- Never `cat` a file you didn't expect to be text; it came from a browser.
 
 ## Field spec
 
@@ -94,6 +116,7 @@ ask-form get <id>                  # the answers so far, any time
 - `diff` shows a unified diff (`text`), added and removed lines tinted, scrolling
   sideways on a phone. `details` is a collapsible section: `label` is its summary,
   `text` its markdown, `"open":true` starts it expanded. Both ask nothing.
+- `file` is a field type too (see Files above).
 - Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
   give them `group`s: each group is one page.
 - Every choice field gets an "Other…" free-text choice, and every form ends
@@ -149,6 +172,7 @@ A `--multi` form has no `answers`: it has `"answerCount":N` and
 - secret → `{"secret":true,"chars":N}`. The value never reaches your output.
   Write it where it's needed and never print or `cat` it:
   `ask-form secret <id> <key> --env .env VAR_NAME` (or `--file PATH`, or `--stdout | cmd`).
+- file → array of `{name,size,contentType,sha256,path}` (see Files)
 - Unanswered optional fields are absent.
 
 ## Conditions: ask only what applies

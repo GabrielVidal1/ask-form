@@ -91,7 +91,9 @@
   // never opens the confirm step only to come back with errors: "" = fine.
   function problem(f) {
     var t = f.getAttribute("data-type");
-    if (f.hidden || t === "checkbox" || t === "slider") return "";
+    if (f.hidden) return "";
+    if (t === "file" && f.hasAttribute("data-uploading")) return "Wait for the upload to finish.";
+    if (t === "checkbox" || t === "slider") return "";
     var main = f.querySelector("input:not([type=hidden]):not([data-other-for]), textarea");
     // A half-typed number or date reads as "": the browser knows better.
     if (main && main.validity && main.validity.badInput) return t === "date" ? "Enter a date (YYYY-MM-DD)." : "Enter a number.";
@@ -329,8 +331,11 @@
       var d = els.map(function (i) { return i.value; });
       return d[0] && d[1] ? { start: d[0], end: d[1] } : null;
     }
-    if (t === "widget") {
-      try { return els[0] && els[0].value ? JSON.parse(els[0].value) : null; } catch (e) { return null; }
+    if (t === "widget" || t === "file") {
+      try {
+        var j = els[0] && els[0].value ? JSON.parse(els[0].value) : null;
+        return Array.isArray(j) && !j.length ? null : j;
+      } catch (e) { return null; }
     }
     if (t === "list") {
       var prefix = "f." + key + ".";
@@ -624,6 +629,7 @@
   }
   function answerOf(f) {
     var t = f.getAttribute("data-type");
+    if (t === "file") return $all(".file-item.done .file-name", f).map(function (n) { return n.textContent; }).join(", ");
     var o = otherInput(f);
     var oText = o && otherPicked(f) ? o.value.trim() : "";
     if (t === "checkbox") return f.querySelector("input").checked ? "Yes" : "No";

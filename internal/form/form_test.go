@@ -59,7 +59,6 @@ func TestNormalizeChoices(t *testing.T) {
 	for _, bad := range []string{
 		`[{"key":"s","type":"select","options":["only"]}]`,
 		`[{"key":"s","type":"radio","options":["a","__other__"]}]`,
-		`[{"key":"f","type":"file"}]`,
 		`[{"key":"x","type":"wat"}]`,
 		`[{"type":"html"}]`,
 		`[{"key":"s","type":"radio","options":[{"value":"a","image":"{{asset:a.png}}"},"b"],"aspect":"0/1"}]`,
