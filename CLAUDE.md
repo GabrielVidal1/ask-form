@@ -20,7 +20,8 @@ agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-wo
   side, machine API, open registration in `registry.go`), `internal/update`
   (releases: latest tag, download, checksum, atomic swap).
 - `web/` (templates, CSS, JS, embedded), `landing/` (the relay's `/` and
-  `/agent-install`; `{{ORIGIN}}` is filled in by the relay), `install.sh`
+  `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
+  `install.sh`
   (root, embedded via `assets.go`, served at `/install.sh`), `skill/`,
   `examples/` (demo forms served at `/examples`).
 
@@ -39,6 +40,13 @@ agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-wo
 - `/forms/` is the old prefix: it must keep answering (links already sent).
 - `examples/<name>/spec.json` (+ images): adding one = a new folder plus a
   relay rebuild; `internal/server/examples_test.go` checks each renders.
+- The landing page is a React + Vite app in `landing/app/` (GSAP, lucide,
+  `@gabvdl/ui` from public npm for `PhonePreview`/`ProgressiveText`). Its
+  build in `landing/dist/` is **committed**, so the relay and CI build with Go
+  alone: after editing `app/`, run `npm ci && npm run build` there and commit
+  `dist/` with it. The build prerenders the page (it reads without JS) and the
+  relay serves `dist/assets/*` at `/assets/` under a `script-src 'self'` CSP.
+  The demo's examples (`app/src/examples/data.tsx`) mirror `examples/`.
 - `ASK_FORM_BENCH=1 go test -run TestTunnelLatency -v ./internal/relay`
   prints the tunnel latency CSV.
 - Testing upgrades without GitHub: `ASK_FORM_UPDATE_URL` points the updater

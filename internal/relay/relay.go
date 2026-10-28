@@ -16,10 +16,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -54,8 +56,10 @@ type Config struct {
 	// address found above is one of Cloudflare's edges (a domain proxied by
 	// Cloudflare in front of the relay's other proxies).
 	TrustCloudflare bool
-	// Landing is the page served at /.
-	Landing []byte
+	// Landing is the page served at /; LandingAssets its scripts and styles,
+	// served at /assets/<file> (content-hashed names, cached for good).
+	Landing       []byte
+	LandingAssets fs.FS
 	// Examples serves /examples (demo forms, nothing stored); nil = none.
 	Examples http.Handler
 	// Files are plain files served at fixed paths (/install.sh,
@@ -351,6 +355,9 @@ func (r *Relay) Public() http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(RobotsTxt))
 	})
+	if r.cfg.LandingAssets != nil {
+		mux.HandleFunc("GET /assets/{file}", r.serveLandingAsset)
+	}
 	mux.Handle("GET /f/_static/{file}", server.StaticHandler())
 	mux.Handle("GET /forms/_static/{file}", server.StaticHandler())
 	for p, f := range r.cfg.Files {
@@ -426,10 +433,35 @@ func (r *Relay) serveLanding(w http.ResponseWriter, req *http.Request) {
 	w.Write(r.withOrigin(r.landing, req))
 }
 
-// withOrigin fills the {{ORIGIN}} placeholders of the landing page and the
-// plain files: the configured public URL, else this request's host.
+var landingTypes = map[string]string{
+	".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+	".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".woff2": "font/woff2",
+}
+
+// serveLandingAsset serves one of the landing page's built files. Their names
+// carry a content hash, so a new build is a new URL and they cache for good.
+func (r *Relay) serveLandingAsset(w http.ResponseWriter, req *http.Request) {
+	name := req.PathValue("file")
+	ct, ok := landingTypes[strings.ToLower(path.Ext(name))]
+	b, err := fs.ReadFile(r.cfg.LandingAssets, name)
+	if !ok || err != nil || !fs.ValidPath(name) {
+		server.NotFound(w)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", ct)
+	h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Write(b)
+}
+
+// withOrigin fills the {{ORIGIN}} and {{HOST}} placeholders of the landing
+// page and the plain files: the configured public URL, else this request's
+// host.
 func (r *Relay) withOrigin(b []byte, req *http.Request) []byte {
-	if !bytes.Contains(b, []byte("{{ORIGIN}}")) {
+	if !bytes.Contains(b, []byte("{{ORIGIN}}")) && !bytes.Contains(b, []byte("{{HOST}}")) {
 		return b
 	}
 	origin := r.cfg.PublicURL
@@ -440,7 +472,9 @@ func (r *Relay) withOrigin(b []byte, req *http.Request) []byte {
 		}
 		origin = "https://" + host
 	}
-	return bytes.ReplaceAll(b, []byte("{{ORIGIN}}"), []byte(origin))
+	b = bytes.ReplaceAll(b, []byte("{{ORIGIN}}"), []byte(origin))
+	host := strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://")
+	return bytes.ReplaceAll(b, []byte("{{HOST}}"), []byte(host))
 }
 
 var hostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+(:[0-9]{1,5})?$`)
@@ -456,18 +490,16 @@ func serveFile(w http.ResponseWriter, f File) {
 	w.Write(f.Body)
 }
 
-// landingCSP allows the landing page's inline <style> and <script> blocks by
-// hash, and nothing else.
+// landingCSP allows the landing page's own files (/assets/), its inline
+// <style> and <script> blocks by hash, and nothing else. Style attributes are
+// allowed: the prerendered React page carries some (the phone mockup's), and
+// the page shows nothing but its own content.
 func landingCSP(page []byte) string {
 	styles := inlineHashes(string(page), "<style>", "</style>")
 	scripts := inlineHashes(string(page), "<script>", "</script>")
-	script := "'none'"
-	if len(scripts) > 0 {
-		script = strings.Join(scripts, " ")
-	}
 	return "default-src 'none'; style-src " + strings.Join(append(styles, "'self'"), " ") +
-		"; script-src " + script +
-		"; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		"; style-src-attr 'unsafe-inline'; script-src " + strings.Join(append(scripts, "'self'"), " ") +
+		"; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 }
 
 // inlineHashes lists the CSP hashes of every open…close block in s.

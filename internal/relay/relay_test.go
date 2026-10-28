@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/server"
@@ -235,6 +236,36 @@ func mustReq(t *testing.T, method, u string) *http.Request {
 		t.Fatal(err)
 	}
 	return req
+}
+
+func TestLandingAssets(t *testing.T) {
+	r, err := New(Config{
+		MachinesFile: filepath.Join(t.TempDir(), "machines.json"), PublicURL: "https://ask.example",
+		Landing:       []byte(`<!doctype html><meta name="o" content="{{ORIGIN}}"><p>{{HOST}}</p><script type="module" src="/assets/app-1.js"></script>`),
+		LandingAssets: fstest.MapFS{"app-1.js": {Data: []byte("console.log(1)")}, "notes.txt": {Data: []byte("x")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := httptest.NewServer(r.Public())
+	defer pub.Close()
+	res, _ := http.Get(pub.URL + "/")
+	page, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(page), `content="https://ask.example"`) || !strings.Contains(string(page), "<p>ask.example</p>") {
+		t.Fatalf("placeholders: %s", page)
+	}
+	if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe-eval") {
+		t.Fatalf("landing CSP: %s", csp)
+	}
+	res, _ = http.Get(pub.URL + "/assets/app-1.js")
+	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/javascript") || !strings.Contains(res.Header.Get("Cache-Control"), "immutable") {
+		t.Fatalf("asset: %d %v", res.StatusCode, res.Header)
+	}
+	for _, p := range []string{"/assets/notes.txt", "/assets/nope.js", "/assets/..%2fmachines.json"} {
+		if res, _ := http.Get(pub.URL + p); res.StatusCode != 404 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
 }
 
 func TestRobotsTxt(t *testing.T) {

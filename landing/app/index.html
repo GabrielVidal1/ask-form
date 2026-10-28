@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="ask-form: when your coding agent needs a decision, it sends you a form. You answer from any browser, phone included, alone or with your whole team, and it reads the answers as JSON." />
+    <!-- The relay fills {{ORIGIN}}; the app reads it from here so the prerendered
+         page and the hydrated one agree on the install line. -->
+    <meta name="ask-form-origin" content="{{ORIGIN}}" />
+    <title>ask-form: your coding agent asks, you answer from anywhere</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f97316'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="root"><!--app--></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

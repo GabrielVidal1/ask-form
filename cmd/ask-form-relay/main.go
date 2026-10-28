@@ -99,7 +99,8 @@ func serve(args []string, machines string) int {
 		log.Fatalf("examples: %v", err)
 	}
 	r, err := relay.New(relay.Config{
-		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF, Landing: landing.Page,
+		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
+		Landing: landing.Page, LandingAssets: landing.Assets,
 		Examples: server.ExamplesHandler(exs, *ipHeader),
 		Register: relay.Registration{
 			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,
