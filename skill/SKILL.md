@@ -77,8 +77,9 @@ ask-form get <id>                  # the answers so far, any time
  {"type":"html","label":"Current layout","html":"<svg …>…</svg>"}]
 ```
 
-- Types: `text textarea number select multiselect radio checkbox slider date email secret`,
+- Types: `text textarea number select multiselect radio checkbox slider date email secret widget`,
   plus the display blocks `markdown` and `html` (no scripts; inline styles are fine).
+  A `widget` is a control you write yourself: see "Widgets" below.
 - A slider's `minLabel` / `maxLabel` name its two ends (shown beside the numbers).
 - Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
   give them `group`s: each group is one page.
@@ -92,6 +93,34 @@ ask-form get <id>                  # the answers so far, any time
 - Put your recommendation in `default` and say why in `help`, so the user can
   accept it in one tap.
 
+## Widgets: a control you draw yourself
+
+When no field type fits (drag items onto a grid, tap a mockup, tune a colour,
+sketch), write the control as HTML plus script. What it reports is the answer.
+
+```json
+{"key":"spot","label":"Where should the button go?","type":"widget","schema":"object","required":true,"height":320,
+ "html":"<div id=p style=\"height:300px\"></div><script>p.onclick=e=>askForm.setValue({x:e.offsetX,y:e.offsetY})</script>"}
+```
+
+- It runs in a locked frame: its own origin, **no network** (no fetch, no remote
+  images, fonts or scripts: inline everything; pictures through `--asset` and
+  `{{asset:<basename>}}` as in an html block), no access to the page.
+- `askForm.setValue(v)`: report the answer, any JSON value, as often as it
+  changes (the last call wins; `null` clears it). ≤ 16 KB.
+- `askForm.onInit(cb)` / `askForm.value`: the answer already given (the person
+  came back, or a send failed), `null` when none. Redraw your control from it.
+- `askForm.setHeight(px)` and `askForm.theme` (`"light"`/`"dark"`); the html
+  block's theme variables (`hsl(var(--primary))`, `--border`, `--muted`…) work.
+- `schema` (`string number boolean object array`) makes the page refuse any
+  other kind of value. `default` (JSON) is where the value starts. `required`
+  blocks the send until the widget has reported a value.
+- Build it for a thumb: pointer events, `touch-action:none` on what you drag,
+  a fixed `height` when your layout has a fixed size (else it follows the content).
+- Without JavaScript the person gets a plain textarea for the JSON.
+- Allowed in `--multi` forms, in the same locked frame. Never put a secret in
+  a widget: ask credentials with a `secret` field.
+
 ## Answers
 
 `wait` prints one JSON object: `{"id","status","answers":{key: value},"closedAt",…}`.
@@ -101,6 +130,7 @@ A `--multi` form has no `answers`: it has `"answerCount":N` and
 - text, textarea, date, select, radio → string (an "Other…" answer is the user's own text)
 - email → the address, trimmed and lowercased (checked to look like one)
 - multiselect → array of strings · checkbox → bool · number, slider → number
+- widget → the JSON value it reported, decoded (an object, a string, a number…)
 - secret → `{"secret":true,"chars":N}`. The value never reaches your output.
   Write it where it's needed and never print or `cat` it:
   `ask-form secret <id> <key> --env .env VAR_NAME` (or `--file PATH`, or `--stdout | cmd`).

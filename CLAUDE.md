@@ -39,6 +39,10 @@ agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-wo
 - The answer page must work with JavaScript off; `web/static/app.js` only
   adds. Strict CSP: no inline script or style (per-page CSS goes in the
   nonce'd `<style>`), no third-party assets. Never log a query string.
+- html blocks and mockups stay script-free (frame CSP with one pinned hash). A
+  `widget` field's frame is the single exception (`internal/server/widget.go`:
+  `script-src 'unsafe-inline'`, still no network); don't widen it, and keep
+  `widget.js` accepting messages only from the field's own iframe.
 - `/forms/` is the old prefix: it must keep answering (links already sent).
 - `examples/<name>/spec.json` (+ images): adding one = a new folder plus a
   relay rebuild; `internal/server/examples_test.go` checks each renders.
