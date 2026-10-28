@@ -60,6 +60,7 @@ func tooMany(w http.ResponseWriter) {
 var pageTemplates = template.Must(template.New("").Funcs(template.FuncMap{
 	"md":     form.MarkdownHTML,
 	"inline": form.InlineHTML,
+	"diff":   form.DiffHTML,
 }).ParseFS(web.FS, "templates/*.html"))
 
 // publicHandler serves everything under /f/ (and the legacy /forms/) — the

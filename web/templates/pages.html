@@ -78,7 +78,7 @@
 </main>
 {{template "foot" .}}{{end}}
 
-{{define "label"}}<span class="label-text">{{inline .Label}}</span>{{if .Required}}<span class="req" aria-hidden="true">*</span><span class="sr">(required)</span>{{end}}{{end}}
+{{define "label"}}<span class="label-text">{{inline .Label}}</span>{{if .Required}}<span class="req" aria-hidden="true">*</span><span class="sr">(required)</span>{{else if .RequiredIfJSON}}<span class="req if-req" aria-hidden="true" hidden>*</span>{{end}}{{end}}
 
 {{define "zoom-icon"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>{{end}}
 
@@ -87,7 +87,7 @@
 </div>{{end}}
 
 {{define "field"}}
-<div class="field t-{{.Type}}{{if .Error}} has-error{{end}}{{if .Visual}} visual-field{{end}}" id="{{.DOMID}}" data-key="{{.Key}}" data-type="{{.Type}}"{{if .Required}} data-required{{end}}>
+<div class="field t-{{.Type}}{{if .Error}} has-error{{end}}{{if .Visual}} visual-field{{end}}{{if .Display}} is-display{{end}}" id="{{.DOMID}}" data-key="{{.Key}}" data-type="{{.Type}}"{{if .Required}} data-required{{end}}{{with .ShowIfJSON}} data-show-if="{{.}}"{{end}}{{with .RequiredIfJSON}} data-required-if="{{.}}"{{end}}>
 {{if eq .Type "markdown"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
   <div class="md">{{md .Text}}</div>
@@ -95,6 +95,52 @@
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
   <iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label "Illustration"}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
   <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">Open full size ⤢</a>
+{{else if eq .Type "diff"}}
+  {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
+  <div class="diff" tabindex="0" role="region" aria-label="{{or .Label "Diff"}}"><pre>{{diff .Text}}</pre></div>
+{{else if eq .Type "details"}}
+  <details class="block-details"{{if .Open}} open{{end}}>
+    <summary>{{inline .Label}}</summary>
+    <div class="md">{{md .Text}}</div>
+  </details>
+{{else if eq .Type "list"}}
+  <fieldset>
+    <legend class="label">{{template "label" .}}</legend>
+    <div class="list" data-list{{if .Num.Max}} data-max="{{.Num.Max}}"{{end}}{{if .Num.Min}} data-min="{{.Num.Min}}"{{end}}>
+    {{range $row := .Rows}}
+      <div class="list-row" data-cols="{{len $.ListCols}}">
+      {{range $ci, $c := $.ListCols}}{{$cell := index $row $ci}}
+        {{if eq $c.Type "select"}}
+        <select name="{{$c.Name}}" aria-label="{{$c.Label}}"><option value="">{{$c.Label}}…</option>{{range $c.Options}}<option{{if eq . $cell}} selected{{end}}>{{.}}</option>{{end}}</select>
+        {{else if eq $c.Type "number"}}
+        <input type="number" inputmode="decimal" step="any" name="{{$c.Name}}" value="{{$cell}}" placeholder="{{or $c.Placeholder $c.Label}}" aria-label="{{$c.Label}}">
+        {{else}}
+        <input type="text" name="{{$c.Name}}" value="{{$cell}}" maxlength="2000" placeholder="{{or $c.Placeholder $c.Label}}" aria-label="{{$c.Label}}">
+        {{end}}
+      {{end}}
+      </div>
+    {{end}}
+    </div>
+    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+  </fieldset>
+{{else if eq .Type "rating"}}
+  <fieldset>
+    <legend class="label">{{template "label" .}}</legend>
+    <div class="rating {{.Style}}" role="radiogroup">
+    {{range .Scale}}<label class="rate"><input type="radio" name="{{$.Name}}" value="{{.}}"{{if eq $.Value (printf "%d" .)}} checked{{end}}{{if $.Required}} required{{end}}><span class="rate-face" aria-hidden="true">{{if eq $.Style "stars"}}★{{else}}{{.}}{{end}}</span><span class="sr">{{.}}</span></label>{{end}}
+    </div>
+    {{if or .MinLabel .MaxLabel}}<div class="range-ends"><span>{{.MinLabel}}</span><span>{{.MaxLabel}}</span></div>{{end}}
+    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+  </fieldset>
+{{else if eq .Type "daterange"}}
+  <fieldset>
+    <legend class="label">{{template "label" .}}</legend>
+    <div class="daterange">
+      <label><span>From</span><input id="{{.DOMID}}-in" type="date" name="{{.Name}}.start" value="{{.RangeStart}}"></label>
+      <label><span>To</span><input type="date" name="{{.Name}}.end" value="{{.RangeEnd}}"></label>
+    </div>
+    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+  </fieldset>
 {{else if eq .Type "checkbox"}}
   <label class="check">
     <input type="checkbox" name="{{.Name}}" value="on"{{if .Checked}} checked{{end}}>
@@ -168,6 +214,10 @@
     <input id="{{.DOMID}}-in" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" name="{{.Name}}" value="{{.Value}}" maxlength="254"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
   {{else if eq .Type "date"}}
     <input id="{{.DOMID}}-in" type="date" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
+  {{else if eq .Type "time"}}
+    <input id="{{.DOMID}}-in" type="time" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
+  {{else if eq .Type "datetime"}}
+    <input id="{{.DOMID}}-in" type="datetime-local" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
   {{else if eq .Type "secret"}}
     <div class="secret">
       <input id="{{.DOMID}}-in" type="password" name="{{.Name}}" value="" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"{{if .Required}} required{{end}}>

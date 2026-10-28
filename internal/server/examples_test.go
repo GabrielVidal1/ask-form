@@ -17,8 +17,8 @@ func TestExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 7 {
-		t.Fatalf("want 7 examples, got %d", len(list))
+	if len(list) < 8 {
+		t.Fatalf("want at least 8 examples, got %d", len(list))
 	}
 	srv := httptest.NewServer(ExamplesHandler(list, ""))
 	defer srv.Close()
@@ -30,7 +30,7 @@ func TestExamples(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	if code, body := get("/examples"); code != 200 || strings.Count(body, `class="example-card"`) != 7 {
+	if code, body := get("/examples"); code != 200 || strings.Count(body, `class="example-card"`) != len(list) {
 		t.Fatalf("index: %d", code)
 	}
 	for _, ex := range list {

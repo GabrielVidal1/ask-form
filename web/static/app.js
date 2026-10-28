@@ -43,9 +43,13 @@
   form.noValidate = true; // validation happens below, page-aware
 
   var fields = $all(".field", form).filter(function (f) {
-    var t = f.getAttribute("data-type");
-    return t !== "markdown" && t !== "html";
+    return !f.classList.contains("is-display");
   });
+  // Every block and question in the spec's order (the page groups them, which
+  // can reorder them): conditions look back along this order.
+  var allFields = $all(".field", form).sort(function (a, b) { return Number(a.id.slice(1)) - Number(b.id.slice(1)); });
+  var byKey = {};
+  allFields.forEach(function (f) { byKey[f.getAttribute("data-key")] = f; });
   var touched = {};
 
   // ── values ────────────────────────────────────────────────────────────────
@@ -60,7 +64,8 @@
     var t = f.getAttribute("data-type");
     var els = inputs(f);
     if (t === "checkbox" || t === "slider") return false;
-    if (t === "radio" || t === "multiselect" || (t === "select" && f.classList.contains("visual-field"))) {
+    if (t === "list" || t === "daterange") return !els.some(function (i) { return i.value.trim() !== ""; });
+    if (t === "radio" || t === "rating" || t === "multiselect" || (t === "select" && f.classList.contains("visual-field"))) {
       var picked = els.filter(function (i) { return (i.type === "radio" || i.type === "checkbox") && i.checked && i.value !== "__other__"; });
       if (picked.length) return false;
       var o = otherInput(f);
@@ -77,7 +82,7 @@
     return !main || !main.value.trim();
   }
   function unanswered(f) {
-    if (f.closest(".catchall")) return false;
+    if (f.closest(".catchall") || f.hidden) return false;
     var t = f.getAttribute("data-type");
     if (t === "checkbox" || t === "slider") return !touched[f.getAttribute("data-key")];
     return isEmpty(f);
@@ -86,7 +91,7 @@
   // never opens the confirm step only to come back with errors: "" = fine.
   function problem(f) {
     var t = f.getAttribute("data-type");
-    if (t === "checkbox" || t === "slider") return "";
+    if (f.hidden || t === "checkbox" || t === "slider") return "";
     var main = f.querySelector("input:not([type=hidden]):not([data-other-for]), textarea");
     // A half-typed number or date reads as "": the browser knows better.
     if (main && main.validity && main.validity.badInput) return t === "date" ? "Enter a date (YYYY-MM-DD)." : "Enter a number.";
@@ -94,6 +99,15 @@
       if (!f.hasAttribute("data-required")) return "";
       if (otherPicked(f)) return "Type your answer next to “Other…”.";
       return t === "multiselect" ? "Pick at least one." : "This question is required.";
+    }
+    if (t === "daterange") {
+      var dr = inputs(f).map(function (i) { return i.value; });
+      if (!dr[0] || !dr[1]) return "Pick both dates.";
+      return dr[1] < dr[0] ? "The end is before the start." : "";
+    }
+    if (t === "list") {
+      var need = Number(f.querySelector("[data-list]").getAttribute("data-min") || 0);
+      return need && filledRows(f) < need ? "Add at least " + need + "." : "";
     }
     var v = main ? main.value.trim() : "";
     if (t === "number") {
@@ -120,6 +134,65 @@
     });
   }
 
+  // ── lists: rows of inputs, a row more or less ─────────────────────────────
+  function listBlank(row) { return $all("input, select", row).every(function (i) { return !i.value.trim(); }); }
+  function filledRows(f) { return $all(".list-row", f).filter(function (r) { return !listBlank(r); }).length; }
+  function clearRow(row) { $all("input, select", row).forEach(function (i) { i.value = ""; }); }
+  function syncAdd(list) {
+    var add = list.parentNode.querySelector(".list-add");
+    if (add) add.disabled = $all(".list-row", list).length >= Number(list.getAttribute("data-max") || 50);
+  }
+  function bindRow(list, row) {
+    $all(".row-remove", row).forEach(function (b) { b.remove(); });
+    var rm = make("button", "row-remove", "✕");
+    rm.type = "button";
+    rm.setAttribute("aria-label", "Remove this row");
+    rm.addEventListener("click", function () {
+      if ($all(".list-row", list).length > 1) row.remove(); else clearRow(row);
+      syncAdd(list);
+      list.closest(".field").dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    row.appendChild(rm);
+  }
+  function addRow(list) {
+    var rows = $all(".list-row", list);
+    if (rows.length >= Number(list.getAttribute("data-max") || 50)) return null;
+    var row = rows[rows.length - 1].cloneNode(true);
+    clearRow(row);
+    list.appendChild(row);
+    bindRow(list, row);
+    syncAdd(list);
+    return row;
+  }
+  function setupList(list) {
+    var rows = $all(".list-row", list);
+    // Without a script the page offers a few blank rows; with one, a row more
+    // is a tap away, so the blank ones beyond what is needed go.
+    var keep = Math.max(1, Number(list.getAttribute("data-min") || 0));
+    while (rows.length > keep && listBlank(rows[rows.length - 1])) rows.pop().remove();
+    $all(".list-row", list).forEach(function (r) { bindRow(list, r); });
+    var add = make("button", "list-add", "＋ Add");
+    add.type = "button";
+    add.addEventListener("click", function () {
+      var row = addRow(list);
+      var first = row && row.querySelector("input, select");
+      if (first) first.focus();
+      list.closest(".field").dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    list.after(add);
+    syncAdd(list);
+    // Enter in a cell goes to the next row (adding one) instead of sending.
+    list.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || !e.target.matches("input")) return;
+      e.preventDefault();
+      var all = $all(".list-row", list), at = all.indexOf(e.target.closest(".list-row"));
+      var next = all[at + 1] || (listBlank(all[at]) ? null : addRow(list));
+      var el = next && next.querySelector("input, select");
+      if (el) el.focus();
+    });
+  }
+  $all("[data-list]", form).forEach(setupList);
+
   // ── draft (never a secret) ──────────────────────────────────────────────
   function saveDraft() {
     var v = {};
@@ -128,7 +201,8 @@
       if (i.type === "radio" || i.type === "checkbox") {
         if (i.checked) (v[i.name] = v[i.name] || []).push(i.value);
         else v[i.name] = v[i.name] || [];
-      } else v[i.name] = i.value;
+      } else if (i.closest("[data-list]")) (v[i.name] = v[i.name] || []).push(i.value);
+      else v[i.name] = i.value;
     });
     store.set(draftKey, { v: v, t: touched, seen: seen, at: Date.now() });
   }
@@ -140,6 +214,23 @@
       var val = draft.v[i.name];
       if (i.type === "radio" || i.type === "checkbox") i.checked = Array.isArray(val) && val.indexOf(i.value) >= 0;
       else if (typeof val === "string") i.value = val;
+    });
+    // A list comes back with as many rows as it had.
+    $all("[data-list]", form).forEach(function (list) {
+      var names = $all("input, select", $all(".list-row", list)[0]).map(function (i) { return i.name; });
+      var arrs = names.map(function (n) { return draft.v[n]; }).filter(Array.isArray);
+      if (!arrs.length) return;
+      var n = Math.max(1, Math.max.apply(null, arrs.map(function (a) { return a.length; })));
+      var rows = $all(".list-row", list);
+      while (rows.length < n && addRow(list)) rows = $all(".list-row", list);
+      while (rows.length > n) rows.pop().remove();
+      rows.forEach(function (row, ri) {
+        $all("input, select", row).forEach(function (i) {
+          var a = draft.v[i.name];
+          i.value = Array.isArray(a) && a[ri] != null ? a[ri] : "";
+        });
+      });
+      syncAdd(list);
     });
     touched = draft.t || {};
   }
@@ -187,8 +278,14 @@
       ta.addEventListener("input", grow);
       grow();
     });
-    f.addEventListener("input", function () { touched[key] = true; clearErr(f); refresh(); saveDraft(); });
-    f.addEventListener("change", function () { touched[key] = true; clearErr(f); refresh(); saveDraft(); });
+    if (t === "daterange") {
+      var dr = inputs(f);
+      var span = function () { dr[1].min = dr[0].value || ""; };
+      dr[0].addEventListener("change", span);
+      span();
+    }
+    f.addEventListener("input", function () { touched[key] = true; clearErr(f); applyConditions(); refresh(); saveDraft(); });
+    f.addEventListener("change", function () { touched[key] = true; clearErr(f); applyConditions(); refresh(); saveDraft(); });
   });
 
   function clearErr(f) {
@@ -201,6 +298,125 @@
     f.appendChild(make("p", "err js-err", msg));
   }
 
+  // ── conditions: showIf hides a field (and what tests it), requiredIf asks ──
+  // The page mirrors form.Cond: a test on a hidden question fails.
+  var hiddenKey = {}, applying = false;
+  function rawValue(f) {
+    var t = f.getAttribute("data-type"), els = inputs(f), key = f.getAttribute("data-key");
+    if (t === "checkbox") return !!(els[0] && els[0].checked);
+    if (t === "rating") {
+      var c = els.filter(function (i) { return i.checked; })[0];
+      return c ? Number(c.value) : null;
+    }
+    if (t === "radio" || t === "select" || t === "multiselect") {
+      var o = otherInput(f), other = o && otherPicked(f) ? o.value.trim() : "";
+      if (t === "select" && !f.classList.contains("visual-field")) {
+        var s = f.querySelector("select");
+        return s.value === "__other__" ? (other || null) : (s.value || null);
+      }
+      var picked = els.filter(function (i) {
+        return (i.type === "radio" || i.type === "checkbox") && i.checked && i.value !== "__other__";
+      }).map(function (i) { return i.value; });
+      if (other) picked.push(other);
+      return t === "multiselect" ? picked : (picked.length ? picked[0] : null);
+    }
+    if (t === "number" || t === "slider") {
+      var nv = els[0].value.trim().replace(",", ".");
+      return nv !== "" && isFinite(Number(nv)) ? Number(nv) : null;
+    }
+    if (t === "daterange") {
+      var d = els.map(function (i) { return i.value; });
+      return d[0] && d[1] ? { start: d[0], end: d[1] } : null;
+    }
+    if (t === "list") {
+      var prefix = "f." + key + ".";
+      var rows = $all(".list-row", f).map(function (row) {
+        var cells = $all("input, select", row), obj = {}, texts = [];
+        cells.forEach(function (i) {
+          var v = i.value.trim();
+          if (!v) return;
+          texts.push(v);
+          obj[i.name.indexOf(prefix) === 0 ? i.name.slice(prefix.length) : ""] = i.type === "number" ? Number(v.replace(",", ".")) : v;
+        });
+        return { texts: texts, obj: obj };
+      }).filter(function (r) { return r.texts.length; });
+      var table = $all("input, select", f).some(function (i) { return i.name.indexOf(prefix) === 0; });
+      return rows.map(function (r) { return table ? r.obj : r.texts[0]; });
+    }
+    var v = els[0] ? els[0].value.trim() : "";
+    if (v !== "" && t === "email") v = v.toLowerCase();
+    return v === "" ? null : v;
+  }
+  function isAnswered(v) {
+    if (v === null || v === undefined) return false;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") return v !== "";
+    if (Array.isArray(v)) return v.length > 0;
+    return true;
+  }
+  function sameValue(a, b) { return a !== null && a !== undefined && typeof a === typeof b && a === b; }
+  function evalCond(c) {
+    if (c.all) return c.all.every(evalCond);
+    if (c.any) return c.any.some(evalCond);
+    if (c.not) return !evalCond(c.not);
+    if (!byKey[c.key] || hiddenKey[c.key]) return false;
+    var v = rawValue(byKey[c.key]);
+    switch (c.op) {
+      case "answered": return isAnswered(v) === c.value;
+      case "equals": return sameValue(v, c.value);
+      case "notEquals": return !sameValue(v, c.value);
+      case "in": return c.value.some(function (x) { return sameValue(v, x); });
+      case "includes":
+        if (typeof v === "string") return c.value !== "" && v.toLowerCase().indexOf(String(c.value).toLowerCase()) >= 0;
+        return Array.isArray(v) && v.some(function (x) { return String(x) === String(c.value); });
+      case "gt": return typeof v === "number" && v > c.value;
+      case "gte": return typeof v === "number" && v >= c.value;
+      case "lt": return typeof v === "number" && v < c.value;
+      case "lte": return typeof v === "number" && v <= c.value;
+    }
+    return false;
+  }
+  function condOf(f, attr) {
+    var cache = "_" + attr;
+    if (!(cache in f)) {
+      try { f[cache] = f.hasAttribute(attr) ? JSON.parse(f.getAttribute(attr)) : null; } catch (e) { f[cache] = null; }
+    }
+    return f[cache];
+  }
+  function vis(g) { return !groups[g].classList.contains("group-empty"); }
+  function applyConditions() {
+    if (applying) return;
+    applying = true;
+    allFields.forEach(function (f) {
+      var key = f.getAttribute("data-key"), show = condOf(f, "data-show-if");
+      var hide = !!show && !evalCond(show);
+      hiddenKey[key] = hide;
+      if (f.hidden !== hide) {
+        f.hidden = hide;
+        inputs(f).forEach(function (i) { i.disabled = hide; });
+        if (hide) clearErr(f);
+      }
+      var need = condOf(f, "data-required-if");
+      if (need) {
+        var on = !hide && evalCond(need);
+        if (on) f.setAttribute("data-required", ""); else f.removeAttribute("data-required");
+        $all(".if-req", f).forEach(function (m) { m.hidden = !on; });
+      }
+    });
+    // A page whose questions are all hidden goes too.
+    groups.forEach(function (g) {
+      var qs = $all(".field", g).filter(function (f) { return !f.classList.contains("is-display"); });
+      var empty = qs.length > 0 && qs.every(function (f) { return f.hidden; });
+      g.classList.toggle("group-empty", empty);
+    });
+    applying = false;
+    if (pager && !vis(current)) show(stepGroup(current, 1) !== current ? stepGroup(current, 1) : stepGroup(current, -1), false);
+  }
+  function stepGroup(from, dir) {
+    for (var i = from + dir; i >= 0 && i < groups.length; i += dir) if (vis(i)) return i;
+    return from;
+  }
+
   // ── pages ─────────────────────────────────────────────────────────────────
   // A phone pages through the groups; a desktop shows them all, with the
   // section list (.toc) beside them. CSS picks which: the list is displayed
@@ -208,6 +424,7 @@
   var groups = $all(".group", form);
   var current = 0, pager = null, nav = null;
   var toc = document.querySelector(".toc"), tocBar = null, tocProgress = null;
+  applyConditions();
   function wide() { return !!toc && getComputedStyle(toc).display !== "none"; }
   function groupOf(el) { return groups.indexOf(el.closest(".group")); }
   function groupPending(g) {
@@ -215,6 +432,7 @@
   }
   function show(g, focus) {
     current = Math.max(0, Math.min(groups.length - 1, g));
+    if (!vis(current)) current = stepGroup(current, 1) !== current ? stepGroup(current, 1) : stepGroup(current, -1);
     seen[current] = true;
     groups.forEach(function (el, i) { el.classList.toggle("current", i === current); });
     refresh();
@@ -249,8 +467,8 @@
     var back = make("button", "btn ghost", "← Back");
     var next = make("button", "btn", "Next →");
     back.type = next.type = "button";
-    back.addEventListener("click", function () { show(current - 1, true); });
-    next.addEventListener("click", function () { show(current + 1, "field"); });
+    back.addEventListener("click", function () { show(stepGroup(current, -1), true); });
+    next.addEventListener("click", function () { show(stepGroup(current, 1), "field"); });
     nav.appendChild(back);
     nav.appendChild(next);
     groups[groups.length - 1].after(nav);
@@ -278,8 +496,9 @@
   function spy() {
     if (!wide()) return;
     var line = window.innerHeight / 3, at = 0;
-    groups.forEach(function (el, i) { if (el.getBoundingClientRect().top <= line) at = i; });
-    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) at = groups.length - 1;
+    groups.forEach(function (el, i) { if (vis(i) && el.getBoundingClientRect().top <= line) at = i; });
+    while (at > 0 && !vis(at)) at--;
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) at = stepGroup(groups.length, -1);
     if (at === current) return;
     current = at;
     seen[at] = true;
@@ -289,12 +508,13 @@
   function refresh() {
     if (toc) {
       $all("a[data-toc]", toc).forEach(function (a, i) {
-        var qs = $all(".field", groups[i]).filter(function (f) { return fields.indexOf(f) >= 0; });
+        var qs = $all(".field", groups[i]).filter(function (f) { return fields.indexOf(f) >= 0 && !f.hidden; });
+        a.parentNode.hidden = !vis(i);
         a.className = (i === current ? "current" : "") + (qs.length ? (qs.some(unanswered) ? " pending" : " done") : "");
         if (i === current) a.setAttribute("aria-current", "location");
         else a.removeAttribute("aria-current");
       });
-      var asked = fields.filter(function (f) { return !f.closest(".catchall"); });
+      var asked = fields.filter(function (f) { return !f.closest(".catchall") && !f.hidden; });
       var n = asked.filter(function (f) { return !unanswered(f); }).length;
       tocProgress.textContent = n + " of " + asked.length + " answered";
       tocBar.style.width = (asked.length ? Math.round(100 * n / asked.length) : 0) + "%";
@@ -307,14 +527,16 @@
       if (!want && dot) dot.remove();
     });
     if (!pager) return;
-    pager.querySelector(".pager-count").textContent = (current + 1) + "/" + groups.length;
+    var shown = groups.map(function (el, i) { return i; }).filter(vis);
+    pager.querySelector(".pager-count").textContent = (shown.indexOf(current) + 1) + "/" + shown.length;
     $all(".pager-seg", pager).forEach(function (s, i) {
+      s.hidden = !vis(i);
       s.className = "pager-seg" + (i === current ? " current" : i < current ? " done" : "") +
         (i !== current && groupPending(i) ? " pending" : "");
     });
     pager.querySelector(".pager-title").textContent = groups[current].getAttribute("data-title") || "";
-    nav.back.disabled = current === 0;
-    nav.next.disabled = current === groups.length - 1;
+    nav.back.disabled = stepGroup(current, -1) === current;
+    nav.next.disabled = stepGroup(current, 1) === current;
   }
   if (pager) {
     var start = 0;
@@ -323,7 +545,7 @@
       start = bad ? Math.max(0, groupOf(bad)) : 0;
     } else {
       for (var i = 0; i < groups.length; i++) {
-        if (!seen[i] || groupPending(i)) { start = i; break; }
+        if (vis(i) && (!seen[i] || groupPending(i))) { start = i; break; }
       }
     }
     show(start, false);
@@ -405,12 +627,21 @@
       if (!s.value) return "";
       return s.value === "__other__" ? oText : s.options[s.selectedIndex].textContent.trim();
     }
-    if (t === "radio" || t === "multiselect" || t === "select") {
+    if (t === "radio" || t === "rating" || t === "multiselect" || t === "select") {
       var parts = inputs(f).filter(function (i) {
         return (i.type === "radio" || i.type === "checkbox") && i.checked && i.value !== "__other__";
       }).map(choiceText);
       if (oText) parts.push(oText);
       return parts.join(", ");
+    }
+    if (t === "list") {
+      return $all(".list-row", f).map(function (row) {
+        return $all("input, select", row).map(function (i) { return i.value.trim(); }).filter(Boolean).join(" · ");
+      }).filter(Boolean).join("; ");
+    }
+    if (t === "daterange") {
+      var d = inputs(f).map(function (i) { return i.value; });
+      return d[0] || d[1] ? d[0] + " → " + d[1] : "";
     }
     var main = f.querySelector("input, textarea");
     return main ? main.value.trim() : "";
@@ -425,6 +656,7 @@
     var dl = make("dl", "recap");
     var n = 0;
     fields.forEach(function (f) {
+      if (f.hidden) return;
       var a = answerOf(f);
       if (!a) return;
       dl.appendChild(make("dt", null, labelOf(f)));

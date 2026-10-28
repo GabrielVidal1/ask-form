@@ -1,0 +1,95 @@
+{
+ "title": "Review a change before I merge",
+ "order": 8,
+ "summary": "Follow-up questions that appear only when they apply, a diff to read, a star rating, a table of requested changes, and time fields.",
+ "description": "I fixed the retry loop in the uploader. Read the diff, give a verdict, and the form asks only what that verdict needs: requested changes if you approve with changes, a reason if you reject, a merge window if it goes ahead.",
+ "fields": [
+  {
+   "type": "diff",
+   "label": "uploader/retry.go",
+   "group": "The change",
+   "text": "diff --git a/uploader/retry.go b/uploader/retry.go\nindex 3f2a1c9..8be07d4 100644\n--- a/uploader/retry.go\n+++ b/uploader/retry.go\n@@ -18,12 +18,17 @@ func (u *Uploader) send(ctx context.Context, chunk []byte) error {\n \tvar err error\n-\tfor i := 0; i < 5; i++ {\n-\t\terr = u.post(ctx, chunk)\n-\t\tif err == nil {\n-\t\t\treturn nil\n-\t\t}\n-\t\ttime.Sleep(time.Second)\n+\tbackoff := 250 * time.Millisecond\n+\tfor i := 0; i < 5; i++ {\n+\t\terr = u.post(ctx, chunk)\n+\t\tif err == nil || !retryable(err) {\n+\t\t\treturn err\n+\t\t}\n+\t\tselect {\n+\t\tcase <-time.After(backoff):\n+\t\t\tbackoff *= 2\n+\t\tcase <-ctx.Done():\n+\t\t\treturn ctx.Err()\n+\t\t}\n \t}\n \treturn err\n }"
+  },
+  {
+   "type": "details",
+   "group": "The change",
+   "label": "Why exponential backoff, and why only some errors retry",
+   "text": "A fixed one-second sleep hammered a struggling server five times in five seconds, and it retried **400s**, which can never succeed.\n\n- 250 ms, 500 ms, 1 s, 2 s, 4 s: about 8 s in total, the same as before.\n- `retryable` is true for network errors, 429 and 5xx only.\n- A cancelled context now stops the loop at once."
+  },
+  {
+   "key": "verdict",
+   "label": "Verdict",
+   "type": "radio",
+   "required": true,
+   "group": "Verdict",
+   "default": "approve",
+   "options": [
+    {"value": "approve", "label": "Approve", "description": "Merge as it is"},
+    {"value": "changes", "label": "Approve with changes", "description": "Merge once the points below are done"},
+    {"value": "reject", "label": "Reject", "description": "Don't merge"}
+   ]
+  },
+  {
+   "key": "clarity",
+   "label": "How clear is the diff?",
+   "type": "rating",
+   "group": "Verdict",
+   "minLabel": "confusing",
+   "maxLabel": "obvious"
+  },
+  {
+   "key": "requested",
+   "label": "Requested changes",
+   "type": "list",
+   "group": "Verdict",
+   "required": true,
+   "help": "One row per point. Only asked because you approve with changes.",
+   "showIf": {"key": "verdict", "equals": "changes"},
+   "columns": [
+    {"key": "where", "label": "Where", "placeholder": "file or function"},
+    {"key": "what", "label": "What to change"},
+    {"key": "severity", "label": "Severity", "type": "select", "options": ["nit", "should", "must"]}
+   ]
+  },
+  {
+   "key": "reason",
+   "label": "What would make you change your mind?",
+   "type": "textarea",
+   "group": "Verdict",
+   "help": "Optional when you approve with changes, required when you reject.",
+   "showIf": {"key": "verdict", "in": ["changes", "reject"]},
+   "requiredIf": {"key": "verdict", "equals": "reject"}
+  },
+  {
+   "key": "window",
+   "label": "Merge window starts at",
+   "type": "time",
+   "group": "Rollout",
+   "default": "22:00",
+   "showIf": {"key": "verdict", "in": ["approve", "changes"]}
+  },
+  {
+   "key": "freeze",
+   "label": "Dates I must not deploy",
+   "type": "daterange",
+   "group": "Rollout",
+   "help": "Optional: a holiday, a launch.",
+   "showIf": {"key": "verdict", "in": ["approve", "changes"]}
+  },
+  {
+   "key": "tell",
+   "label": "Tell the team when it's merged",
+   "type": "checkbox",
+   "group": "Rollout",
+   "showIf": {"key": "verdict", "in": ["approve", "changes"]}
+  },
+  {
+   "key": "team_email",
+   "label": "Team address",
+   "type": "email",
+   "group": "Rollout",
+   "showIf": {"key": "tell", "equals": true},
+   "requiredIf": {"key": "tell", "equals": true}
+  }
+ ]
+}

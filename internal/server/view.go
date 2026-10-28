@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/url"
@@ -25,6 +26,20 @@ type pageField struct {
 	FrameURL        string   // html block document
 	OptionFrames    []string // per option: its mockup document, "" when none
 	Num             struct{ Min, Max, Step string }
+	ShowIfJSON      string // the field's conditions, for the page script
+	RequiredIfJSON  string
+	ListCols        []listCol // list: the inputs of a row
+	Rows            [][]string
+	Scale           []int // rating: the numbers on offer
+	RangeStart      string
+	RangeEnd        string
+}
+
+// listCol is one input of a list row: the list's single text, or one column of
+// a table.
+type listCol struct {
+	Name, Label, Type, Placeholder string
+	Options                        []string
 }
 
 type pageGroup struct {
@@ -75,6 +90,21 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 		}
 		fill(&pf, values)
 		pf.Reenter = values != nil && f.Type == form.Secret
+		pf.ShowIfJSON, pf.RequiredIfJSON = condJSON(f.ShowIf), condJSON(f.RequiredIf)
+		switch f.Type {
+		case form.List:
+			pf.ListCols, pf.Rows = listRows(f, pf.Name, values)
+		case form.Rating:
+			for n := int(*f.Min); n <= int(*f.Max); n++ {
+				pf.Scale = append(pf.Scale, n)
+			}
+		case form.Daterange:
+			if values != nil {
+				pf.RangeStart, pf.RangeEnd = values.Get(pf.Name+form.RangeStart), values.Get(pf.Name+form.RangeEnd)
+			} else if d, ok := f.Default.(map[string]any); ok {
+				pf.RangeStart, pf.RangeEnd = fmt.Sprint(d["start"]), fmt.Sprint(d["end"])
+			}
+		}
 		if f.Type == form.HTML {
 			pf.FrameURL = fmt.Sprintf("%s/frame/%s", base, f.Key)
 			h := f.Height
@@ -190,6 +220,77 @@ func fill(pf *pageField, values url.Values) {
 			pf.Picked[form.OtherValue] = true
 		}
 	}
+}
+
+// condJSON is a condition as the page script reads it ("" when there is none).
+func condJSON(c *form.Cond) string {
+	if c == nil {
+		return ""
+	}
+	b, err := json.Marshal(c)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// minListRows is how many empty rows a list shows without a script to add
+// more; with one, the page trims the blank ones down to what is needed.
+const minListRows = 3
+
+// listRows lays a list field out: the inputs of one row and the rows' values —
+// what was sent (after an invalid submit), else the spec's default, padded
+// with empty rows.
+func listRows(f form.Field, name string, values url.Values) ([]listCol, [][]string) {
+	cols := []listCol{{Name: name, Label: f.Label, Type: form.ColText, Placeholder: f.Placeholder}}
+	if len(f.Cols) > 0 {
+		cols = cols[:0]
+		for _, c := range f.Cols {
+			cols = append(cols, listCol{Name: name + "." + c.Key, Label: c.Label, Type: c.Type, Placeholder: c.Placeholder, Options: c.Options})
+		}
+	}
+	var rows [][]string
+	switch {
+	case values != nil:
+		n := 0
+		for _, c := range cols {
+			if l := len(values[c.Name]); l > n {
+				n = l
+			}
+		}
+		for i := 0; i < n && i < 4*form.MaxListRows; i++ {
+			row := make([]string, len(cols))
+			for j, c := range cols {
+				if vs := values[c.Name]; i < len(vs) {
+					row[j] = vs[i]
+				}
+			}
+			rows = append(rows, row)
+		}
+	default:
+		items, _ := f.Default.([]any)
+		for _, it := range items {
+			row := make([]string, len(cols))
+			if m, ok := it.(map[string]any); ok && len(f.Cols) > 0 {
+				for j, c := range f.Cols {
+					if x, has := m[c.Key]; has {
+						row[j] = fmt.Sprint(x)
+					}
+				}
+			} else if s, ok := it.(string); ok && len(f.Cols) == 0 {
+				row[0] = s
+			}
+			rows = append(rows, row)
+		}
+	}
+	want := minListRows
+	if f.Min != nil && int(*f.Min) > want {
+		want = int(*f.Min)
+	}
+	for len(rows) < want {
+		rows = append(rows, make([]string, len(cols)))
+	}
+	return cols, rows
 }
 
 func hasOption(f form.Field, v string) bool {

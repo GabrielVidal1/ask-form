@@ -1,6 +1,6 @@
 ---
 name: ask-form
-description: Ask the user structured questions through a private web form they can answer from any browser, phone included — text, choices, picture or mockup choices, sliders, dates, emails, secrets — and get the answers back as JSON. Use when you need several decisions or values from the user at once, want them to compare options visually, need a credential without it passing through the chat, the user may be away from the terminal, or several people should answer the same form (a team vote, beta testers' feedback).
+description: Ask the user structured questions through a private web form they can answer from any browser, phone included — text, choices, picture or mockup choices, sliders, ratings, dates and times, lists and tables, emails, secrets, follow-up questions that appear only when they apply — and get the answers back as JSON. Use when you need several decisions or values from the user at once, want them to compare options visually, need a credential without it passing through the chat, the user may be away from the terminal, or several people should answer the same form (a team vote, beta testers' feedback).
 ---
 
 <!-- Installed by `ask-form setup`; `ask-form upgrade` rewrites this file. -->
@@ -77,9 +77,22 @@ ask-form get <id>                  # the answers so far, any time
  {"type":"html","label":"Current layout","html":"<svg …>…</svg>"}]
 ```
 
-- Types: `text textarea number select multiselect radio checkbox slider date email secret`,
-  plus the display blocks `markdown` and `html` (no scripts; inline styles are fine).
+- Types: `text textarea number select multiselect radio checkbox slider date email secret
+  time datetime daterange rating list`, plus the display blocks `markdown`, `html` (no
+  scripts; inline styles are fine), `diff` and `details`.
 - A slider's `minLabel` / `maxLabel` name its two ends (shown beside the numbers).
+- `rating`: one tap on a scale, `min` (default 1) to `max` (default 5, at most 11
+  steps), drawn as `"style":"stars"` (the default up to 7) or `"numbers"` (an NPS
+  is `min 0, max 10`); `minLabel` / `maxLabel` as on a slider. → a number.
+- `time` (HH:MM), `datetime` (YYYY-MM-DDTHH:MM, the person's own clock, no zone)
+  and `daterange` (two dates, the end not before the start).
+- `list`: rows the person adds and removes. Without `columns` each row is one text
+  (→ an array of strings); with `"columns":[{"key","label","type":"text|number|select","options"}]`
+  it is a table (→ an array of objects, blank cells left out). `min` / `max` bound
+  the rows (default max 50); `required` needs one filled row.
+- `diff` shows a unified diff (`text`), added and removed lines tinted, scrolling
+  sideways on a phone. `details` is a collapsible section: `label` is its summary,
+  `text` its markdown, `"open":true` starts it expanded. Both ask nothing.
 - Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
   give them `group`s: each group is one page.
 - Every choice field gets an "Other…" free-text choice, and every form ends
@@ -101,10 +114,36 @@ A `--multi` form has no `answers`: it has `"answerCount":N` and
 - text, textarea, date, select, radio → string (an "Other…" answer is the user's own text)
 - email → the address, trimmed and lowercased (checked to look like one)
 - multiselect → array of strings · checkbox → bool · number, slider → number
+- time, datetime → a string · daterange → `{"start","end"}` · rating → a number
+- list → an array of strings, or of objects (a table)
 - secret → `{"secret":true,"chars":N}`. The value never reaches your output.
   Write it where it's needed and never print or `cat` it:
   `ask-form secret <id> <key> --env .env VAR_NAME` (or `--file PATH`, or `--stdout | cmd`).
 - Unanswered optional fields are absent.
+
+## Conditions: ask only what applies
+
+Any field or block takes `showIf`; it is drawn, and counted, only while the
+condition holds. A hidden question is not required and is left out of `answers`
+(the server checks it too, whatever the browser sent). `requiredIf` makes a
+question required while its condition holds. A condition looks at questions
+**above** it in the spec:
+
+```json
+{"key":"stack","type":"radio","options":["Vite","Next"]},
+{"key":"ssr","type":"checkbox","label":"Server rendering","showIf":{"key":"stack","equals":"Next"}},
+{"key":"region","type":"text","showIf":{"key":"ssr","equals":true},"requiredIf":{"key":"ssr","equals":true}}
+```
+
+- A test is `{"key":"q","<op>":value}` with one op: `equals`, `notEquals`, `in`
+  (a list), `includes` (a multiselect or list holds the value, or a text contains it),
+  `gt` `gte` `lt` `lte` (numbers, ratings, sliders) or `answered` (true / false).
+- Combine with `{"all":[…]}`, `{"any":[…]}` and `{"not":{…}}` (nest at most 4 deep).
+- A test on a hidden question fails, so hiding cascades to what hangs on it
+  (`notEquals` and `answered:false` included).
+- A page (`group`) whose questions are all hidden disappears; to skip a page, give
+  each of its fields the same `showIf`.
+- You can't test a `secret` or a block.
 
 ## Other commands
 
