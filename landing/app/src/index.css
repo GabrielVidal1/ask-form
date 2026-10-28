@@ -188,7 +188,6 @@
 .ph-status.on-dark > div { background: transparent !important; color: #fff !important; }
 
 /* the answer page, at phone size (mirrors web/static/app.css) */
-.pf-eye { margin: 0 0 6px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); }
 .pf h3 { margin: 0 0 8px; font-size: 25px; line-height: 1.2; letter-spacing: -.01em; }
 .pf-desc { margin: 0 0 16px; color: var(--muted-fg); font-size: 15.5px; }
 .pf-pager { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }

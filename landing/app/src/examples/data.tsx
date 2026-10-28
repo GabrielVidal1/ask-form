@@ -49,7 +49,6 @@ export interface Example {
   lines: Line[]
   form: {
     slug: string
-    eyebrow: string
     title: string
     desc: string
     page: string
@@ -79,7 +78,6 @@ export const examples: Example[] = [
     ],
     form: {
       slug: 'habit-tracker_k3f9q2',
-      eyebrow: 'A few questions · open for 24 h',
       title: 'Habit tracker: before I scaffold',
       desc: 'The repo is empty, so a few choices first. I pre-selected what fits what you told me.',
       page: 'Look & stack',
@@ -128,7 +126,6 @@ export const examples: Example[] = [
     ],
     form: {
       slug: 'review-feat-invoices_p81xq0',
-      eyebrow: 'A few questions · open for 24 h',
       title: 'Review of feat/invoices',
       desc: '14 files changed (+612 −88). Six findings, worst first.',
       page: 'Must fix',
@@ -180,7 +177,6 @@ export const examples: Example[] = [
     ],
     form: {
       slug: 'stripe-sentry_7cw2ma',
-      eyebrow: 'A few questions · open for 24 h',
       title: 'Stripe + Sentry: keys',
       desc: 'Secret fields never reach me: they go straight into .env.local.',
       page: 'Stripe',
@@ -219,7 +215,6 @@ export const examples: Example[] = [
     ],
     form: {
       slug: 'onboarding-vote_x2m7rd',
-      eyebrow: 'Team vote · open until Friday',
       title: 'Onboarding: which one?',
       desc: 'Two takes on the first screen new users see. Pick the one you would ship.',
       page: 'Your vote',

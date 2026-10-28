@@ -66,7 +66,6 @@ export const Phone = forwardRef<HTMLDivElement, Props>(function Phone({ ex, host
           </div>
           <div className="ph-view">
             <div className="ph-scroll pf" data-ph="scroll">
-              <p className="pf-eye">{f.eyebrow}</p>
               <h3>{f.title}</h3>
               <p className="pf-desc">{f.desc}</p>
               <div className="pf-pager">
