@@ -311,7 +311,8 @@ details.more li { margin: 5px 0; }
 .fact span { color: var(--muted-fg); font-size: 15.5px; }
 .how { margin: 16px 0 0; font-size: 15px; color: var(--muted-fg); }
 
-footer { margin: 80px 0 40px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted-fg); font-size: 14px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+/* footer.wrap: .wrap's own padding would win over a bare footer's. */
+footer.wrap { margin-top: 96px; padding: 36px 16px 56px; border-top: 1px solid var(--line); color: var(--muted-fg); font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 10px; justify-content: center; align-items: center; text-align: center; }
 footer a { display: inline-flex; gap: 6px; align-items: center; }
 footer .by a { display: inline; font-weight: 600; }
 

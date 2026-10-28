@@ -132,12 +132,8 @@ export function Demo({ host, installLine }: Props) {
   return (
     <section className="demo wrap" id="examples" ref={rootRef}>
       <div className="demo-head reveal">
-        <p className="eyebrow">One prompt, one form</p>
         <h2 className="h2">You ask once. It sends everything it needs to know.</h2>
-        <p className="sub">
-          Your agent puts every question in one form, its own picks pre-selected and the mockups to choose from. You answer
-          where you are, it carries on.
-        </p>
+        <p className="sub">Your agent puts every question in one form. You answer where you are, it carries on.</p>
       </div>
       <div className="tabs reveal" role="tablist" aria-label="Examples">
         {examples.map((e, i) => (

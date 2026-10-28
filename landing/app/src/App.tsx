@@ -7,10 +7,8 @@ import {
   ChevronRight,
   Clock,
   Code,
-  FileJson,
   Github,
   Image,
-  KeyRound,
   ListChecks,
   MapPin,
   Rocket,
@@ -25,10 +23,11 @@ import { Demo } from './components/Demo'
 import type { Origin } from './lib-origin'
 
 const GITHUB = 'https://github.com/GabrielVidal1/ask-form'
+// The repo links stay off the page for now: flip this to bring them back.
+const SHOW_GITHUB = false
 
 const compare = [
   { icon: MapPin, q: 'Where you answer', old: 'At the keyboard. Step away and the agent waits.', now: 'Any browser, phone included. The agent keeps working meanwhile.' },
-  { icon: ListChecks, q: 'How many questions', old: 'A few at a time, turn after turn.', now: 'Twenty at once, in pages, with its picks pre-selected.' },
   {
     icon: Users,
     q: 'Who answers',
@@ -36,8 +35,6 @@ const compare = [
     now: 'Anyone with the link: a team vote, a client sign-off, beta testers. Every answer comes back, with an email field to know who said what.',
   },
   { icon: Image, q: 'What you see', old: 'Text.', now: 'Mockups to pick from, diagrams, tables and code.' },
-  { icon: FileJson, q: 'What it gets back', old: '“1b, yes, the second one”, to interpret.', now: 'JSON, keyed by question.' },
-  { icon: KeyRound, q: 'Secrets', old: 'Pasted into the chat and kept in the transcript.', now: 'Written straight to .env. The model never sees them.' },
 ]
 
 const facts = [
@@ -99,9 +96,11 @@ export default function App({ origin }: { origin: Origin }) {
             <a href="#install" className="hide-sm">
               Install
             </a>
-            <a href={GITHUB}>
-              <Github size={16} /> GitHub
-            </a>
+            {SHOW_GITHUB && (
+              <a href={GITHUB}>
+                <Github size={16} /> GitHub
+              </a>
+            )}
           </span>
         </nav>
       </div>
@@ -122,13 +121,10 @@ export default function App({ origin }: { origin: Origin }) {
             </span>
           ))}
         </h1>
-        <p className="lede">
-          When your agent needs your call (a stack, a layout, an API key), it sends you a link instead of waiting at the
-          terminal. You answer from your phone, alone or with your team. It reads the answers as JSON and gets back to work.
-        </p>
+        <p className="lede">Your agent asks detailed questions in rich forms. Anyone answers, from anywhere.</p>
         <p className="cta">
           <a className="btn btn-primary" href="#install">
-            <Rocket size={17} /> Try it on your setup
+            <Rocket size={17} /> Try now
           </a>
           <a className="btn btn-ghost" href="#examples">
             See it in action <ArrowDown size={17} />
@@ -143,8 +139,7 @@ export default function App({ origin }: { origin: Origin }) {
 
       <section className="section wrap">
         <div className="reveal">
-          <p className="eyebrow">Why not just ask in the terminal?</p>
-          <h2 className="h2">Your agent can already ask. Here’s what a form changes.</h2>
+          <h2 className="h2">Why not just ask in the terminal?</h2>
           <p className="sub">The same questions, answered somewhere better than a blinking prompt.</p>
         </div>
         <div className="vs panel" role="table">
@@ -174,8 +169,7 @@ export default function App({ origin }: { origin: Origin }) {
 
       <section className="section wrap" id="install">
         <div className="reveal">
-          <p className="eyebrow">Try it on your setup</p>
-          <h2 className="h2">One sentence to your agent.</h2>
+          <h2 className="h2">Try now</h2>
           <p className="sub">
             Any coding agent running on your computer will do. It reads <a href="/agent-install">/agent-install</a>, installs
             ask-form, sets itself up and sends you a first form.
@@ -214,12 +208,17 @@ export default function App({ origin }: { origin: Origin }) {
                 <li>
                   Without the relay (forms answerable on this machine only): <code>curl -fsSL {origin.origin}/install.sh | sh -s -- --local</code>
                 </li>
-                <li>
-                  With Go 1.22+: <code>go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest</code>, then <code>ask-form setup</code>
-                </li>
-                <li>
-                  Or take a binary from <a href={GITHUB + '/releases'}>GitHub Releases</a>, then run <code>ask-form setup</code>
-                </li>
+                {SHOW_GITHUB && (
+                  <>
+                    <li>
+                      With Go 1.22+: <code>go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest</code>, then{' '}
+                      <code>ask-form setup</code>
+                    </li>
+                    <li>
+                      Or take a binary from <a href={GITHUB + '/releases'}>GitHub Releases</a>, then run <code>ask-form setup</code>
+                    </li>
+                  </>
+                )}
               </ul>
               <p className="small">
                 The service installs new releases by itself (<code>ASK_FORM_AUTO_UPGRADE=notify</code> or <code>off</code> stops
@@ -249,7 +248,13 @@ export default function App({ origin }: { origin: Origin }) {
         </ul>
         <p className="how reveal">
           Same 404 for an unknown form and a wrong token, no referrer, no cache, no indexing, a strict CSP, mockups in
-          sandboxed script-free frames. More in <a href={GITHUB + '/blob/main/docs/how-it-works.md'}>how it works</a>.
+          sandboxed script-free frames.
+          {SHOW_GITHUB && (
+            <>
+              {' '}
+              More in <a href={GITHUB + '/blob/main/docs/how-it-works.md'}>how it works</a>.
+            </>
+          )}
         </p>
       </section>
 
@@ -257,12 +262,16 @@ export default function App({ origin }: { origin: Origin }) {
         <span className="by">
           Made with ❤️ by <a href="https://gabvdl.xyz">Gabriel</a>
         </span>
-        <span>
-          <a href={GITHUB}>
-            <Code size={14} /> Source on GitHub
-          </a>{' '}
-          · MIT
-        </span>
+        {SHOW_GITHUB && (
+          <>
+            <span aria-hidden>·</span>
+            <a href={GITHUB}>
+              <Code size={14} /> Source on GitHub
+            </a>
+          </>
+        )}
+        <span aria-hidden>·</span>
+        <span>MIT license</span>
       </footer>
     </>
   )
