@@ -4,8 +4,8 @@
 // The spec is the one the ai-agent's forms use (backend/forms/store.py), so a
 // spec written for one works with the other: text, textarea, number, select,
 // multiselect, radio, checkbox, slider, date, email and secret questions, plus
-// the display-only markdown and html blocks. `file` is not supported here — a
-// public page takes no uploads.
+// the display-only markdown and html blocks, and `file` (chunked uploads, see
+// file.go).
 package form
 
 import (
@@ -31,6 +31,7 @@ const (
 	Date        = "date"
 	Email       = "email"
 	Secret      = "secret"
+	File        = "file"
 	Markdown    = "markdown"
 	HTML        = "html"
 )
@@ -58,7 +59,7 @@ const (
 )
 
 var fieldTypes = []string{Text, Textarea, Number, Select, Multiselect, Radio,
-	Checkbox, Slider, Date, Email, Secret, Markdown, HTML}
+	Checkbox, Slider, Date, Email, Secret, File, Markdown, HTML}
 
 // Option is one choice of a select / radio / multiselect field. A visual
 // option carries an image (a URL or `{{asset:<file>}}`) and/or an html mockup;
@@ -98,6 +99,10 @@ type Field struct {
 	MinLabel    string   `json:"minLabel,omitempty"` // slider: words under its min end
 	MaxLabel    string   `json:"maxLabel,omitempty"` // slider: words under its max end
 	Default     any      `json:"default,omitempty"`
+	Accept      string   `json:"accept,omitempty"`   // file: <input accept> list
+	MaxMB       float64  `json:"maxMB,omitempty"`    // file: largest file
+	Multiple    bool     `json:"multiple,omitempty"` // file: more than one
+	MaxFiles    int      `json:"maxFiles,omitempty"` // file: how many
 	AutoSecret  bool     `json:"autoSecret,omitempty"`
 	CatchAll    bool     `json:"catchAll,omitempty"`
 }
@@ -174,9 +179,6 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 		ftype := strings.ToLower(strings.TrimSpace(str(m["type"])))
 		if ftype == "" {
 			ftype = Text
-		}
-		if ftype == "file" {
-			return nil, fmt.Errorf("field #%d: file uploads are not supported", i)
 		}
 		if !contains(fieldTypes, ftype) {
 			return nil, fmt.Errorf("field #%d: unknown type %q (one of %s)", i, ftype, strings.Join(fieldTypes, ", "))
@@ -307,9 +309,15 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 				f.Step = nil
 			}
 		}
+		if ftype == File {
+			if err := fileSpec(&f, m); err != nil {
+				return nil, fmt.Errorf("field %q: %w", key, err)
+			}
+		}
 		f.AutoSecret = autoSecret
-		// A secret's default would put a value in the spec, which everyone sees.
-		if d, ok := m["default"]; ok && d != nil && ftype != Secret {
+		// A secret's default would put a value in the spec, which everyone sees;
+		// a file has none.
+		if d, ok := m["default"]; ok && d != nil && ftype != Secret && ftype != File {
 			f.Default = d
 		}
 		out = append(out, f)

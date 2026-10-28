@@ -41,7 +41,10 @@ func (r Result) OK() bool { return len(r.Errors) == 0 }
 // Shapes: multiselect → []string, checkbox → bool, number/slider → float64
 // (an integer when it is one), secret → {"secret":true,"chars":N}, email → the
 // address trimmed and lowercased, the rest a string. An unanswered optional field is left out (a checkbox is false).
-func Parse(fields []Field, v url.Values) Result {
+func Parse(fields []Field, v url.Values) Result { return ParseWith(fields, v, Hooks{}) }
+
+// ParseWith is Parse with the hooks that reach beyond the spec (uploads).
+func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 	r := Result{Answers: map[string]any{}, Secrets: map[string]string{}, Errors: map[string]string{}}
 	for _, f := range fields {
 		if f.Display() {
@@ -171,6 +174,39 @@ func Parse(fields []Field, v url.Values) Result {
 				continue
 			}
 			r.Answers[f.Key] = s
+		case File:
+			refs, msg := fileRefs(first)
+			if msg != "" {
+				r.Errors[f.Key] = msg
+				continue
+			}
+			if len(refs) == 0 {
+				if f.Required {
+					r.Errors[f.Key] = "Add a file."
+				}
+				continue
+			}
+			if len(refs) > f.FileLimit() {
+				r.Errors[f.Key] = fmt.Sprintf("At most %d file%s.", f.FileLimit(), plural(f.FileLimit()))
+				continue
+			}
+			if h.File == nil {
+				r.Errors[f.Key] = "Uploads aren't available here."
+				continue
+			}
+			var infos []FileInfo
+			for _, ref := range refs {
+				info, ok := h.File(f.Key, ref)
+				if !ok {
+					infos = nil
+					r.Errors[f.Key] = "A file is gone — add it again."
+					break
+				}
+				infos = append(infos, info)
+			}
+			if infos != nil {
+				r.Answers[f.Key] = infos
+			}
 		case Secret:
 			// A pasted token often drags a newline or a space along.
 			s := strings.TrimSpace(first)
@@ -237,6 +273,13 @@ func ValidEmail(s string) bool {
 	return true
 }
 
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // FormatNumber prints a number without a trailing ".0".
 func FormatNumber(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
@@ -244,6 +287,9 @@ func FormatNumber(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64)
 // option values, yes/no for a checkbox, a lock line for a secret. Empty when
 // the field was left unanswered.
 func AnswerText(f Field, v any) string {
+	if f.Type == File {
+		return FileText(v)
+	}
 	switch t := v.(type) {
 	case nil:
 		return ""
