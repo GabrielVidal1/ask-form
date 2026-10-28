@@ -503,15 +503,18 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 	r.mu.Lock()
 	c := r.claims[id]
 	var m *machine
+	var lastPoll time.Time // polls write it under the lock
 	if c != nil {
-		m = r.machines[c.machine]
+		if m = r.machines[c.machine]; m != nil {
+			lastPoll = m.lastPoll
+		}
 	}
 	r.mu.Unlock()
 	if c == nil {
 		server.NotFound(w)
 		return
 	}
-	if m == nil || time.Since(m.lastPoll) > onlineAfter {
+	if m == nil || time.Since(lastPoll) > onlineAfter {
 		page(w, http.StatusServiceUnavailable, offlinePage)
 		return
 	}
