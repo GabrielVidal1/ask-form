@@ -1,7 +1,8 @@
 // ask-form answer page — progressive enhancement. The page works without it;
 // this adds group paging (on a phone; a desktop shows every group and tracks
-// them in the section list), "Other…" niceties, a local draft, a confirm step,
-// a fullscreen viewer for pictures and mockups, and auto-sized html blocks.
+// them in the section list), "Other…" niceties, a local draft, the server's
+// checks then a confirm step, a fullscreen viewer for pictures and mockups,
+// and auto-sized html blocks.
 (function () {
   "use strict";
   var root = document.documentElement;
@@ -81,7 +82,43 @@
     if (t === "checkbox" || t === "slider") return !touched[f.getAttribute("data-key")];
     return isEmpty(f);
   }
-  function missing(f) { return f.hasAttribute("data-required") && f.getAttribute("data-type") !== "checkbox" && isEmpty(f); }
+  // What the server would turn down (form.Parse, same messages), so a send
+  // never opens the confirm step only to come back with errors: "" = fine.
+  function problem(f) {
+    var t = f.getAttribute("data-type");
+    if (t === "checkbox" || t === "slider") return "";
+    var main = f.querySelector("input:not([type=hidden]):not([data-other-for]), textarea");
+    // A half-typed number or date reads as "": the browser knows better.
+    if (main && main.validity && main.validity.badInput) return t === "date" ? "Enter a date (YYYY-MM-DD)." : "Enter a number.";
+    if (isEmpty(f)) {
+      if (!f.hasAttribute("data-required")) return "";
+      if (otherPicked(f)) return "Type your answer next to “Other…”.";
+      return t === "multiselect" ? "Pick at least one." : "This question is required.";
+    }
+    var v = main ? main.value.trim() : "";
+    if (t === "number") {
+      var n = Number(v.replace(",", "."));
+      if (!isFinite(n)) return "Enter a number.";
+      var min = main.getAttribute("min"), max = main.getAttribute("max");
+      if (min && n < Number(min)) return "At least " + min + ".";
+      if (max && n > Number(max)) return "At most " + max + ".";
+    }
+    if (t === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return "Enter a date (YYYY-MM-DD).";
+    if (t === "email" && !validEmail(v.toLowerCase())) return "Enter an email address, like name@example.com.";
+    if (t === "secret" && v.length > 8000) return "That value is too long.";
+    return "";
+  }
+  // form.ValidEmail: one @, something before it, a dotted domain of letters,
+  // digits and dashes after it, no spaces.
+  function validEmail(s) {
+    if (s.length > 254 || /[\s<>(),;:"\[\]\\]/.test(s)) return false;
+    var at = s.indexOf("@");
+    var local = s.slice(0, at), domain = s.slice(at + 1);
+    if (at < 1 || local.length > 64 || domain.indexOf("@") >= 0 || domain.indexOf(".") < 0) return false;
+    return domain.split(".").every(function (l) {
+      return l.length > 0 && l.length <= 63 && l[0] !== "-" && l[l.length - 1] !== "-" && /^(?:[a-z0-9-]|[^\x00-\x7f])+$/.test(l);
+    });
+  }
 
   // ── draft (never a secret) ──────────────────────────────────────────────
   function saveDraft() {
@@ -318,20 +355,23 @@
     });
   } else refresh();
 
-  // ── submit: required check, then a confirm step ─────────────────────────
+  // ── submit: the whole form checked, then a confirm step ─────────────────
   var confirmed = false;
   form.addEventListener("submit", function (e) {
     var by = e.submitter;
     if (by && by.value === "decline") { lock(); store.del(draftKey); return; }
     if (confirmed) { lock(); return; }
     e.preventDefault();
-    var miss = fields.filter(missing);
-    if (miss.length) {
-      miss.forEach(function (f) { flag(f, "This question is required."); });
-      var g = groupOf(miss[0]);
+    var bad = fields.filter(function (f) {
+      var msg = problem(f);
+      if (msg) flag(f, msg);
+      return !!msg;
+    });
+    if (bad.length) {
+      var g = groupOf(bad[0]);
       if (pager && g >= 0) show(g, false);
-      miss[0].scrollIntoView({ block: "center" });
-      var el = miss[0].querySelector("input:not([type=hidden]), select, textarea");
+      bad[0].scrollIntoView({ block: "center" });
+      var el = bad[0].querySelector("input:not([type=hidden]), select, textarea");
       if (el) el.focus({ preventScroll: true });
       return;
     }
