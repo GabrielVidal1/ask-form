@@ -77,6 +77,10 @@ func TestNormalizeSliderDefaults(t *testing.T) {
 	if *f[0].Min != 0 || *f[0].Max != 100 || *f[0].Step != 1 || *f[1].Min != 2 || f[1].Step != nil {
 		t.Fatalf("slider: %+v", f[0])
 	}
+	f = norm(t, `[{"key":"s","type":"slider","minLabel":" Frustrating ","maxLabel":"Delightful"},{"key":"n","type":"number","minLabel":"low"}]`)
+	if f[0].MinLabel != "Frustrating" || f[0].MaxLabel != "Delightful" || f[1].MinLabel != "" {
+		t.Fatalf("end labels: %+v / %+v", f[0], f[1])
+	}
 	_, err := Normalize(json.RawMessage(`[{"key":"n","type":"number","min":5,"max":1}]`))
 	if err == nil {
 		t.Fatal("min > max accepted")

@@ -37,6 +37,11 @@ func TestExamples(t *testing.T) {
 		if code, body := get("/examples/" + ex.Name); code != 200 || !strings.Contains(body, `action="/examples/`+ex.Name+`"`) {
 			t.Fatalf("%s page: %d", ex.Name, code)
 		}
+		if ex.Name == "new-project" {
+			if _, body := get("/examples/new-project"); !strings.Contains(body, "1 · skeleton") || !strings.Contains(body, "polished · 5") {
+				t.Fatal("new-project: slider end labels missing")
+			}
+		}
 		if code, _ := get("/examples/" + ex.Name + "/spec.json"); code != 200 {
 			t.Fatalf("%s spec: %d", ex.Name, code)
 		}

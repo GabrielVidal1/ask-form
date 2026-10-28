@@ -163,7 +163,7 @@
       <input id="{{.DOMID}}-in" type="range" name="{{.Name}}" value="{{.Value}}" min="{{.Num.Min}}" max="{{.Num.Max}}" step="{{.Num.Step}}">
       <output for="{{.DOMID}}-in">{{.Value}}</output>
     </div>
-    <div class="range-ends"><span>{{.Num.Min}}</span><span>{{.Num.Max}}</span></div>
+    <div class="range-ends"><span>{{.Num.Min}}{{with .MinLabel}} · {{.}}{{end}}</span><span>{{with .MaxLabel}}{{.}} · {{end}}{{.Num.Max}}</span></div>
   {{else if eq .Type "email"}}
     <input id="{{.DOMID}}-in" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" name="{{.Name}}" value="{{.Value}}" maxlength="254"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
   {{else if eq .Type "date"}}

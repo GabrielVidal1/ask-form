@@ -81,7 +81,8 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .range { display: flex; gap: 12px; align-items: center; }
 .range input { flex: 1; accent-color: hsl(var(--primary)); }
 .range output { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-.range-ends { display: flex; justify-content: space-between; font-size: 12px; color: hsl(var(--muted-foreground)); }
+.range-ends { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+.range-ends span:last-child { text-align: right; }
 .secret { position: relative; }
 .secret input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding-right: 64px; }
 .secret-note { margin: 6px 0 0; font-size: 13px; color: hsl(var(--muted-foreground)); }

@@ -68,7 +68,7 @@ ask-form get <id>                  # the answers so far, any time
  {"key":"stack","label":"Stack","type":"radio","required":true,"options":["Vite","Next",{"value":"astro","label":"Astro","description":"static first"}]},
  {"key":"features","label":"Features","type":"multiselect","options":["auth","db"]},
  {"key":"deploy","label":"Deploy after","type":"checkbox"},
- {"key":"polish","label":"Polish","type":"slider","min":1,"max":5,"default":3},
+ {"key":"polish","label":"Polish","type":"slider","min":1,"max":5,"default":3,"minLabel":"rough","maxLabel":"pixel-perfect"},
  {"key":"budget","label":"Budget (€)","type":"number","min":0},
  {"key":"when","label":"Deadline","type":"date"},
  {"key":"email","label":"Your email","type":"email"},
@@ -79,6 +79,7 @@ ask-form get <id>                  # the answers so far, any time
 
 - Types: `text textarea number select multiselect radio checkbox slider date email secret`,
   plus the display blocks `markdown` and `html` (no scripts; inline styles are fine).
+- A slider's `minLabel` / `maxLabel` name its two ends (shown beside the numbers).
 - Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
   give them `group`s: each group is one page.
 - Every choice field gets an "Other…" free-text choice, and every form ends

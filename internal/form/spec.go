@@ -95,6 +95,8 @@ type Field struct {
 	Min         *float64 `json:"min,omitempty"`
 	Max         *float64 `json:"max,omitempty"`
 	Step        *float64 `json:"step,omitempty"`
+	MinLabel    string   `json:"minLabel,omitempty"` // slider: words under its min end
+	MaxLabel    string   `json:"maxLabel,omitempty"` // slider: words under its max end
 	Default     any      `json:"default,omitempty"`
 	AutoSecret  bool     `json:"autoSecret,omitempty"`
 	CatchAll    bool     `json:"catchAll,omitempty"`
@@ -295,6 +297,8 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 				if f.Step == nil {
 					f.Step = ptr(1)
 				}
+				f.MinLabel = clip(strings.TrimSpace(str(m["minLabel"])), MaxLabelChars)
+				f.MaxLabel = clip(strings.TrimSpace(str(m["maxLabel"])), MaxLabelChars)
 			}
 			if f.Min != nil && f.Max != nil && *f.Min > *f.Max {
 				return nil, fmt.Errorf("field %q: min > max", key)

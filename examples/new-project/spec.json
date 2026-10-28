@@ -275,6 +275,8 @@
    "max": 5,
    "step": 1,
    "default": 3,
+   "minLabel": "skeleton",
+   "maxLabel": "polished",
    "help": "1 = a clickable skeleton · 3 = the features above, working, plain looks · 5 = polished and deployed"
   }
  ]
