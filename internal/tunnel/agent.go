@@ -145,7 +145,7 @@ func (a *Agent) poll(ctx context.Context) (*Request, error) {
 		return nil, nil
 	case http.StatusOK:
 		var pr PollResponse
-		if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&pr); err != nil {
+		if err := json.NewDecoder(io.LimitReader(res.Body, MaxPollResponse)).Decode(&pr); err != nil {
 			return nil, fmt.Errorf("poll: %w", err)
 		}
 		return pr.Request, nil

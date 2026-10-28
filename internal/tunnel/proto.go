@@ -81,3 +81,8 @@ func Filter(h http.Header, allowed []string) http.Header {
 // MaxResponseBody caps what a machine may send back for one request (an
 // image asset is the largest thing a page serves).
 const MaxResponseBody = 8 << 20
+
+// MaxPollResponse caps the answer to a poll: one visitor request, JSON. An
+// upload chunk (server.MaxChunk, 1 MiB) base64-encoded inside it is the
+// largest thing it carries.
+const MaxPollResponse = 2 << 20

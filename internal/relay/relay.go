@@ -38,6 +38,8 @@ const (
 	forwardWait = 30 * time.Second // a visitor waits this long for the machine
 	onlineAfter = 75 * time.Second // a machine polled within this is online
 	claimTTL    = 15 * time.Minute // an online machine that stops listing an id loses it
+
+	maxUploadsInFlight = 16 // upload chunks the relay holds in memory at once
 )
 
 // Config configures a relay.
@@ -106,6 +108,8 @@ type Relay struct {
 	tokFi    os.FileInfo
 	general  *ipLimiter
 	regLimit *ipLimiter
+	uploads  *ipLimiter    // upload chunks per visitor
+	upSlots  chan struct{} // upload chunks held in memory at once
 	landing  []byte
 	landCSP  string
 }
@@ -117,6 +121,7 @@ func New(cfg Config) (*Relay, error) {
 		cfg: cfg, machines: map[string]*machine{}, claims: map[string]*claim{},
 		inflight: map[string]*pending{}, general: newIPLimiter(600, time.Minute),
 		landing: cfg.Landing, regLimit: newIPLimiter(cfg.Register.PerIP, 24*time.Hour),
+		uploads: newIPLimiter(120, time.Minute), upSlots: make(chan struct{}, maxUploadsInFlight),
 	}
 	r.landCSP = landingCSP(cfg.Landing)
 	if err := r.loadTokens(true); err != nil {
@@ -553,7 +558,27 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 	var body []byte
 	if req.Method == http.MethodPost {
 		var err error
-		body, err = io.ReadAll(http.MaxBytesReader(w, req.Body, server.MaxBody))
+		limit := int64(server.MaxBody)
+		if isUpload(req) {
+			// A chunk of a file: the one POST allowed to be big, so it is
+			// paced per visitor and only a few are held in memory at once.
+			// The relay still keeps nothing: it is gone when the machine answers.
+			if !r.uploads.hit(r.clientIP(req)) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, "Too many uploads", http.StatusTooManyRequests)
+				return
+			}
+			select {
+			case r.upSlots <- struct{}{}:
+				defer func() { <-r.upSlots }()
+			default:
+				w.Header().Set("Retry-After", "5")
+				http.Error(w, "Busy — try again in a moment", http.StatusServiceUnavailable)
+				return
+			}
+			limit = server.MaxChunk
+		}
+		body, err = io.ReadAll(http.MaxBytesReader(w, req.Body, limit))
 		if err != nil {
 			http.Error(w, "Request too large", http.StatusRequestEntityTooLarge)
 			return
@@ -605,6 +630,12 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 		page(w, http.StatusGatewayTimeout, offlinePage)
 	case <-req.Context().Done():
 	}
+}
+
+// isUpload: a POST to /f/<id>/upload/<key> (or the legacy /forms/ prefix).
+func isUpload(req *http.Request) bool {
+	parts := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
+	return req.Method == http.MethodPost && len(parts) == 4 && parts[2] == "upload"
 }
 
 func page(w http.ResponseWriter, code int, body []byte) {
