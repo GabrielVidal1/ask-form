@@ -4,8 +4,9 @@
 // The spec is the one the ai-agent's forms use (backend/forms/store.py), so a
 // spec written for one works with the other: text, textarea, number, select,
 // multiselect, radio, checkbox, slider, date, email and secret questions, plus
-// the display-only markdown and html blocks. `file` is not supported here — a
-// public page takes no uploads.
+// the display-only markdown and html blocks, and the widget (a control the
+// agent writes in HTML + JS that returns one JSON value). `file` is not
+// supported here — a public page takes no uploads.
 package form
 
 import (
@@ -33,6 +34,7 @@ const (
 	Secret      = "secret"
 	Markdown    = "markdown"
 	HTML        = "html"
+	Widget      = "widget"
 )
 
 // OtherValue is the form value of the "Other…" choice; the free text typed
@@ -58,7 +60,7 @@ const (
 )
 
 var fieldTypes = []string{Text, Textarea, Number, Select, Multiselect, Radio,
-	Checkbox, Slider, Date, Email, Secret, Markdown, HTML}
+	Checkbox, Slider, Date, Email, Secret, Markdown, HTML, Widget}
 
 // Option is one choice of a select / radio / multiselect field. A visual
 // option carries an image (a URL or `{{asset:<file>}}`) and/or an html mockup;
@@ -88,6 +90,7 @@ type Field struct {
 	Text        string   `json:"text,omitempty"` // markdown block source
 	HTML        string   `json:"html,omitempty"` // html block markup
 	Height      int      `json:"height,omitempty"`
+	Schema      string   `json:"schema,omitempty"` // widget: the JSON kind it returns
 	Options     []Option `json:"options,omitempty"`
 	Other       bool     `json:"other,omitempty"`
 	Columns     int      `json:"columns,omitempty"`
@@ -278,6 +281,11 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 					}
 					f.Aspect = aspect
 				}
+			}
+		}
+		if ftype == Widget {
+			if err := normalizeWidget(&f, m); err != nil {
+				return nil, fmt.Errorf("field %q: %w", key, err)
 			}
 		}
 		if ftype == Number || ftype == Slider {

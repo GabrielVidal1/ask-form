@@ -40,7 +40,7 @@ func (r Result) OK() bool { return len(r.Errors) == 0 }
 //
 // Shapes: multiselect → []string, checkbox → bool, number/slider → float64
 // (an integer when it is one), secret → {"secret":true,"chars":N}, email → the
-// address trimmed and lowercased, the rest a string. An unanswered optional field is left out (a checkbox is false).
+// address trimmed and lowercased, widget → its decoded JSON value, the rest a string. An unanswered optional field is left out (a checkbox is false).
 func Parse(fields []Field, v url.Values) Result {
 	r := Result{Answers: map[string]any{}, Secrets: map[string]string{}, Errors: map[string]string{}}
 	for _, f := range fields {
@@ -171,6 +171,16 @@ func Parse(fields []Field, v url.Values) Result {
 				continue
 			}
 			r.Answers[f.Key] = s
+		case Widget:
+			val, msg := parseWidget(f, first)
+			switch {
+			case msg != "":
+				r.Errors[f.Key] = msg
+			case val != nil:
+				r.Answers[f.Key] = val
+			case f.Required:
+				r.Errors[f.Key] = "Interact with this first."
+			}
 		case Secret:
 			// A pasted token often drags a newline or a space along.
 			s := strings.TrimSpace(first)
@@ -244,6 +254,9 @@ func FormatNumber(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64)
 // option values, yes/no for a checkbox, a lock line for a secret. Empty when
 // the field was left unanswered.
 func AnswerText(f Field, v any) string {
+	if f.Type == Widget {
+		return widgetText(v)
+	}
 	switch t := v.(type) {
 	case nil:
 		return ""
