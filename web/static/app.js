@@ -93,6 +93,7 @@
     if (isEmpty(f)) {
       if (!f.hasAttribute("data-required")) return "";
       if (otherPicked(f)) return "Type your answer next to “Other…”.";
+      if (t === "widget") return "Interact with this first.";
       return t === "multiselect" ? "Pick at least one." : "This question is required.";
     }
     var v = main ? main.value.trim() : "";
@@ -200,6 +201,12 @@
     f.classList.add("has-error");
     f.appendChild(make("p", "err js-err", msg));
   }
+
+  // widget.js (widget fields) drives the page through these.
+  window.askFormPage = {
+    touch: function (f) { touched[f.getAttribute("data-key")] = true; clearErr(f); refresh(); saveDraft(); },
+    flag: flag
+  };
 
   // ── pages ─────────────────────────────────────────────────────────────────
   // A phone pages through the groups; a desktop shows them all, with the
@@ -413,6 +420,11 @@
       return parts.join(", ");
     }
     var main = f.querySelector("input, textarea");
+    if (t === "widget" && main) {
+      var wv = main.value.trim();
+      try { var j = JSON.parse(wv); wv = typeof j === "string" ? j : JSON.stringify(j); } catch (e) { /* shown as typed */ }
+      return wv.length > 200 ? wv.slice(0, 200) + "…" : wv;
+    }
     return main ? main.value.trim() : "";
   }
   function openConfirm(by) {

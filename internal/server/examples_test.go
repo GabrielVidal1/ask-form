@@ -17,8 +17,8 @@ func TestExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 7 {
-		t.Fatalf("want 7 examples, got %d", len(list))
+	if len(list) != 8 {
+		t.Fatalf("want 8 examples, got %d", len(list))
 	}
 	srv := httptest.NewServer(ExamplesHandler(list, ""))
 	defer srv.Close()
@@ -30,7 +30,7 @@ func TestExamples(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	if code, body := get("/examples"); code != 200 || strings.Count(body, `class="example-card"`) != 7 {
+	if code, body := get("/examples"); code != 200 || strings.Count(body, `class="example-card"`) != 8 {
 		t.Fatalf("index: %d", code)
 	}
 	for _, ex := range list {
@@ -46,9 +46,10 @@ func TestExamples(t *testing.T) {
 			t.Fatalf("%s spec: %d", ex.Name, code)
 		}
 		// Every html block and mockup has its document; none may carry a
-		// script the frame CSP would have to allow.
+		// script the frame CSP would have to allow. (A widget's may: it is
+		// the one frame that runs the agent's script.)
 		for _, f := range ex.State.Fields {
-			if f.Type == form.HTML {
+			if f.Type == form.HTML || f.Type == form.Widget {
 				if code, _ := get("/examples/" + ex.Name + "/frame/" + f.Key); code != 200 {
 					t.Fatalf("%s frame %s: %d", ex.Name, f.Key, code)
 				}
@@ -63,7 +64,7 @@ func TestExamples(t *testing.T) {
 					t.Errorf("%s: option %s carries a script", ex.Name, o.Value)
 				}
 			}
-			if strings.Contains(strings.ToLower(f.HTML), "<script") {
+			if f.Type != form.Widget && strings.Contains(strings.ToLower(f.HTML), "<script") {
 				t.Errorf("%s: block %s carries a script", ex.Name, f.Key)
 			}
 		}
@@ -72,6 +73,15 @@ func TestExamples(t *testing.T) {
 		v := url.Values{}
 		for _, f := range ex.State.Fields {
 			if f.Display() {
+				continue
+			}
+			if f.Type == form.Widget {
+				// A widget's value is JSON: its default, else a value of its kind.
+				val := form.DefaultJSON(f)
+				if val == "" {
+					val = map[string]string{"": `"x"`, "string": `"x"`, "number": `1`, "boolean": `true`, "object": `{"a":1}`, "array": `[1]`}[f.Schema]
+				}
+				v.Set(form.InputName(f.Key), val)
 				continue
 			}
 			switch d := f.Default.(type) {

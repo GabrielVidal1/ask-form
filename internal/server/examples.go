@@ -294,7 +294,8 @@ func (h *examplesHandler) frame(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	doc := frameDoc(ex.State, "/examples/"+ex.Name+"/assets/", markup, fit, func(name string) (string, bool) {
+	sdk, csp := frameFor(ex.State.Fields, r.PathValue("key"), r.PathValue("n"))
+	doc := frameDocWith(ex.State, "/examples/"+ex.Name+"/assets/", markup, fit, sdk, func(name string) (string, bool) {
 		a, ok := ex.assets[name]
 		if !ok {
 			return "", false
@@ -303,19 +304,19 @@ func (h *examplesHandler) frame(w http.ResponseWriter, r *http.Request) {
 	})
 	hd := w.Header()
 	baseHeaders(hd)
-	hd.Set("Content-Security-Policy", frameCSP())
+	hd.Set("Content-Security-Policy", csp)
 	hd.Set("X-Frame-Options", "SAMEORIGIN")
 	hd.Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(doc))
 }
 
-// frameMarkup finds an html block (n == "") or a mockup option's markup.
+// frameMarkup finds an html block or a widget (n == "") or a mockup option's markup.
 func frameMarkup(fields []form.Field, key, n string) (string, bool) {
 	for _, f := range fields {
 		if f.Key != key {
 			continue
 		}
-		if n == "" && f.Type == form.HTML {
+		if n == "" && (f.Type == form.HTML || f.Type == form.Widget) {
 			return f.HTML, false
 		}
 		if i, err := strconv.Atoi(n); err == nil && n != "" && i >= 0 && i < len(f.Options) {
