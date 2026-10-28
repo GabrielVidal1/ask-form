@@ -4,7 +4,9 @@
 // The spec is the one the ai-agent's forms use (backend/forms/store.py), so a
 // spec written for one works with the other: text, textarea, number, select,
 // multiselect, radio, checkbox, slider, date, email and secret questions, plus
-// the display-only markdown and html blocks. `file` is not supported here — a
+// the display-only markdown and html blocks, and since v0.6 list, time,
+// datetime, daterange and rating questions, the diff and details blocks and
+// the `showIf` / `requiredIf` conditions. `file` is not supported here — a
 // public page takes no uploads.
 package form
 
@@ -33,6 +35,20 @@ const (
 	Secret      = "secret"
 	Markdown    = "markdown"
 	HTML        = "html"
+	List        = "list"      // rows of text, or of several typed columns
+	Time        = "time"      // HH:MM
+	Datetime    = "datetime"  // YYYY-MM-DDTHH:MM, the respondent's local time
+	Daterange   = "daterange" // {"start","end"}
+	Rating      = "rating"    // one tap on a numbered scale: stars or numbers
+	Diff        = "diff"      // display: a unified diff
+	Details     = "details"   // display: a collapsible section
+)
+
+// Column types of a table-like list.
+const (
+	ColText   = "text"
+	ColNumber = "number"
+	ColSelect = "select"
 )
 
 // OtherValue is the form value of the "Other…" choice; the free text typed
@@ -55,10 +71,13 @@ const (
 	MaxLongChars   = 20000
 	MaxSecretChars = 8000
 	MaxEmailChars  = 254
+	MaxListRows    = 50
+	MaxTableCols   = 8
 )
 
 var fieldTypes = []string{Text, Textarea, Number, Select, Multiselect, Radio,
-	Checkbox, Slider, Date, Email, Secret, Markdown, HTML}
+	Checkbox, Slider, Date, Email, Secret, Markdown, HTML,
+	List, Time, Datetime, Daterange, Rating, Diff, Details}
 
 // Option is one choice of a select / radio / multiselect field. A visual
 // option carries an image (a URL or `{{asset:<file>}}`) and/or an html mockup;
@@ -75,6 +94,15 @@ type Option struct {
 
 // Visual reports whether the option is drawn as a picture or mockup card.
 func (o Option) Visual() bool { return o.Image != "" || o.HTML != "" }
+
+// Column is one column of a table-like list field.
+type Column struct {
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Type        string   `json:"type"`
+	Options     []string `json:"options,omitempty"`
+	Placeholder string   `json:"placeholder,omitempty"`
+}
 
 // Field is one normalised entry of a form's spec.
 type Field struct {
@@ -100,10 +128,18 @@ type Field struct {
 	Default     any      `json:"default,omitempty"`
 	AutoSecret  bool     `json:"autoSecret,omitempty"`
 	CatchAll    bool     `json:"catchAll,omitempty"`
+	Cols        []Column `json:"cols,omitempty"`       // list: the table's columns (spec key `columns`)
+	Style       string   `json:"style,omitempty"`      // rating: stars | numbers
+	Open        bool     `json:"open,omitempty"`       // details: starts expanded
+	ShowIf      *Cond    `json:"showIf,omitempty"`     // drawn only while it holds
+	RequiredIf  *Cond    `json:"requiredIf,omitempty"` // required while it holds
 }
 
+// isBlock reports whether a type is a display-only block.
+func isBlock(t string) bool { return t == Markdown || t == HTML || t == Diff || t == Details }
+
 // Display reports whether the field is a display-only block.
-func (f Field) Display() bool { return f.Type == Markdown || f.Type == HTML }
+func (f Field) Display() bool { return isBlock(f.Type) }
 
 // Choice reports whether the field picks among options.
 func (f Field) Choice() bool {
@@ -167,6 +203,7 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 	}
 	out := make([]Field, 0, len(items)+1)
 	seen := map[string]bool{}
+	kinds := map[string]string{} // key → type, for the conditions that look back
 	for i, m := range items {
 		if m == nil {
 			return nil, fmt.Errorf("field #%d: must be an object", i)
@@ -186,7 +223,7 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 		// A display block never names itself after its heading: a markdown
 		// block labelled "Name" must not take the `name` key and push the
 		// real question to `name-2`.
-		if key == "" && ftype != Markdown && ftype != HTML {
+		if key == "" && !isBlock(ftype) {
 			key = slug(label)
 		}
 		if len(key) > 64 {
@@ -197,7 +234,7 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 			ftype = Secret
 		}
 		var block string
-		if ftype == Markdown || ftype == HTML {
+		if isBlock(ftype) {
 			src := "text"
 			if ftype == HTML {
 				src = "html"
@@ -232,6 +269,24 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 		if g := clip(strings.TrimSpace(str(m["group"])), MaxGroupChars); g != "" {
 			f.Group = g
 		}
+		for _, c := range []struct {
+			name string
+			dst  **Cond
+		}{{"showIf", &f.ShowIf}, {"requiredIf", &f.RequiredIf}} {
+			raw, has := m[c.name]
+			if !has || raw == nil {
+				continue
+			}
+			if c.name == "requiredIf" && f.Display() {
+				continue // a block asks nothing
+			}
+			cond, err := parseCond(raw, kinds)
+			if err != nil {
+				return nil, fmt.Errorf("field %q: %s: %w", key, c.name, err)
+			}
+			*c.dst = cond
+		}
+		kinds[key] = ftype
 		if f.Display() {
 			f.Label = label // a block's heading is optional
 			f.Required = false
@@ -242,6 +297,12 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 				}
 			} else {
 				f.Text = block
+			}
+			if ftype == Details {
+				f.Open = truthy(m["open"])
+				if f.Label == "" {
+					f.Label = "Details"
+				}
 			}
 			out = append(out, f)
 			continue
@@ -305,6 +366,16 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 			}
 			if f.Step != nil && *f.Step <= 0 {
 				f.Step = nil
+			}
+		}
+		switch ftype {
+		case List:
+			if err := listSpec(&f, m); err != nil {
+				return nil, err
+			}
+		case Rating:
+			if err := ratingSpec(&f, m); err != nil {
+				return nil, err
 			}
 		}
 		f.AutoSecret = autoSecret

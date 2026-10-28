@@ -4,10 +4,19 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
+)
+
+var timeRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$`)
+
+// RangeStart and RangeEnd are the input names' suffixes of a daterange.
+const (
+	RangeStart = ".start"
+	RangeEnd   = ".end"
 )
 
 // Input names on the answer page: `f.<key>` carries a field's value and
@@ -43,12 +52,23 @@ func (r Result) OK() bool { return len(r.Errors) == 0 }
 // address trimmed and lowercased, the rest a string. An unanswered optional field is left out (a checkbox is false).
 func Parse(fields []Field, v url.Values) Result {
 	r := Result{Answers: map[string]any{}, Secrets: map[string]string{}, Errors: map[string]string{}}
+	// A hidden field (its showIf fails) is skipped whole — not required, not
+	// answered, whatever the browser sent — and a test on it fails in turn.
+	hidden := map[string]bool{}
+	get := func(k string) (any, bool) { return r.Answers[k], !hidden[k] }
 	for _, f := range fields {
+		if f.ShowIf != nil && !f.ShowIf.Eval(get) {
+			hidden[f.Key] = true
+			continue
+		}
 		if f.Display() {
 			continue
 		}
+		if f.RequiredIf != nil && f.RequiredIf.Eval(get) {
+			f.Required = true
+		}
 		vals := v[InputName(f.Key)]
-		if f.Type != Multiselect && len(vals) > 1 {
+		if f.Type != Multiselect && f.Type != List && len(vals) > 1 {
 			r.Errors[f.Key] = "Give one value only."
 			continue
 		}
@@ -171,6 +191,86 @@ func Parse(fields []Field, v url.Values) Result {
 				continue
 			}
 			r.Answers[f.Key] = s
+		case Time, Datetime:
+			s := strings.TrimSpace(first)
+			if s == "" {
+				if f.Required {
+					r.Errors[f.Key] = "This question is required."
+				}
+				continue
+			}
+			if f.Type == Time && !timeRe.MatchString(s) {
+				r.Errors[f.Key] = "Enter a time (HH:MM)."
+				continue
+			}
+			if f.Type == Datetime {
+				if _, err := time.Parse("2006-01-02T15:04", s); err != nil {
+					if _, err := time.Parse("2006-01-02T15:04:05", s); err != nil {
+						r.Errors[f.Key] = "Enter a date and a time."
+						continue
+					}
+				}
+			}
+			r.Answers[f.Key] = s
+		case Daterange:
+			start := strings.TrimSpace(v.Get(InputName(f.Key) + RangeStart))
+			end := strings.TrimSpace(v.Get(InputName(f.Key) + RangeEnd))
+			if start == "" && end == "" {
+				if f.Required {
+					r.Errors[f.Key] = "This question is required."
+				}
+				continue
+			}
+			if start == "" || end == "" {
+				r.Errors[f.Key] = "Pick both dates."
+				continue
+			}
+			ts, err1 := time.Parse("2006-01-02", start)
+			te, err2 := time.Parse("2006-01-02", end)
+			if err1 != nil || err2 != nil {
+				r.Errors[f.Key] = "Enter dates (YYYY-MM-DD)."
+				continue
+			}
+			if te.Before(ts) {
+				r.Errors[f.Key] = "The end is before the start."
+				continue
+			}
+			r.Answers[f.Key] = map[string]any{"start": start, "end": end}
+		case Rating:
+			s := strings.TrimSpace(first)
+			if s == "" {
+				if f.Required {
+					r.Errors[f.Key] = "This question is required."
+				}
+				continue
+			}
+			n, err := strconv.ParseFloat(s, 64)
+			if err != nil || n != math.Trunc(n) || n < *f.Min || n > *f.Max {
+				r.Errors[f.Key] = "Pick a rating."
+				continue
+			}
+			r.Answers[f.Key] = n
+		case List:
+			rows, n, msg := listAnswer(f, v)
+			if msg != "" {
+				r.Errors[f.Key] = msg
+				continue
+			}
+			if n == 0 {
+				if f.Required {
+					r.Errors[f.Key] = "Add at least one."
+				}
+				continue
+			}
+			if f.Min != nil && float64(n) < *f.Min {
+				r.Errors[f.Key] = "Add at least " + FormatNumber(*f.Min) + "."
+				continue
+			}
+			if float64(n) > *f.Max {
+				r.Errors[f.Key] = "At most " + FormatNumber(*f.Max) + "."
+				continue
+			}
+			r.Answers[f.Key] = rows
 		case Secret:
 			// A pasted token often drags a newline or a space along.
 			s := strings.TrimSpace(first)
@@ -211,6 +311,70 @@ func Parse(fields []Field, v url.Values) Result {
 		}
 	}
 	return r
+}
+
+// listAnswer reads a list field's rows: texts (no columns) or, for a table, one
+// object per row built from the `<name>.<column>` inputs, which line up by
+// position. Blank cells and blank rows are left out. It returns a message when
+// the rows are malformed.
+func listAnswer(f Field, v url.Values) (rows any, n int, msg string) {
+	if len(f.Cols) == 0 {
+		out := []string{}
+		for _, x := range v[InputName(f.Key)] {
+			x = strings.TrimSpace(x)
+			if x == "" {
+				continue
+			}
+			if utf8.RuneCountInString(x) > MaxTextChars {
+				return nil, 0, fmt.Sprintf("Keep each entry under %d characters.", MaxTextChars)
+			}
+			out = append(out, x)
+		}
+		return out, len(out), ""
+	}
+	n = -1
+	for _, c := range f.Cols {
+		l := len(v[InputName(f.Key)+"."+c.Key])
+		if n >= 0 && l != n {
+			return nil, 0, "The rows are malformed — reload and try again."
+		}
+		n = l
+	}
+	if n > 4*MaxListRows {
+		return nil, 0, "Too many rows."
+	}
+	out := []map[string]any{}
+	for i := 0; i < n; i++ {
+		row := map[string]any{}
+		for _, c := range f.Cols {
+			x := strings.TrimSpace(v[InputName(f.Key)+"."+c.Key][i])
+			if x == "" {
+				continue
+			}
+			switch c.Type {
+			case ColNumber:
+				num, err := strconv.ParseFloat(strings.Replace(x, ",", ".", 1), 64)
+				if err != nil || math.IsNaN(num) || math.IsInf(num, 0) {
+					return nil, 0, "Row " + strconv.Itoa(i+1) + ": “" + c.Label + "” must be a number."
+				}
+				row[c.Key] = num
+			case ColSelect:
+				if !contains(c.Options, x) {
+					return nil, 0, "Row " + strconv.Itoa(i+1) + ": pick one of the choices for “" + c.Label + "”."
+				}
+				row[c.Key] = x
+			default:
+				if utf8.RuneCountInString(x) > MaxTextChars {
+					return nil, 0, fmt.Sprintf("Keep each entry under %d characters.", MaxTextChars)
+				}
+				row[c.Key] = x
+			}
+		}
+		if len(row) > 0 {
+			out = append(out, row)
+		}
+	}
+	return out, len(out), ""
 }
 
 // ValidEmail is a deliberately plain check of an address: one @, something
@@ -265,13 +429,40 @@ func AnswerText(f Field, v any) string {
 	case []any:
 		parts := make([]string, 0, len(t))
 		for _, x := range t {
+			if m, ok := x.(map[string]any); ok {
+				parts = append(parts, rowText(f, m))
+				continue
+			}
 			parts = append(parts, f.OptionLabel(str(x)))
 		}
+		if f.Type == List {
+			return strings.Join(parts, "; ")
+		}
 		return strings.Join(parts, ", ")
+	case []map[string]any:
+		parts := make([]string, 0, len(t))
+		for _, m := range t {
+			parts = append(parts, rowText(f, m))
+		}
+		return strings.Join(parts, "; ")
 	case map[string]any:
 		if t["secret"] == true {
 			return fmt.Sprintf("🔒 secret given (%v chars) — not shown", t["chars"])
 		}
+		if f.Type == Daterange {
+			return str(t["start"]) + " → " + str(t["end"])
+		}
 	}
 	return str(v)
+}
+
+// rowText is one table row as a line: its cells in column order.
+func rowText(f Field, m map[string]any) string {
+	var parts []string
+	for _, c := range f.Cols {
+		if x, ok := m[c.Key]; ok {
+			parts = append(parts, str(x))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
