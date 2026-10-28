@@ -38,7 +38,7 @@ type FormJSON struct {
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
 	Status      string `json:"status"`
-	URL    string `json:"url,omitempty"`
+	URL         string `json:"url,omitempty"`
 	// PublicURL: the link that works from any device, when url is the local one.
 	PublicURL string         `json:"publicUrl,omitempty"`
 	CreatedAt time.Time      `json:"createdAt"`
