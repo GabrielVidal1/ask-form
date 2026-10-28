@@ -17,25 +17,30 @@
 {{end}}
 
 {{define "foot"}}
-<footer class="foot">ask-form · questions from an agent, answered by you</footer>
 </body>
 </html>
 {{end}}
 
+{{define "demo-banner"}}<aside class="demo-banner">
+  <div class="demo-banner-in">
+    <p><strong>Example form.</strong> What the person gets when an agent runs <code>ask-form create</code>; sending shows the JSON the agent reads back. Nothing is stored.</p>
+    <p class="demo-links"><a href="{{.Index}}">← All examples</a> · <a href="{{.Spec}}">Field spec (JSON)</a></p>
+  </div>
+</aside>{{end}}
+
 {{define "form"}}{{template "head" .}}
-<main class="wrap">
-  {{with .Demo}}
-  <aside class="demo-note">
-    <strong>Example form.</strong> This is what the person gets when an agent runs <code>ask-form create</code>. Try it: sending shows the JSON the agent would read back. Nothing is stored.
-    <span class="demo-links"><a href="{{.Index}}">← All examples</a> · <a href="{{.Spec}}">Field spec (JSON)</a></span>
-  </aside>
-  {{end}}
+{{with .Demo}}{{template "demo-banner" .}}{{end}}
+<main class="wrap{{if .Paged}} has-toc{{end}}">
   <header class="top">
-    <p class="eyebrow">{{if .Demo}}Example · nothing is stored{{else if .Multi}}Open to everyone with the link · until {{.Expires}}{{else}}A few questions · open until {{.Expires}}{{end}}</p>
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
     {{if and .ShowCount .Count}}<p class="count">{{.Count}} {{if eq .Count 1}}person has{{else}}people have{{end}} answered so far.</p>{{end}}
   </header>
+  {{if .Paged}}<nav class="toc" aria-label="Sections">
+    <p class="toc-h">On this form</p>
+    <ol>{{range .Groups}}<li><a href="#{{.ID}}" data-toc="{{.ID}}"><span class="toc-text">{{.Nav}}</span><span class="toc-state" aria-hidden="true"></span></a></li>{{end}}</ol>
+  </nav>{{end}}
+  <div class="page">
 
   {{if .Errors}}
   <div class="errors" role="alert" id="errors">
@@ -51,7 +56,7 @@
     </div>
 
     {{range $gi, $g := .Groups}}
-    <section class="group" data-group="{{$gi}}" data-title="{{$g.Title}}">
+    <section class="group" id="{{$g.ID}}" data-group="{{$gi}}" data-title="{{$g.Title}}">
       {{if $g.Title}}<h2 class="group-title">{{$g.Title}}</h2>{{end}}
       {{range $g.Fields}}{{template "field" .}}{{end}}
     </section>
@@ -69,10 +74,13 @@
       <button type="submit" name="action" value="decline" class="btn ghost" formnovalidate>Decline this form</button>
     </details>{{end}}
   </form>
+  </div>
 </main>
 {{template "foot" .}}{{end}}
 
 {{define "label"}}<span class="label-text">{{inline .Label}}</span>{{if .Required}}<span class="req" aria-hidden="true">*</span><span class="sr">(required)</span>{{end}}{{end}}
+
+{{define "zoom-icon"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>{{end}}
 
 {{define "other"}}<div class="other">
   <input type="text" name="{{.OtherName}}" value="{{.OtherText}}" maxlength="2000" placeholder="Please specify…" aria-label="Other — please specify" data-other-for="{{.Name}}">
@@ -103,20 +111,20 @@
           <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}{{if and $.Required (ne $.Type "multiselect")}} required{{end}}>
           <span class="tick" aria-hidden="true"></span>
           {{if $o.Image}}
-            <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"></span>
+            <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"><a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size">{{template "zoom-icon"}}</a></span>
           {{else if $o.HTML}}
-            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span></span>
+            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size" data-zoom-frame>{{template "zoom-icon"}}</a></span>
           {{else}}
             <span class="visual text-card"><span>{{inline $o.Label}}</span></span>
           {{end}}
           {{if and $o.Visual (not $o.Bare)}}<span class="caption"><span>{{inline $o.Label}}</span>{{if $o.Description}}<small>{{inline $o.Description}}</small>{{end}}</span>{{end}}
-          {{if $o.Image}}<a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size">⤢</a>{{else if $o.HTML}}<a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" data-zoom-frame>⤢</a>{{end}}
         </label>
       {{end}}
-        <label class="card other-card">
-          <input class="card-input" type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
-          <span class="tick" aria-hidden="true"></span>
-          <span class="visual text-card"><span>＋ Other…</span></span>
+      </div>
+      <div class="choices other-row">
+        <label class="choice">
+          <input type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
+          <span class="choice-text"><span>Other…</span></span>
         </label>
       </div>
       {{template "other" .}}
@@ -177,7 +185,6 @@
 {{define "closed"}}{{template "head" .}}
 <main class="wrap closed" data-closed="{{.ID}}">
   <header class="top">
-    <p class="eyebrow">{{if .Mine}}answered{{else}}{{.Status}}{{end}}</p>
     <h1>{{.Title}}</h1>
   </header>
   {{if or .Mine (eq .Status "submitted")}}
@@ -211,7 +218,7 @@
 <main class="wrap">
   <header class="top">
     <p class="eyebrow">ask-form · examples</p>
-    <h1>Three forms an agent might send</h1>
+    <h1>Forms an agent might send</h1>
     <div class="md desc"><p>Each one is a real field spec, the JSON an agent passes to <code>ask-form create</code>. Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored.</p></div>
   </header>
   <ul class="examples">
@@ -231,9 +238,9 @@
 {{template "foot" .}}{{end}}
 
 {{define "demo-result"}}{{template "head" .}}
+{{template "demo-banner" .Demo}}
 <main class="wrap closed">
   <header class="top">
-    <p class="eyebrow">Example · nothing was stored</p>
     <h1>{{.Title}}</h1>
   </header>
   <p class="lead ok">✓ This is what the agent's <code>ask-form wait</code> would print:</p>

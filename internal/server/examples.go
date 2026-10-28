@@ -179,6 +179,7 @@ type demoResultPage struct {
 	Title, Nonce, JSON, Back string
 	PageCSS                  template.CSS
 	Recap                    []recapItem
+	Demo                     *demoInfo
 }
 
 func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +234,8 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 	st.CreatedAt = now.Add(-3 * time.Minute).Truncate(time.Second)
 	st.ExpiresAt = st.CreatedAt.Add(24 * time.Hour)
 	b, _ := json.MarshalIndent(toJSON(st, false, true), "", "  ")
-	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: "/examples/" + ex.Name, Recap: recap(st.Fields, res.Answers)}
+	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: "/examples/" + ex.Name, Recap: recap(st.Fields, res.Answers),
+		Demo: &demoInfo{Index: "/examples", Spec: "/examples/" + ex.Name + "/spec.json"}}
 	log.Printf("example %s answered (%d answers, not stored)", ex.Name, len(res.Answers))
 	renderPage(w, "demo-result", p, pageCSP(p.Nonce), http.StatusOK)
 }

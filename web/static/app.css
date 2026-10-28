@@ -47,7 +47,8 @@ h1 { margin: 0 0 10px; font-size: clamp(24px, 5vw, 32px); line-height: 1.2; lett
 .group-title { margin: 0 0 14px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--primary)); }
 .field { margin: 0 0 22px; scroll-margin-top: 80px; }
 .field:last-child { margin-bottom: 0; }
-.catchall { border: 1px dashed hsl(var(--border)); border-radius: calc(var(--radius) + 4px); padding: 16px 20px; margin-bottom: 16px; }
+.catchall { padding: 4px 0; margin-bottom: 16px; scroll-margin-top: 24px; }
+.catchall textarea { border-color: transparent; background: hsl(var(--muted)); }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .label, legend.label { display: block; font-weight: 600; margin-bottom: 8px; padding: 0; }
 .req { color: hsl(var(--destructive)); margin-left: 3px; }
@@ -103,16 +104,25 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .visual iframe { display: block; width: 100%; height: 100%; border: 0; pointer-events: none; }
 .cover { position: absolute; inset: 0; }
 .text-card { display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; font-size: 14px; color: hsl(var(--muted-foreground)); aspect-ratio: 4/3; }
-.other-card .text-card { border: 1px dashed hsl(var(--border)); }
-/* A text card (Other…, or a plain option among pictures) takes the row's
-   height, never a picture box of its own: alone on a row it stays compact. */
-.card.plain .text-card, .other-card .text-card { aspect-ratio: auto; flex: 1; min-height: 64px; }
+/* A plain option among pictures takes the row's height, never a picture box
+   of its own: alone on a row it stays compact. */
+.card.plain .text-card { aspect-ratio: auto; flex: 1; min-height: 64px; }
+/* "Other…" next to cards is a plain row, like a text-only choice. */
+.other-row { margin-top: 10px; }
 .caption { display: grid; padding: 8px 10px; font-size: 14px; line-height: 1.35; }
 .tick { position: absolute; top: 7px; right: 7px; z-index: 2; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: rgb(0 0 0 / .28); box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
 .multi .tick { border-radius: 6px; }
 .card:has(.card-input:checked) .tick { background: hsl(var(--primary)); }
 .card:has(.card-input:checked) .tick::after { content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.zoom { position: absolute; top: 7px; left: 7px; z-index: 2; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: rgb(0 0 0 / .45); color: #fff; text-decoration: none; font-size: 14px; }
+.zoom { position: absolute; right: 8px; bottom: 8px; z-index: 2; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: rgb(20 16 12 / .6); color: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .25); transition: opacity .15s, background-color .15s; }
+.zoom:hover { background: rgb(20 16 12 / .82); }
+.zoom svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* With a mouse it shows on the hovered card only; a touch screen has no
+   hover, so there it stays. */
+@media (hover: hover) {
+  .zoom { opacity: 0; }
+  .card:hover .zoom, .card:has(:focus-visible) .zoom { opacity: 1; }
+}
 
 /* actions */
 .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
@@ -129,7 +139,6 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .recap { margin: 20px 0 0; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); padding: 6px 16px; }
 .recap dt { font-weight: 600; margin-top: 10px; }
 .recap dd { margin: 2px 0 10px; color: hsl(var(--muted-foreground)); white-space: pre-wrap; overflow-wrap: anywhere; }
-.foot { text-align: center; font-size: 12px; color: hsl(var(--muted-foreground)); padding: 8px 16px 32px; }
 
 /* ── what app.js adds ─────────────────────────────────────────────────────── */
 .pager { position: sticky; top: 0; z-index: 5; background: hsl(var(--background) / .92); backdrop-filter: blur(8px); padding: 10px 0; margin-bottom: 12px; }
@@ -141,8 +150,10 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .pager-seg.current { background: hsl(var(--primary)); }
 .pager-seg.pending::after, .pending-dot { content: ""; position: absolute; top: -4px; right: -1px; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--primary)); animation: ping 1.6s infinite; }
 .pager-title { margin-top: 4px; font-size: 13px; font-weight: 600; }
-.js .paged .group:not(.current) { display: none; }
-.js .paged .group-title { display: none; }
+@media (max-width: 1023.98px) {
+  .js .paged .group:not(.current) { display: none; }
+  .js .paged .group-title { display: none; }
+}
 .nav { display: flex; gap: 10px; justify-content: space-between; margin: 4px 0 8px; }
 .label .pending-dot { position: relative; display: inline-block; top: -2px; right: auto; margin-left: 6px; }
 @keyframes ping { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
@@ -164,9 +175,13 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 @media (min-width: 720px) { .confirm { align-items: center; } .confirm-box { border-radius: 18px; } }
 
 /* examples */
-.demo-note { border: 1px solid hsl(var(--primary) / .35); background: hsl(var(--primary) / .07); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 22px; font-size: 14.5px; }
-.demo-note code, .json, .lead code, .help code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
-.demo-links { display: block; margin-top: 6px; }
+/* Opaque (the page scrolls under it on a desktop): the tint is mixed in. */
+.demo-banner { background: linear-gradient(hsl(var(--primary) / .1), hsl(var(--primary) / .1)), hsl(var(--background)); border-bottom: 1px solid hsl(var(--primary) / .3); font-size: 14.5px; }
+.demo-banner-in { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 24px; max-width: 1440px; margin: 0 auto; padding: 12px 16px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+.demo-banner p { margin: 0; }
+.demo-banner .demo-links { margin-left: auto; white-space: nowrap; }
+.demo-banner code { background: hsl(var(--muted)); padding: .1em .35em; border-radius: 5px; }
+.demo-banner code, .json, .lead code, .help code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
 .examples { list-style: none; padding: 0; margin: 0 0 20px; display: grid; gap: 12px; }
 .example-card { position: relative; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: calc(var(--radius) + 4px); }
 .example-card:hover { border-color: hsl(var(--primary) / .6); }
@@ -182,3 +197,36 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 
 /* multi forms */
 .count { margin: 10px 0 0; font-size: 14px; color: hsl(var(--muted-foreground)); }
+
+/* ── desktop: the whole form at once, its sections listed in the margin ──── */
+.toc { display: none; }
+.toc-h { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 12px; border-left: 2px solid hsl(var(--border)); font-size: 14.5px; line-height: 1.35; color: hsl(var(--muted-foreground)); text-decoration: none; }
+.toc a:hover { color: hsl(var(--foreground)); }
+.toc a.current { border-left-color: hsl(var(--primary)); background: hsl(var(--primary) / .07); border-radius: 0 8px 8px 0; color: hsl(var(--foreground)); font-weight: 600; }
+.toc-state { flex: none; }
+.toc a.pending .toc-state { width: 7px; height: 7px; margin-right: 4px; border-radius: 50%; background: hsl(var(--primary)); }
+.toc a.done .toc-state { position: relative; width: 16px; height: 16px; border-radius: 50%; background: hsl(var(--primary) / .18); }
+.toc a.done .toc-state::after { content: ""; position: absolute; left: 5.5px; top: 3px; width: 4px; height: 8px; border: solid hsl(var(--primary)); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.toc-progress { margin: 14px 0 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+.toc-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: hsl(var(--muted)); overflow: hidden; }
+.toc-bar i { display: block; height: 100%; background: hsl(var(--primary)); transition: width .2s; }
+@media (min-width: 1024px) {
+  /* The title across the top, then the section list beside the form. */
+  .wrap.has-toc { max-width: 1008px; display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-areas: "top top" "toc page"; column-gap: 56px; padding-top: 48px; padding-left: 24px; padding-right: 24px; }
+  .has-toc .top { grid-area: top; }
+  .has-toc .top .desc { max-width: 720px; }
+  .has-toc .page { grid-area: page; min-width: 0; }
+  .has-toc .toc { display: block; grid-area: toc; position: sticky; top: 24px; align-self: start; }
+  .has-toc .group { scroll-margin-top: 24px; }
+  .paged .pager, .paged .nav { display: none; }
+  /* An example's banner stays pinned above the page. */
+  .demo-banner { position: sticky; top: 0; z-index: 10; }
+  .demo-banner-in { flex-wrap: nowrap; }
+  .demo-banner-in > p:first-child { flex: 1; min-width: 0; }
+  .demo-banner ~ .wrap .toc { top: 88px; }
+  .demo-banner ~ .wrap .group { scroll-margin-top: 88px; }
+  .demo-banner ~ .wrap .field { scroll-margin-top: 128px; }
+}
+@media (prefers-reduced-motion: reduce) { .toc-bar i { transition: none; } }

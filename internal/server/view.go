@@ -29,6 +29,8 @@ type pageField struct {
 
 type pageGroup struct {
 	Title  string
+	ID     string // anchor the desktop section list links to
+	Nav    string // its entry there: the title, else "Section N"
 	Fields []pageField
 }
 
@@ -129,6 +131,13 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 	p.PageCSS = template.CSS(css.String())
 	p.Groups, p.CatchAll = groupFields(fields)
 	p.Paged = len(p.Groups) > 1
+	for i := range p.Groups {
+		g := &p.Groups[i]
+		g.ID, g.Nav = fmt.Sprintf("g%d", i+1), g.Title
+		if g.Nav == "" {
+			g.Nav = fmt.Sprintf("Section %d", i+1)
+		}
+	}
 	return p
 }
 

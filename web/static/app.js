@@ -1,6 +1,7 @@
 // ask-form answer page — progressive enhancement. The page works without it;
-// this adds group paging, "Other…" niceties, a local draft, a confirm step, a
-// fullscreen viewer for pictures and mockups, and auto-sized html blocks.
+// this adds group paging (on a phone; a desktop shows every group and tracks
+// them in the section list), "Other…" niceties, a local draft, a confirm step,
+// a fullscreen viewer for pictures and mockups, and auto-sized html blocks.
 (function () {
   "use strict";
   var root = document.documentElement;
@@ -164,8 +165,13 @@
   }
 
   // ── pages ─────────────────────────────────────────────────────────────────
+  // A phone pages through the groups; a desktop shows them all, with the
+  // section list (.toc) beside them. CSS picks which: the list is displayed
+  // exactly when the page is wide enough.
   var groups = $all(".group", form);
   var current = 0, pager = null, nav = null;
+  var toc = document.querySelector(".toc"), tocBar = null, tocProgress = null;
+  function wide() { return !!toc && getComputedStyle(toc).display !== "none"; }
   function groupOf(el) { return groups.indexOf(el.closest(".group")); }
   function groupPending(g) {
     return $all(".field", groups[g]).some(function (f) { return fields.indexOf(f) >= 0 && unanswered(f); });
@@ -178,7 +184,8 @@
     if (focus) {
       var first = $all(".field", groups[current]).filter(unanswered)[0];
       var el = first && first.querySelector("input:not([type=hidden]), select, textarea");
-      window.scrollTo({ top: form.getBoundingClientRect().top + window.scrollY - 8 });
+      if (wide()) groups[current].scrollIntoView({ block: "start" });
+      else window.scrollTo({ top: form.getBoundingClientRect().top + window.scrollY - 8 });
       if (el && focus === "field") el.focus({ preventScroll: true });
     }
   }
@@ -213,7 +220,48 @@
     nav.back = back;
     nav.next = next;
   }
+  if (toc) {
+    tocProgress = make("p", "toc-progress");
+    var bar = make("div", "toc-bar");
+    tocBar = make("i");
+    bar.appendChild(tocBar);
+    toc.appendChild(tocProgress);
+    toc.appendChild(bar);
+    $all("a[data-toc]", toc).forEach(function (a, i) {
+      a.addEventListener("click", function (e) {
+        if (!wide()) return;
+        e.preventDefault();
+        var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        groups[i].scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+      });
+    });
+  }
+  // On a desktop the current group is the one scrolled to (the last whose top
+  // is above a third of the window, the last one at the bottom of the page).
+  function spy() {
+    if (!wide()) return;
+    var line = window.innerHeight / 3, at = 0;
+    groups.forEach(function (el, i) { if (el.getBoundingClientRect().top <= line) at = i; });
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) at = groups.length - 1;
+    if (at === current) return;
+    current = at;
+    seen[at] = true;
+    groups.forEach(function (el, i) { el.classList.toggle("current", i === current); });
+    refresh();
+  }
   function refresh() {
+    if (toc) {
+      $all("a[data-toc]", toc).forEach(function (a, i) {
+        var qs = $all(".field", groups[i]).filter(function (f) { return fields.indexOf(f) >= 0; });
+        a.className = (i === current ? "current" : "") + (qs.length ? (qs.some(unanswered) ? " pending" : " done") : "");
+        if (i === current) a.setAttribute("aria-current", "location");
+        else a.removeAttribute("aria-current");
+      });
+      var asked = fields.filter(function (f) { return !f.closest(".catchall"); });
+      var n = asked.filter(function (f) { return !unanswered(f); }).length;
+      tocProgress.textContent = n + " of " + asked.length + " answered";
+      tocBar.style.width = (asked.length ? Math.round(100 * n / asked.length) : 0) + "%";
+    }
     fields.forEach(function (f) {
       var lab = f.querySelector(".label");
       var dot = lab && lab.querySelector(".pending-dot");
@@ -242,6 +290,19 @@
       }
     }
     show(start, false);
+    spy();
+    var ticking = false, wasWide = wide();
+    window.addEventListener("scroll", function () {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () { ticking = false; spy(); });
+    }, { passive: true });
+    window.addEventListener("resize", function () {
+      var w = wide();
+      if (w === wasWide) return;
+      wasWide = w;
+      if (w) spy(); else show(current, false);
+    });
     // The error summary's links land on the field's page.
     $all(".errors a").forEach(function (a) {
       a.addEventListener("click", function (e) {
