@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
@@ -21,6 +22,11 @@ import (
 const MaxBody = 64 << 10
 
 const cookieName = "ask_form"
+
+// sentCookie marks a browser that answered a multi form: `<n>.<mac>`, so it
+// gets its own recap back and not the form again. It is a courtesy, not a
+// lock: a private window answers again.
+const sentCookie = "ask_form_sent"
 
 var notFoundPage = []byte(`<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 	`<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex, nofollow">` +
@@ -155,11 +161,32 @@ func (s *Server) formPage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusFound)
 		return
 	}
-	if st.Status != store.Pending {
-		s.renderClosed(w, st)
+	if mine := s.answered(r, st); st.Status != store.Pending || mine != nil {
+		s.renderClosed(w, st, mine)
 		return
 	}
 	s.renderForm(w, st, nil, nil, http.StatusOK)
+}
+
+func (s *Server) sentMAC(st store.State, n int) string {
+	return mac(s.key, "sent", st.ID, st.TokenHash, strconv.Itoa(n))
+}
+
+// answered is the response this browser sent to a multi form, nil if none.
+func (s *Server) answered(r *http.Request, st store.State) *store.Response {
+	if !st.Multi {
+		return nil
+	}
+	c, err := r.Cookie(sentCookie)
+	if err != nil {
+		return nil
+	}
+	ns, sum, _ := strings.Cut(c.Value, ".")
+	n, err := strconv.Atoi(ns)
+	if err != nil || n < 1 || n > len(st.Responses) || !macEqual(sum, s.sentMAC(st, n)) {
+		return nil
+	}
+	return &st.Responses[n-1]
 }
 
 func (s *Server) renderForm(w http.ResponseWriter, st store.State, values url.Values, errs map[string]string, code int) {
@@ -172,15 +199,23 @@ type closedPage struct {
 	ID, Title, Status, When, Nonce string
 	PageCSS                        template.CSS
 	Recap                          []recapItem
+	Multi, Mine                    bool // a multi form; this browser answered it
+	Count                          int  // its answers
 }
 
-func (s *Server) renderClosed(w http.ResponseWriter, st store.State) {
-	p := closedPage{ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce()}
+// renderClosed is the page of a form that takes no more answers from this
+// visitor: closed, or a multi form this browser answered (mine).
+func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store.Response) {
+	p := closedPage{ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce(), Multi: st.Multi, Count: len(st.Responses)}
 	if st.ClosedAt != nil {
 		p.When = st.ClosedAt.UTC().Format("2 Jan 2006, 15:04 UTC")
 	}
-	if st.Status == store.Submitted {
-		p.Recap = recap(st)
+	switch {
+	case mine != nil:
+		p.Mine, p.When = true, mine.At.UTC().Format("2 Jan 2006, 15:04 UTC")
+		p.Recap = recap(st.Fields, mine.Answers)
+	case st.Status == store.Submitted:
+		p.Recap = recap(st.Fields, st.Answers)
 	}
 	s.render(w, "closed", p, pageCSP(p.Nonce), http.StatusOK)
 }
@@ -265,19 +300,33 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		s.message(w, http.StatusBadRequest, "Not sent", "That submission looked automated and was not recorded.")
 		return
 	}
-	if st.Status != store.Pending {
-		s.renderClosed(w, st)
+	if mine := s.answered(r, st); st.Status != store.Pending || mine != nil {
+		s.renderClosed(w, st, mine)
 		return
 	}
 	var err error
 	switch v.Get("action") {
 	case "decline":
+		if st.Multi {
+			s.message(w, http.StatusBadRequest, "Nothing to decline", "This form is open to several people: just leave it unanswered.")
+			return
+		}
 		st, err = s.store.Close(st.ID, store.Declined, nil, nil)
 	case "submit", "":
 		res := form.Parse(st.Fields, v)
 		if !res.OK() {
 			s.renderForm(w, st, v, res.Errors, http.StatusUnprocessableEntity)
 			return
+		}
+		if st.Multi {
+			var n int
+			if st, n, err = s.store.Answer(st.ID, res.Answers); err == nil {
+				http.SetCookie(w, &http.Cookie{
+					Name: sentCookie, Value: strconv.Itoa(n) + "." + s.sentMAC(st, n), Path: Prefix + st.ID,
+					MaxAge: int(time.Until(st.ExpiresAt).Seconds()) + 7*24*3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+				})
+			}
+			break
 		}
 		st, err = s.store.Close(st.ID, store.Submitted, res.Answers, res.Secrets)
 	default:

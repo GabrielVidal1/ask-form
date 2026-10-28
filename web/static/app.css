@@ -55,7 +55,7 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .help { margin-top: 6px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
 
 /* controls */
-input[type=text], input[type=number], input[type=date], input[type=password], select, textarea {
+input[type=text], input[type=email], input[type=number], input[type=date], input[type=password], select, textarea {
   width: 100%; font: inherit; color: inherit;
   background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 10px;
   padding: 10px 12px; min-height: 44px;
@@ -179,3 +179,6 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .closed .actions { justify-content: flex-start; margin-top: 20px; }
 .closed .actions .btn { text-decoration: none; display: inline-flex; align-items: center; }
 .closed .group-title { margin-top: 28px; }
+
+/* multi forms */
+.count { margin: 10px 0 0; font-size: 14px; color: hsl(var(--muted-foreground)); }

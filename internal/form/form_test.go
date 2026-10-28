@@ -171,3 +171,21 @@ func TestBlockLabelDoesNotTakeAQuestionKey(t *testing.T) {
 		t.Fatalf("keys: %q %q", f[0].Key, f[1].Key)
 	}
 }
+
+func TestEmail(t *testing.T) {
+	fields, err := Normalize(json.RawMessage(`[{"key":"mail","type":"email","required":true}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for in, want := range map[string]string{" Lea@Example.COM ": "lea@example.com", "a.b+c@sub.example.fr": "a.b+c@sub.example.fr"} {
+		r := Parse(fields, url.Values{"f.mail": {in}})
+		if !r.OK() || r.Answers["mail"] != want {
+			t.Fatalf("%q: %+v", in, r)
+		}
+	}
+	for _, in := range []string{"lea", "lea@", "@example.com", "lea@example", "lea@@example.com", "lea @example.com", "lea@-x.com", "Léa <lea@example.com>", ""} {
+		if r := Parse(fields, url.Values{"f.mail": {in}}); r.OK() {
+			t.Fatalf("%q accepted: %+v", in, r.Answers)
+		}
+	}
+}

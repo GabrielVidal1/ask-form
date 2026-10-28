@@ -69,7 +69,11 @@ Each release also carries a build provenance attestation:
 - **First visit**: the token is traded for an `HttpOnly; Secure; SameSite=Lax`
   cookie scoped to `/f/<id>`, followed by a 302 to the clean URL.
 - **One answer, then closed**: the first submission closes the form. It
-  expires after 24 h by default.
+  expires after 24 h by default. A `--multi` form shares one link between
+  everyone who should answer: it takes one answer per submission (up to
+  `--max`, at most 1000) until it expires or is closed. It can't hold secret
+  fields, and a signed cookie shows each browser its own answers, never
+  anyone else's.
 - **Identical 404s** for an unknown form and for a bad or missing token, with
   the same work done in both cases.
 - **Headers** on every response: `Referrer-Policy: no-referrer`,

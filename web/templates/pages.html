@@ -31,9 +31,10 @@
   </aside>
   {{end}}
   <header class="top">
-    <p class="eyebrow">{{if .Demo}}Example · nothing is stored{{else}}A few questions · open until {{.Expires}}{{end}}</p>
+    <p class="eyebrow">{{if .Demo}}Example · nothing is stored{{else if .Multi}}Open to everyone with the link · until {{.Expires}}{{else}}A few questions · open until {{.Expires}}{{end}}</p>
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
+    {{if and .Multi .Count}}<p class="count">{{.Count}} {{if eq .Count 1}}person has{{else}}people have{{end}} answered so far.</p>{{end}}
   </header>
 
   {{if .Errors}}
@@ -62,7 +63,7 @@
       <button type="submit" name="action" value="submit" class="btn primary">Send answers</button>
     </div>
 
-    {{if not .Demo}}<details class="decline">
+    {{if not (or .Demo .Multi)}}<details class="decline">
       <summary>Can't or won't answer?</summary>
       <p>Declining tells the asker you won't answer. The form closes for good.</p>
       <button type="submit" name="action" value="decline" class="btn ghost" formnovalidate>Decline this form</button>
@@ -155,6 +156,8 @@
       <output for="{{.DOMID}}-in">{{.Value}}</output>
     </div>
     <div class="range-ends"><span>{{.Num.Min}}</span><span>{{.Num.Max}}</span></div>
+  {{else if eq .Type "email"}}
+    <input id="{{.DOMID}}-in" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" name="{{.Name}}" value="{{.Value}}" maxlength="254"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
   {{else if eq .Type "date"}}
     <input id="{{.DOMID}}-in" type="date" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
   {{else if eq .Type "secret"}}
@@ -174,11 +177,12 @@
 {{define "closed"}}{{template "head" .}}
 <main class="wrap closed" data-closed="{{.ID}}">
   <header class="top">
-    <p class="eyebrow">{{.Status}}</p>
+    <p class="eyebrow">{{if .Mine}}answered{{else}}{{.Status}}{{end}}</p>
     <h1>{{.Title}}</h1>
   </header>
-  {{if eq .Status "submitted"}}
+  {{if or .Mine (eq .Status "submitted")}}
     <p class="lead ok">✓ Thanks — your answers were sent{{if .When}} on {{.When}}{{end}}.</p>
+    {{if .Multi}}<p class="count">{{if eq .Count 1}}You're the first to answer.{{else}}{{.Count}} people have answered so far.{{end}}</p>{{end}}
     {{if .Recap}}
     <dl class="recap">
       {{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}
@@ -186,6 +190,8 @@
     {{end}}
   {{else if eq .Status "declined"}}
     <p class="lead">You declined this form — nothing else to do.</p>
+  {{else if eq .Status "closed"}}
+    <p class="lead">This form is closed{{if .When}} since {{.When}}{{end}}: it took {{.Count}} {{if eq .Count 1}}answer{{else}}answers{{end}}. Thanks for stopping by.</p>
   {{else if eq .Status "revoked"}}
     <p class="lead">This form was withdrawn by whoever asked — no answer needed.</p>
   {{else}}

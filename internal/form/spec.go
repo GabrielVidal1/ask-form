@@ -3,8 +3,8 @@
 //
 // The spec is the one the ai-agent's forms use (backend/forms/store.py), so a
 // spec written for one works with the other: text, textarea, number, select,
-// multiselect, radio, checkbox, slider, date and secret questions, plus the
-// display-only markdown and html blocks. `file` is not supported here — a
+// multiselect, radio, checkbox, slider, date, email and secret questions, plus
+// the display-only markdown and html blocks. `file` is not supported here — a
 // public page takes no uploads.
 package form
 
@@ -29,6 +29,7 @@ const (
 	Checkbox    = "checkbox"
 	Slider      = "slider"
 	Date        = "date"
+	Email       = "email"
 	Secret      = "secret"
 	Markdown    = "markdown"
 	HTML        = "html"
@@ -53,10 +54,11 @@ const (
 	MaxTextChars   = 2000
 	MaxLongChars   = 20000
 	MaxSecretChars = 8000
+	MaxEmailChars  = 254
 )
 
 var fieldTypes = []string{Text, Textarea, Number, Select, Multiselect, Radio,
-	Checkbox, Slider, Date, Secret, Markdown, HTML}
+	Checkbox, Slider, Date, Email, Secret, Markdown, HTML}
 
 // Option is one choice of a select / radio / multiselect field. A visual
 // option carries an image (a URL or `{{asset:<file>}}`) and/or an html mockup;

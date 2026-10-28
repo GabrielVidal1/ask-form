@@ -39,8 +39,8 @@ func (r Result) OK() bool { return len(r.Errors) == 0 }
 // min/max, ISO dates, length caps, one value per single-valued field.
 //
 // Shapes: multiselect → []string, checkbox → bool, number/slider → float64
-// (an integer when it is one), secret → {"secret":true,"chars":N}, the rest a
-// string. An unanswered optional field is left out (a checkbox is false).
+// (an integer when it is one), secret → {"secret":true,"chars":N}, email → the
+// address trimmed and lowercased, the rest a string. An unanswered optional field is left out (a checkbox is false).
 func Parse(fields []Field, v url.Values) Result {
 	r := Result{Answers: map[string]any{}, Secrets: map[string]string{}, Errors: map[string]string{}}
 	for _, f := range fields {
@@ -158,6 +158,19 @@ func Parse(fields []Field, v url.Values) Result {
 				continue
 			}
 			r.Answers[f.Key] = s
+		case Email:
+			s := strings.ToLower(strings.TrimSpace(first))
+			if s == "" {
+				if f.Required {
+					r.Errors[f.Key] = "This question is required."
+				}
+				continue
+			}
+			if !ValidEmail(s) {
+				r.Errors[f.Key] = "Enter an email address, like name@example.com."
+				continue
+			}
+			r.Answers[f.Key] = s
 		case Secret:
 			// A pasted token often drags a newline or a space along.
 			s := strings.TrimSpace(first)
@@ -198,6 +211,30 @@ func Parse(fields []Field, v url.Values) Result {
 		}
 	}
 	return r
+}
+
+// ValidEmail is a deliberately plain check of an address: one @, something
+// before it, a dotted domain of letters, digits and dashes after it, no
+// spaces, at most MaxEmailChars. Whether it receives mail is not its job.
+func ValidEmail(s string) bool {
+	if len(s) > MaxEmailChars || strings.ContainsAny(s, " \t\r\n<>(),;:\"[]\\") {
+		return false
+	}
+	local, domain, ok := strings.Cut(s, "@")
+	if !ok || local == "" || len(local) > 64 || strings.Contains(domain, "@") || !strings.Contains(domain, ".") {
+		return false
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c > 127) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // FormatNumber prints a number without a trailing ".0".

@@ -271,3 +271,88 @@ func TestRobotsTxt(t *testing.T) {
 		}
 	}
 }
+
+func TestMultiAnswersThroughRelay(t *testing.T) {
+	rg := newRig(t)
+	fields := json.RawMessage(`[{"key":"pick","type":"radio","required":true,"options":["checklist","tour"]},{"key":"email","type":"email"}]`)
+	if code, f := rg.api(t, "POST", "/v1/forms", map[string]any{"title": "Vote", "multi": true,
+		"fields": json.RawMessage(`[{"key":"pw","type":"secret"}]`)}, nil); code != http.StatusBadRequest {
+		t.Fatalf("multi form with a secret: %d %v", code, f)
+	}
+	code, f := rg.api(t, "POST", "/v1/forms", map[string]any{"title": "Vote", "multi": true, "maxAnswers": 3, "fields": fields}, nil)
+	if code != http.StatusCreated || f["multi"] != true || f["answerCount"] != 0.0 {
+		t.Fatalf("create: %d %v", code, f)
+	}
+	id, link := f["id"].(string), f["url"].(string)
+
+	// One respondent: visit, answer, and be shown their own answers after.
+	answer := func(pick, email string) (*http.Client, string) {
+		jar, _ := cookiejar.New(nil)
+		c := &http.Client{Jar: secureJar{jar}}
+		res, err := c.Get(link)
+		if err != nil || res.StatusCode != 200 {
+			t.Fatalf("visit: %v %v", err, res)
+		}
+		page, _ := io.ReadAll(res.Body)
+		if strings.Contains(string(page), "Decline this form") {
+			t.Fatal("a multi form offers to decline")
+		}
+		m := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindSubmatch(page)
+		if m == nil {
+			return c, string(page) // no form to fill: closed
+		}
+		v := url.Values{"csrf": {string(m[1])}, "action": {"submit"}, "f.pick": {pick}, "f.email": {email}}
+		req, _ := http.NewRequest("POST", rg.pub.URL+"/f/"+id, strings.NewReader(v.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		res, err = c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		return c, string(b)
+	}
+
+	waited := make(chan map[string]any, 1)
+	go func() { _, w := rg.api(t, "GET", "/v1/forms/"+id+"/wait?timeout=10s&after=0", nil, nil); waited <- w }()
+	time.Sleep(50 * time.Millisecond)
+	c1, after := answer("checklist", " Lea@Example.com ")
+	if !strings.Contains(after, "your answers were sent") || !strings.Contains(after, "first to answer") {
+		t.Fatalf("after the first answer: %s", after)
+	}
+	select {
+	case w := <-waited:
+		rs, _ := w["responses"].([]any)
+		if w["status"] != "pending" || w["answerCount"] != 1.0 || len(rs) != 1 {
+			t.Fatalf("wait after=0: %v", w)
+		}
+		if a := rs[0].(map[string]any)["answers"].(map[string]any); a["email"] != "lea@example.com" || a["pick"] != "checklist" {
+			t.Fatalf("answers: %v", a)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("wait --after 0 did not return on the first answer")
+	}
+	// The same browser gets its recap, not the form again.
+	res, _ := c1.Get(rg.pub.URL + "/f/" + id)
+	if b, _ := io.ReadAll(res.Body); !strings.Contains(string(b), "Checklist") && !strings.Contains(string(b), "checklist") {
+		t.Fatalf("revisit: %s", b)
+	}
+	if _, page := answer("tour", "not an email"); !strings.Contains(page, "Enter an email address") {
+		t.Fatal("a bad email went through")
+	}
+	answer("tour", "")
+	if _, w := rg.api(t, "GET", "/v1/forms/"+id, nil, nil); w["answerCount"] != 2.0 || w["status"] != "pending" {
+		t.Fatalf("after two: %v", w)
+	}
+	// The third answer reaches maxAnswers: the form closes, the answers stay.
+	answer("checklist", "")
+	_, w := rg.api(t, "GET", "/v1/forms/"+id+"/wait?timeout=1s", nil, nil)
+	if w["status"] != "closed" || w["answerCount"] != 3.0 {
+		t.Fatalf("at the limit: %v", w)
+	}
+	if _, page := answer("tour", ""); !strings.Contains(page, "This form is closed") {
+		t.Fatalf("a fourth visitor: %s", page)
+	}
+	if code, _ := rg.api(t, "POST", "/v1/forms/"+id+"/close", map[string]any{}, nil); code != http.StatusConflict {
+		t.Fatalf("closing a closed form: %d", code)
+	}
+}

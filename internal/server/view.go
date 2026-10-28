@@ -45,6 +45,8 @@ type formPage struct {
 	Expires     string
 	Paged       bool
 	Demo        *demoInfo // set on an example: nothing sent is stored
+	Multi       bool      // open to everyone with the link
+	Count       int       // a multi form's answers so far
 }
 
 // demoInfo is what an example page shows on top of the form.
@@ -59,6 +61,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 	p := formPage{
 		ID: st.ID, Title: st.Title, Base: base, Description: form.MarkdownHTML(st.Description),
 		CSRF: csrf, Nonce: nonce, Expires: st.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
+		Multi: st.Multi, Count: len(st.Responses),
 	}
 	var css strings.Builder
 	fields := make([]pageField, 0, len(st.Fields))
@@ -258,13 +261,13 @@ func groupFields(fields []pageField) ([]pageGroup, *pageField) {
 // recapItem is one answered question on the closed page.
 type recapItem struct{ Label, Text string }
 
-func recap(st store.State) []recapItem {
+func recap(fields []form.Field, answers map[string]any) []recapItem {
 	var out []recapItem
-	for _, f := range st.Fields {
+	for _, f := range fields {
 		if f.Display() {
 			continue
 		}
-		v, ok := st.Answers[f.Key]
+		v, ok := answers[f.Key]
 		if !ok {
 			continue
 		}

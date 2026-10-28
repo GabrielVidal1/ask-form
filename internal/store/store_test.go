@@ -52,7 +52,7 @@ func TestCreateAuthorizeClose(t *testing.T) {
 	}
 
 	done := make(chan State, 1)
-	go func() { w, _ := s.Wait(context.Background(), st.ID); done <- w }()
+	go func() { w, _ := s.Wait(context.Background(), st.ID, -1); done <- w }()
 	time.Sleep(20 * time.Millisecond)
 	closed, err := s.Close(st.ID, Submitted, map[string]any{"a": "x"}, map[string]string{"pw": "hunter2"})
 	if err != nil || closed.Status != Submitted {
@@ -134,5 +134,63 @@ func TestAssets(t *testing.T) {
 		if _, _, err := s.Create(context.Background(), CreateParams{Title: "bad", Fields: f, Assets: map[string][]byte{name: data}}); err == nil {
 			t.Errorf("asset %q accepted", name)
 		}
+	}
+}
+
+func TestMultiAnswers(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, _, err := s.Create(ctx, CreateParams{Title: "Vote", Fields: fields(t), Multi: true}); err == nil {
+		t.Fatal("a multi form took a secret field")
+	}
+	if _, _, err := s.Create(ctx, CreateParams{Title: "One", Fields: fields(t), MaxAnswers: 2}); err == nil {
+		t.Fatal("max answers on a single form")
+	}
+	f, err := form.Normalize(json.RawMessage(`[{"key":"a","label":"A"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, err := s.Create(ctx, CreateParams{Title: "Vote", Fields: f, Multi: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Close(st.ID, Submitted, map[string]any{"a": "x"}, nil); !errors.Is(err, ErrMulti) {
+		t.Fatalf("single submit on a multi form: %v", err)
+	}
+	woke := make(chan State, 1)
+	go func() { w, _ := s.Wait(ctx, st.ID, 0); woke <- w }()
+	time.Sleep(20 * time.Millisecond)
+	for _, v := range []string{"x", "y"} {
+		if _, _, err := s.Answer(st.ID, map[string]any{"a": v}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := <-woke; w.Status != Pending || len(w.Responses) < 1 {
+		t.Fatalf("wait after 0: %+v", w)
+	}
+	// Already past `after`: no blocking.
+	tctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if w, _ := s.Wait(tctx, st.ID, 1); len(w.Responses) != 2 || tctx.Err() != nil {
+		t.Fatalf("wait after 1: %+v", w)
+	}
+	if got, err := s.Close(st.ID, Closed, nil, nil); err != nil || got.Status != Closed || len(got.Responses) != 2 {
+		t.Fatalf("close: %v %+v", err, got)
+	}
+	if _, _, err := s.Answer(st.ID, map[string]any{"a": "z"}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("answer after close: %v", err)
+	}
+	// A restart replays the answers and the close.
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s2.Get(st.ID)
+	if got.Status != Closed || len(got.Responses) != 2 || got.Responses[1].N != 2 || got.Responses[1].Answers["a"] != "y" {
+		t.Fatalf("reloaded: %+v", got)
 	}
 }

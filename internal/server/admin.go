@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,8 +23,9 @@ import (
 //	POST /v1/forms                 create  → FormJSON with the respondent url
 //	GET  /v1/forms[?status=]       list
 //	GET  /v1/forms/{id}[?fields=1] get
-//	GET  /v1/forms/{id}/wait?timeout=50s
+//	GET  /v1/forms/{id}/wait?timeout=50s[&after=N]
 //	POST /v1/forms/{id}/revoke
+//	POST /v1/forms/{id}/close      a multi form stops taking answers
 //	POST /v1/forms/{id}/secret     {"key", "forget"} → the value
 //	GET  /v1/health
 //	POST /v1/restart               re-exec `serve` (after an upgrade)
@@ -33,23 +35,35 @@ const MaxAdminBody = 48 << 20
 
 // FormJSON is a form as the CLI prints it.
 type FormJSON struct {
-	ID        string            `json:"id"`
-	Title     string            `json:"title"`
-	Status    string            `json:"status"`
-	URL       string            `json:"url,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
-	ExpiresAt time.Time         `json:"expiresAt"`
-	ClosedAt  *time.Time        `json:"closedAt,omitempty"`
-	Answers   map[string]any    `json:"answers,omitempty"`
-	Fields    []form.Field      `json:"fields,omitempty"`
-	Meta      map[string]string `json:"meta,omitempty"`
-	Warning   string            `json:"warning,omitempty"`
+	ID        string         `json:"id"`
+	Title     string         `json:"title"`
+	Status    string         `json:"status"`
+	URL       string         `json:"url,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+	ExpiresAt time.Time      `json:"expiresAt"`
+	ClosedAt  *time.Time     `json:"closedAt,omitempty"`
+	Answers   map[string]any `json:"answers,omitempty"`
+	// A multi form: every answer so far (not in a list), and how many.
+	Multi       bool              `json:"multi,omitempty"`
+	MaxAnswers  int               `json:"maxAnswers,omitempty"`
+	AnswerCount *int              `json:"answerCount,omitempty"`
+	Responses   []store.Response  `json:"responses,omitempty"`
+	Fields      []form.Field      `json:"fields,omitempty"`
+	Meta        map[string]string `json:"meta,omitempty"`
+	Warning     string            `json:"warning,omitempty"`
 }
 
-func toJSON(st store.State, withFields bool) FormJSON {
+func toJSON(st store.State, withFields, withResponses bool) FormJSON {
 	j := FormJSON{
 		ID: st.ID, Title: st.Title, Status: st.Status, CreatedAt: st.CreatedAt,
 		ExpiresAt: st.ExpiresAt, ClosedAt: st.ClosedAt, Answers: st.Answers, Meta: st.Meta,
+	}
+	if st.Multi {
+		n := len(st.Responses)
+		j.Multi, j.MaxAnswers, j.AnswerCount = true, st.MaxAnswers, &n
+		if withResponses {
+			j.Responses = st.Responses
+		}
 	}
 	if withFields {
 		j.Fields = st.Fields
@@ -65,6 +79,8 @@ type createReq struct {
 	TTL         string            `json:"ttl"`
 	Assets      []assetReq        `json:"assets"`
 	Meta        map[string]string `json:"meta"`
+	Multi       bool              `json:"multi"`
+	MaxAnswers  int               `json:"maxAnswers"`
 }
 
 type assetReq struct {
@@ -80,6 +96,7 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("GET /v1/forms/{id}", s.adminGet)
 	mux.HandleFunc("GET /v1/forms/{id}/wait", s.adminWait)
 	mux.HandleFunc("POST /v1/forms/{id}/revoke", s.adminRevoke)
+	mux.HandleFunc("POST /v1/forms/{id}/close", s.adminClose)
 	mux.HandleFunc("POST /v1/forms/{id}/secret", s.adminSecret)
 	mux.HandleFunc("POST /v1/restart", s.adminRestart)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +192,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	params := store.CreateParams{
 		Name: req.Name, Title: req.Title, Description: req.Description,
 		Fields: fields, TTL: ttl, Assets: assets, Meta: req.Meta,
+		Multi: req.Multi, MaxAnswers: req.MaxAnswers,
 	}
 	if s.Relay != nil {
 		params.Claim = s.Relay.Claim
@@ -189,7 +207,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	if s.Relay != nil {
 		s.Relay.Refresh()
 	}
-	out := toJSON(st, false)
+	out := toJSON(st, false, true)
 	out.URL = s.publicURL() + Prefix + st.ID + "?token=" + token
 	if s.Relay != nil && !s.Relay.Connected() {
 		out.Warning = "relay not connected: the link answers once `ask-form serve` reaches it"
@@ -232,7 +250,7 @@ func (s *Server) adminList(w http.ResponseWriter, r *http.Request) {
 	out := []FormJSON{}
 	for _, st := range s.store.List() {
 		if want == "" || st.Status == want {
-			out = append(out, toJSON(st, false))
+			out = append(out, toJSON(st, false, false))
 		}
 	}
 	apiJSON(w, http.StatusOK, map[string]any{"forms": out, "count": len(out)})
@@ -249,7 +267,7 @@ func (s *Server) getOr404(w http.ResponseWriter, id string) (store.State, bool) 
 
 func (s *Server) adminGet(w http.ResponseWriter, r *http.Request) {
 	if st, ok := s.getOr404(w, r.PathValue("id")); ok {
-		apiJSON(w, http.StatusOK, toJSON(st, r.URL.Query().Get("fields") != ""))
+		apiJSON(w, http.StatusOK, toJSON(st, r.URL.Query().Get("fields") != "", true))
 	}
 }
 
@@ -263,29 +281,52 @@ func (s *Server) adminWait(w http.ResponseWriter, r *http.Request) {
 	if d > 55*time.Second {
 		d = 55 * time.Second
 	}
+	// after=N: a multi form also returns once it holds more than N answers.
+	after := -1
+	if a := r.URL.Query().Get("after"); a != "" {
+		if n, err := strconv.Atoi(a); err == nil && n >= 0 {
+			after = n
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), d)
 	defer cancel()
-	st, err := s.store.Wait(ctx, r.PathValue("id"))
+	st, err := s.store.Wait(ctx, r.PathValue("id"), after)
 	if err != nil {
 		apiError(w, http.StatusNotFound, "unknown form "+r.PathValue("id"))
 		return
 	}
-	apiJSON(w, http.StatusOK, toJSON(st, false))
+	apiJSON(w, http.StatusOK, toJSON(st, false, true))
+}
+
+func (s *Server) adminClose(w http.ResponseWriter, r *http.Request) {
+	st, ok := s.getOr404(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if !st.Multi {
+		apiError(w, http.StatusBadRequest, "close is for a multi form; withdraw this one with revoke")
+		return
+	}
+	s.closeWith(w, st.ID, store.Closed)
 }
 
 func (s *Server) adminRevoke(w http.ResponseWriter, r *http.Request) {
-	st, err := s.store.Close(r.PathValue("id"), store.Revoked, nil, nil)
+	s.closeWith(w, r.PathValue("id"), store.Revoked)
+}
+
+func (s *Server) closeWith(w http.ResponseWriter, id, typ string) {
+	st, err := s.store.Close(id, typ, nil, nil)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		apiError(w, http.StatusNotFound, "unknown form "+r.PathValue("id"))
+		apiError(w, http.StatusNotFound, "unknown form "+id)
 	case errors.Is(err, store.ErrClosed):
-		j := toJSON(st, false)
+		j := toJSON(st, false, true)
 		j.Warning = "already " + st.Status
 		apiJSON(w, http.StatusConflict, j)
 	case err != nil:
 		apiError(w, http.StatusInternalServerError, err.Error())
 	default:
-		apiJSON(w, http.StatusOK, toJSON(st, false))
+		apiJSON(w, http.StatusOK, toJSON(st, false, true))
 	}
 }
 

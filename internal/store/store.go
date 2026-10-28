@@ -1,12 +1,15 @@
 // Package store keeps forms on disk, no database:
 //
 //	<dir>/forms/<id>.json       definition + token hash + expiry — written once, never changed
-//	<dir>/responses/<id>.jsonl  append-only events: submitted | declined | revoked
+//	<dir>/responses/<id>.jsonl  append-only events: submitted | declined | revoked,
+//	                            and for a multi form answered… then closed | revoked
 //	<dir>/secrets/<id>.json     a submitted form's secret values, purged after SecretTTL
 //	<dir>/assets/<id>/<file>    images the spec references as {{asset:<file>}}
 //
-// The first terminal event closes a form for good (single use). Every file is
-// 0600, every directory 0700. One process (`ask serve`) owns the directory.
+// The first terminal event closes a form for good: a form takes one answer,
+// unless it was made `Multi`, which takes one `answered` event per respondent
+// until it is closed, revoked, reaches its MaxAnswers or expires. Every file
+// is 0600, every directory 0700. One process (`ask serve`) owns the directory.
 package store
 
 import (
@@ -38,7 +41,15 @@ const (
 	Declined  = "declined" // the respondent chose not to answer
 	Revoked   = "revoked"  // `ask revoke`
 	Expired   = "expired"
+	// Closed: a multi form that stopped taking answers (`ask-form close`, or
+	// its MaxAnswers reached); the answers it got stay.
+	Closed = "closed"
+	// Answered is a multi form's per-respondent event, not a status.
+	Answered = "answered"
 )
+
+// MaxMultiAnswers caps the answers one multi form takes.
+const MaxMultiAnswers = 1000
 
 // SecretTTL is how long a secret answer stays readable after the submit.
 const SecretTTL = 24 * time.Hour
@@ -47,6 +58,7 @@ var (
 	ErrNotFound = errors.New("unknown form")
 	ErrClosed   = errors.New("form is closed")
 	ErrTaken    = errors.New("name taken")
+	ErrMulti    = errors.New("a multi form takes answers, not a single submit")
 	idRe        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}_[a-z0-9]{6}$`)
 	assetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 )
@@ -73,6 +85,21 @@ type Form struct {
 	ExpiresAt   time.Time    `json:"expiresAt"`
 	// Meta: free labels the creator attached (e.g. the Claude session id).
 	Meta map[string]string `json:"meta,omitempty"`
+	// Multi: anyone with the link can answer, each answer kept apart, until
+	// the form closes. MaxAnswers (0 = MaxMultiAnswers) closes it once reached.
+	Multi      bool `json:"multi,omitempty"`
+	MaxAnswers int  `json:"maxAnswers,omitempty"`
+}
+
+// Limit is how many answers the form takes: 1, or a multi form's cap.
+func (f Form) Limit() int {
+	switch {
+	case !f.Multi:
+		return 1
+	case f.MaxAnswers > 0 && f.MaxAnswers < MaxMultiAnswers:
+		return f.MaxAnswers
+	}
+	return MaxMultiAnswers
 }
 
 // Event is one line of a form's responses file.
@@ -88,16 +115,33 @@ type State struct {
 	Status   string         `json:"status"`
 	ClosedAt *time.Time     `json:"closedAt,omitempty"`
 	Answers  map[string]any `json:"answers,omitempty"`
+	// Responses: a multi form's answers so far, oldest first.
+	Responses []Response `json:"responses,omitempty"`
+}
+
+// Response is one respondent's answers to a multi form; N counts from 1.
+type Response struct {
+	N       int            `json:"n"`
+	At      time.Time      `json:"at"`
+	Answers map[string]any `json:"answers"`
 }
 
 type entry struct {
-	form  Form
-	event *Event        // the terminal event, nil while open
-	done  chan struct{} // closed with the terminal event
+	form      Form
+	event     *Event        // the terminal event, nil while open
+	done      chan struct{} // closed with the terminal event
+	responses []Response    // a multi form's answers
+	// changed is closed (and replaced) on every new response, so a waiter
+	// wakes on the next answer as well as on the close.
+	changed chan struct{}
+}
+
+func newEntry(f Form) *entry {
+	return &entry{form: f, done: make(chan struct{}), changed: make(chan struct{})}
 }
 
 func (e *entry) state(now time.Time) State {
-	s := State{Form: e.form, Status: Pending}
+	s := State{Form: e.form, Status: Pending, Responses: e.responses}
 	switch {
 	case e.event != nil:
 		at := e.event.At
@@ -138,8 +182,10 @@ func Open(dir string) (*Store, error) {
 		if err != nil || json.Unmarshal(b, &f) != nil || !ValidID(f.ID) {
 			continue
 		}
-		e := &entry{form: f, done: make(chan struct{})}
-		if ev := firstTerminal(filepath.Join(dir, "responses", f.ID+".jsonl")); ev != nil {
+		e := newEntry(f)
+		ev, responses := readEvents(filepath.Join(dir, "responses", f.ID+".jsonl"), f.Multi)
+		e.responses = responses
+		if ev != nil {
 			e.event = ev
 			close(e.done)
 		}
@@ -149,21 +195,37 @@ func Open(dir string) (*Store, error) {
 	return s, nil
 }
 
-func firstTerminal(path string) *Event {
+// readEvents replays a responses file: the first terminal event, and for a
+// multi form the answers recorded before it.
+func readEvents(path string, multi bool) (*Event, []Response) {
 	fh, err := os.Open(path)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	defer fh.Close()
+	var responses []Response
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		var ev Event
-		if json.Unmarshal(sc.Bytes(), &ev) == nil && (ev.Type == Submitted || ev.Type == Declined || ev.Type == Revoked) {
-			return &ev
+		if json.Unmarshal(sc.Bytes(), &ev) != nil {
+			continue
+		}
+		switch {
+		case multi && ev.Type == Answered:
+			responses = append(responses, Response{N: len(responses) + 1, At: ev.At, Answers: ev.Answers})
+		case terminal(ev.Type, multi):
+			return &ev, responses
 		}
 	}
-	return nil
+	return nil, responses
+}
+
+func terminal(typ string, multi bool) bool {
+	if multi {
+		return typ == Closed || typ == Revoked
+	}
+	return typ == Submitted || typ == Declined || typ == Revoked
 }
 
 // NewToken returns a fresh respondent token (32 random bytes, base64url) and
@@ -187,6 +249,8 @@ type CreateParams struct {
 	TTL         time.Duration
 	Assets      map[string][]byte // file name → bytes
 	Meta        map[string]string
+	Multi       bool
+	MaxAnswers  int
 	// Claim, when set, reserves an id beyond this store (the relay, which
 	// routes a name to one machine); ErrTaken moves on to the next suffix.
 	Claim func(ctx context.Context, id string) error
@@ -221,6 +285,20 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 	if base == "" {
 		base = "form"
 	}
+	if p.Multi {
+		if p.MaxAnswers < 0 || p.MaxAnswers > MaxMultiAnswers {
+			return State{}, "", fmt.Errorf("max answers: between 1 and %d", MaxMultiAnswers)
+		}
+		for _, f := range p.Fields {
+			if f.Type == form.Secret {
+				// One link for many people: a key typed by one of them would
+				// be anyone's to overwrite, and theirs to read back.
+				return State{}, "", fmt.Errorf("field %q: a multi form can't hold secret fields", f.Key)
+			}
+		}
+	} else if p.MaxAnswers != 0 {
+		return State{}, "", errors.New("max answers: only for a multi form")
+	}
 	assets, urls, err := checkAssets(p.Assets)
 	if err != nil {
 		return State{}, "", err
@@ -233,6 +311,7 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 	f := Form{
 		Title: title, Description: strings.TrimSpace(p.Description), Fields: p.Fields,
 		Assets: assets, TokenHash: hash, CreatedAt: now, ExpiresAt: now.Add(p.TTL), Meta: p.Meta,
+		Multi: p.Multi, MaxAnswers: p.MaxAnswers,
 	}
 	// `<kebab>_<hash>`: the random suffix keeps names unique across machines
 	// sharing one relay; a clash (local or claimed elsewhere) draws again.
@@ -268,7 +347,7 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 		if err != nil {
 			return State{}, "", err
 		}
-		e := &entry{form: f, done: make(chan struct{})}
+		e := newEntry(f)
 		s.mu.Lock()
 		s.forms[id] = e
 		s.mu.Unlock()
@@ -390,8 +469,9 @@ func (s *Store) Authorize(id, token string) (State, bool) {
 	return st, ok && match && token != ""
 }
 
-// Close records a terminal event (submitted with its answers, declined or
-// revoked). The first one wins: a form already closed or expired returns
+// Close records a terminal event: submitted with its answers, declined or
+// revoked; for a multi form closed or revoked (its answers go through
+// Answer). The first one wins: a form already closed or expired returns
 // ErrClosed and keeps what it has.
 func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string]string) (State, error) {
 	s.mu.Lock()
@@ -404,25 +484,19 @@ func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string
 	if st := e.state(now); st.Status != Pending {
 		return st, ErrClosed
 	}
+	if !terminal(typ, e.form.Multi) {
+		if e.form.Multi {
+			return e.state(now), ErrMulti
+		}
+		return State{}, fmt.Errorf("%s doesn't close a form", typ)
+	}
 	ev := Event{Type: typ, At: now.UTC().Truncate(time.Millisecond), Answers: answers}
 	if len(secrets) > 0 {
 		if err := s.putSecrets(id, secrets, now); err != nil {
 			return State{}, err
 		}
 	}
-	line, err := json.Marshal(ev)
-	if err != nil {
-		return State{}, err
-	}
-	fh, err := os.OpenFile(filepath.Join(s.dir, "responses", id+".jsonl"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err != nil {
-		return State{}, err
-	}
-	_, err = fh.Write(append(line, '\n'))
-	if cerr := fh.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
+	if err := s.appendEvent(id, ev); err != nil {
 		return State{}, err
 	}
 	e.event = &ev
@@ -430,11 +504,70 @@ func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string
 	return e.state(now), nil
 }
 
+// Answer records one respondent's answers to a multi form; reaching the
+// form's limit closes it. It returns the state and the new response's number.
+func (s *Store) Answer(id string, answers map[string]any) (State, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.forms[id]
+	if !ok {
+		return State{}, 0, ErrNotFound
+	}
+	now := s.now()
+	if !e.form.Multi {
+		return e.state(now), 0, errors.New("not a multi form")
+	}
+	if st := e.state(now); st.Status != Pending {
+		return st, 0, ErrClosed
+	}
+	at := now.UTC().Truncate(time.Millisecond)
+	if err := s.appendEvent(id, Event{Type: Answered, At: at, Answers: answers}); err != nil {
+		return State{}, 0, err
+	}
+	n := len(e.responses) + 1
+	e.responses = append(e.responses[:len(e.responses):len(e.responses)], Response{N: n, At: at, Answers: answers})
+	if n >= e.form.Limit() {
+		ev := Event{Type: Closed, At: at}
+		if err := s.appendEvent(id, ev); err == nil {
+			e.event = &ev
+			close(e.done)
+		}
+	}
+	close(e.changed)
+	e.changed = make(chan struct{})
+	return e.state(now), n, nil
+}
+
+func (s *Store) appendEvent(id string, ev Event) error {
+	line, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	fh, err := os.OpenFile(filepath.Join(s.dir, "responses", id+".jsonl"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = fh.Write(append(line, '\n'))
+	if cerr := fh.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 // Wait blocks until the form closes, expires, or ctx ends; it returns the
-// state at that moment either way.
-func (s *Store) Wait(ctx context.Context, id string) (State, error) {
+// state at that moment either way. A multi form with after >= 0 also returns
+// once it holds more than `after` answers.
+func (s *Store) Wait(ctx context.Context, id string, after int) (State, error) {
 	s.mu.Lock()
 	e, ok := s.forms[id]
+	var changed <-chan struct{}
+	if ok && e.form.Multi && after >= 0 {
+		if len(e.responses) > after {
+			s.mu.Unlock()
+			return s.Get(id)
+		}
+		changed = e.changed
+	}
 	s.mu.Unlock()
 	if !ok {
 		return State{}, ErrNotFound
@@ -447,6 +580,7 @@ func (s *Store) Wait(ctx context.Context, id string) (State, error) {
 	defer t.Stop()
 	select {
 	case <-e.done:
+	case <-changed:
 	case <-t.C:
 	case <-ctx.Done():
 	}

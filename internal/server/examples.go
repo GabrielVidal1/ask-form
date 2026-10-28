@@ -41,6 +41,7 @@ type exampleSpec struct {
 	Summary     string          `json:"summary"`
 	Description string          `json:"description"`
 	Order       int             `json:"order"`
+	Multi       bool            `json:"multi"`
 	Fields      json.RawMessage `json:"fields"`
 }
 
@@ -107,7 +108,7 @@ func LoadExamples(fsys fs.FS) ([]Example, error) {
 		now := time.Now().UTC()
 		ex.State = store.State{Status: store.Pending, Form: store.Form{
 			ID: name, Title: sp.Title, Description: sub(sp.Description), Fields: fields,
-			Assets: assets, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+			Assets: assets, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour), Multi: sp.Multi,
 		}}
 		out = append(out, ex)
 	}
@@ -223,11 +224,16 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	st := ex.State
 	st.ID = ex.Name + "_" + demoSuffix()
-	st.Status, st.ClosedAt, st.Answers = store.Submitted, &now, res.Answers
+	if st.Multi {
+		// A multi form stays open: the agent sees the answers pile up.
+		st.Responses = []store.Response{{N: 1, At: now, Answers: res.Answers}}
+	} else {
+		st.Status, st.ClosedAt, st.Answers = store.Submitted, &now, res.Answers
+	}
 	st.CreatedAt = now.Add(-3 * time.Minute).Truncate(time.Second)
 	st.ExpiresAt = st.CreatedAt.Add(24 * time.Hour)
-	b, _ := json.MarshalIndent(toJSON(st, false), "", "  ")
-	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: "/examples/" + ex.Name, Recap: recap(st)}
+	b, _ := json.MarshalIndent(toJSON(st, false, true), "", "  ")
+	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: "/examples/" + ex.Name, Recap: recap(st.Fields, res.Answers)}
 	log.Printf("example %s answered (%d answers, not stored)", ex.Name, len(res.Answers))
 	renderPage(w, "demo-result", p, pageCSP(p.Nonce), http.StatusOK)
 }
