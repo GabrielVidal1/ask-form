@@ -109,7 +109,8 @@ it gives you neither, use this test form:
      {"key":"use_for","label":"What should I ask you through forms?","type":"textarea","help":"Optional"}]
     JSON
 
-Create the form and show the user the "url" field from the output:
+Create the form and show the user the "url" field from the output. It opens
+on this computer; "publicUrl" opens on any device, their phone included:
 
     ask-form create --title "ask-form is ready" --fields-file /tmp/ask-form-hello.json
 

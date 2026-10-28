@@ -17,7 +17,7 @@ link, they answer in a browser, you read the answers as JSON.
 #    It returns at once. Show the user the "url": it holds the form's token,
 #    so don't log it anywhere else.
 ask-form create --title "Project setup" --description "Two choices before I scaffold." \
-  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h]
+  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public]
 
 # 2. Wait for the answer IN THE BACKGROUND (a background shell task, or under a
 #    monitor). You are re-invoked when it exits; keep working meanwhile.
@@ -27,27 +27,32 @@ ask-form wait <id> --timeout 30m
 Exit codes of `wait`: 0 submitted · 3 declined/revoked/expired · 4 timed out
 (the form stays open: wait again, or `ask-form revoke <id>`).
 
+The `url` opens on this computer (no relay in between). `publicUrl` is the
+same form from any device: give that one when the user is away from this
+computer or asks for their phone, or pass `--public` to make it the `url`.
+
 ## Many people, one form
 
 When several people should answer (a team vote, a client's sign-off, beta
-testers), add `--multi`: one link, any number of answers, each kept apart.
-The user shares the link; the form takes answers until it expires (set
-`--ttl`, e.g. `72h`), reaches `--max N`, or you run `ask-form close <id>`.
+testers), add `--multi`: one link (the public one), any number of answers,
+each kept apart. The user shares the link; the form takes answers until it
+expires (set `--ttl`, e.g. `72h`), reaches `--max N`, or you run
+`ask-form close <id>`.
 
 ```bash
-ask-form create --title "Onboarding: which one?" --multi --ttl 72h --fields-file /tmp/vote.json
-ask-form wait <id> --timeout 0     # returns once it closes, with every answer
-ask-form wait <id> --next          # or: returns at the next answer (still open)
-ask-form wait <id> --after 4       # or: once it holds more than 4 answers
+ask-form create --title "Onboarding: which one?" --multi --ttl 72h [--max 20] [--hide-count] \
+  --fields-file /tmp/vote.json
+ask-form wait <id> --timeout 0     # in the background: returns once it closes, with every answer
+ask-form get <id>                  # the answers so far, any time
 ```
 
 - To know who said what, ask for it: an `email` field (optional unless you
   make it `required`) and/or a `text` name. Nothing is added for you.
 - Secret fields are refused in a multi form, and there's no "decline".
+- Respondents see how many have answered; `--hide-count` keeps it off.
 - Each browser answers once and then sees its own answers; a private window
   can answer again, so treat counts as a poll, not a ballot.
-- `wait` exits 0 when new answers arrived (`--next`/`--after`) or when the
-  form ended with at least one answer; 3 when it ended with none.
+- `wait` exits 0 when the form ended with at least one answer, 3 with none.
 
 ## Field spec
 

@@ -34,7 +34,7 @@
     <p class="eyebrow">{{if .Demo}}Example · nothing is stored{{else if .Multi}}Open to everyone with the link · until {{.Expires}}{{else}}A few questions · open until {{.Expires}}{{end}}</p>
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
-    {{if and .Multi .Count}}<p class="count">{{.Count}} {{if eq .Count 1}}person has{{else}}people have{{end}} answered so far.</p>{{end}}
+    {{if and .ShowCount .Count}}<p class="count">{{.Count}} {{if eq .Count 1}}person has{{else}}people have{{end}} answered so far.</p>{{end}}
   </header>
 
   {{if .Errors}}
@@ -182,7 +182,7 @@
   </header>
   {{if or .Mine (eq .Status "submitted")}}
     <p class="lead ok">✓ Thanks — your answers were sent{{if .When}} on {{.When}}{{end}}.</p>
-    {{if .Multi}}<p class="count">{{if eq .Count 1}}You're the first to answer.{{else}}{{.Count}} people have answered so far.{{end}}</p>{{end}}
+    {{if .ShowCount}}<p class="count">{{if eq .Count 1}}You're the first to answer.{{else}}{{.Count}} people have answered so far.{{end}}</p>{{end}}
     {{if .Recap}}
     <dl class="recap">
       {{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}
@@ -191,7 +191,7 @@
   {{else if eq .Status "declined"}}
     <p class="lead">You declined this form — nothing else to do.</p>
   {{else if eq .Status "closed"}}
-    <p class="lead">This form is closed{{if .When}} since {{.When}}{{end}}: it took {{.Count}} {{if eq .Count 1}}answer{{else}}answers{{end}}. Thanks for stopping by.</p>
+    <p class="lead">This form is closed{{if .When}} since {{.When}}{{end}}{{if .ShowCount}}: it took {{.Count}} {{if eq .Count 1}}answer{{else}}answers{{end}}{{end}}. Thanks for stopping by.</p>
   {{else if eq .Status "revoked"}}
     <p class="lead">This form was withdrawn by whoever asked — no answer needed.</p>
   {{else}}

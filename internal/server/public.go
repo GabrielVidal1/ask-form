@@ -199,14 +199,17 @@ type closedPage struct {
 	ID, Title, Status, When, Nonce string
 	PageCSS                        template.CSS
 	Recap                          []recapItem
-	Multi, Mine                    bool // a multi form; this browser answered it
+	Multi, Mine, ShowCount         bool // a multi form; this browser answered it; its count shows
 	Count                          int  // its answers
 }
 
 // renderClosed is the page of a form that takes no more answers from this
 // visitor: closed, or a multi form this browser answered (mine).
 func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store.Response) {
-	p := closedPage{ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce(), Multi: st.Multi, Count: len(st.Responses)}
+	p := closedPage{
+		ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce(),
+		Multi: st.Multi, Count: len(st.Responses), ShowCount: st.Multi && !st.HideCount,
+	}
 	if st.ClosedAt != nil {
 		p.When = st.ClosedAt.UTC().Format("2 Jan 2006, 15:04 UTC")
 	}

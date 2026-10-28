@@ -38,9 +38,10 @@ ask-form wait project-setup_k3f9q2 --timeout 30m     # in the background
 # {"id":"project-setup_k3f9q2","status":"submitted","answers":{"stack":"Vite","deploy":true},…}
 ```
 
-For a team vote or anyone else's feedback, `--multi` makes one link that
-takes any number of answers until it expires or `ask-form close <id>`;
-`ask-form wait <id> --next` returns at each new one.
+The `url` opens on the machine itself; `publicUrl` is the same form from any
+device, your phone included. For a team vote or anyone else's feedback,
+`--multi` makes one public link that takes any number of answers until it
+expires or `ask-form close <id>`; `wait` then returns them all.
 
 The agent's reference (field types, answers, exit codes) is
 [`skill/SKILL.md`](skill/SKILL.md). `ask-form skill print --body` prints it

@@ -89,6 +89,8 @@ type Form struct {
 	// the form closes. MaxAnswers (0 = MaxMultiAnswers) closes it once reached.
 	Multi      bool `json:"multi,omitempty"`
 	MaxAnswers int  `json:"maxAnswers,omitempty"`
+	// HideCount keeps a multi form's answer count off its pages.
+	HideCount bool `json:"hideCount,omitempty"`
 }
 
 // Limit is how many answers the form takes: 1, or a multi form's cap.
@@ -131,13 +133,10 @@ type entry struct {
 	event     *Event        // the terminal event, nil while open
 	done      chan struct{} // closed with the terminal event
 	responses []Response    // a multi form's answers
-	// changed is closed (and replaced) on every new response, so a waiter
-	// wakes on the next answer as well as on the close.
-	changed chan struct{}
 }
 
 func newEntry(f Form) *entry {
-	return &entry{form: f, done: make(chan struct{}), changed: make(chan struct{})}
+	return &entry{form: f, done: make(chan struct{})}
 }
 
 func (e *entry) state(now time.Time) State {
@@ -251,6 +250,7 @@ type CreateParams struct {
 	Meta        map[string]string
 	Multi       bool
 	MaxAnswers  int
+	HideCount   bool
 	// Claim, when set, reserves an id beyond this store (the relay, which
 	// routes a name to one machine); ErrTaken moves on to the next suffix.
 	Claim func(ctx context.Context, id string) error
@@ -296,8 +296,8 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 				return State{}, "", fmt.Errorf("field %q: a multi form can't hold secret fields", f.Key)
 			}
 		}
-	} else if p.MaxAnswers != 0 {
-		return State{}, "", errors.New("max answers: only for a multi form")
+	} else if p.MaxAnswers != 0 || p.HideCount {
+		return State{}, "", errors.New("max answers, hide count: only for a multi form")
 	}
 	assets, urls, err := checkAssets(p.Assets)
 	if err != nil {
@@ -311,7 +311,7 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 	f := Form{
 		Title: title, Description: strings.TrimSpace(p.Description), Fields: p.Fields,
 		Assets: assets, TokenHash: hash, CreatedAt: now, ExpiresAt: now.Add(p.TTL), Meta: p.Meta,
-		Multi: p.Multi, MaxAnswers: p.MaxAnswers,
+		Multi: p.Multi, MaxAnswers: p.MaxAnswers, HideCount: p.HideCount,
 	}
 	// `<kebab>_<hash>`: the random suffix keeps names unique across machines
 	// sharing one relay; a clash (local or claimed elsewhere) draws again.
@@ -533,8 +533,6 @@ func (s *Store) Answer(id string, answers map[string]any) (State, int, error) {
 			close(e.done)
 		}
 	}
-	close(e.changed)
-	e.changed = make(chan struct{})
 	return e.state(now), n, nil
 }
 
@@ -555,19 +553,11 @@ func (s *Store) appendEvent(id string, ev Event) error {
 }
 
 // Wait blocks until the form closes, expires, or ctx ends; it returns the
-// state at that moment either way. A multi form with after >= 0 also returns
-// once it holds more than `after` answers.
-func (s *Store) Wait(ctx context.Context, id string, after int) (State, error) {
+// state at that moment either way. A multi form closes once: its answers come
+// back together.
+func (s *Store) Wait(ctx context.Context, id string) (State, error) {
 	s.mu.Lock()
 	e, ok := s.forms[id]
-	var changed <-chan struct{}
-	if ok && e.form.Multi && after >= 0 {
-		if len(e.responses) > after {
-			s.mu.Unlock()
-			return s.Get(id)
-		}
-		changed = e.changed
-	}
 	s.mu.Unlock()
 	if !ok {
 		return State{}, ErrNotFound
@@ -580,7 +570,6 @@ func (s *Store) Wait(ctx context.Context, id string, after int) (State, error) {
 	defer t.Stop()
 	select {
 	case <-e.done:
-	case <-changed:
 	case <-t.C:
 	case <-ctx.Done():
 	}

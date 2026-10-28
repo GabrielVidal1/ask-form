@@ -52,7 +52,7 @@ func TestCreateAuthorizeClose(t *testing.T) {
 	}
 
 	done := make(chan State, 1)
-	go func() { w, _ := s.Wait(context.Background(), st.ID, -1); done <- w }()
+	go func() { w, _ := s.Wait(context.Background(), st.ID); done <- w }()
 	time.Sleep(20 * time.Millisecond)
 	closed, err := s.Close(st.ID, Submitted, map[string]any{"a": "x"}, map[string]string{"pw": "hunter2"})
 	if err != nil || closed.Status != Submitted {
@@ -162,24 +162,22 @@ func TestMultiAnswers(t *testing.T) {
 		t.Fatalf("single submit on a multi form: %v", err)
 	}
 	woke := make(chan State, 1)
-	go func() { w, _ := s.Wait(ctx, st.ID, 0); woke <- w }()
-	time.Sleep(20 * time.Millisecond)
+	go func() { w, _ := s.Wait(ctx, st.ID); woke <- w }()
 	for _, v := range []string{"x", "y"} {
 		if _, _, err := s.Answer(st.ID, map[string]any{"a": v}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if w := <-woke; w.Status != Pending || len(w.Responses) < 1 {
-		t.Fatalf("wait after 0: %+v", w)
-	}
-	// Already past `after`: no blocking.
-	tctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	if w, _ := s.Wait(tctx, st.ID, 1); len(w.Responses) != 2 || tctx.Err() != nil {
-		t.Fatalf("wait after 1: %+v", w)
+	select {
+	case w := <-woke:
+		t.Fatalf("wait returned before the close: %+v", w)
+	case <-time.After(50 * time.Millisecond):
 	}
 	if got, err := s.Close(st.ID, Closed, nil, nil); err != nil || got.Status != Closed || len(got.Responses) != 2 {
 		t.Fatalf("close: %v %+v", err, got)
+	}
+	if w := <-woke; w.Status != Closed || len(w.Responses) != 2 {
+		t.Fatalf("wait: %+v", w)
 	}
 	if _, _, err := s.Answer(st.ID, map[string]any{"a": "z"}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("answer after close: %v", err)

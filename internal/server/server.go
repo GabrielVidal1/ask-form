@@ -22,6 +22,10 @@ type Config struct {
 	PublicURL string
 	// DefaultURL is the origin used when neither is known.
 	DefaultURL string
+	// LocalURL is this machine's own listener (http://127.0.0.1:7462), ""
+	// without one. A form for one person links there by default: it opens
+	// at once on the computer the agent runs on, no relay in between.
+	LocalURL string
 	// ClientIPHeader names the header a trusted proxy in front sets to the
 	// visitor's address (empty: the socket peer). Through the relay the peer
 	// address is the visitor's already.

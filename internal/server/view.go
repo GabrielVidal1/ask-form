@@ -47,6 +47,7 @@ type formPage struct {
 	Demo        *demoInfo // set on an example: nothing sent is stored
 	Multi       bool      // open to everyone with the link
 	Count       int       // a multi form's answers so far
+	ShowCount   bool      // …shown to the respondent
 }
 
 // demoInfo is what an example page shows on top of the form.
@@ -61,7 +62,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 	p := formPage{
 		ID: st.ID, Title: st.Title, Base: base, Description: form.MarkdownHTML(st.Description),
 		CSRF: csrf, Nonce: nonce, Expires: st.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
-		Multi: st.Multi, Count: len(st.Responses),
+		Multi: st.Multi, Count: len(st.Responses), ShowCount: st.Multi && !st.HideCount,
 	}
 	var css strings.Builder
 	fields := make([]pageField, 0, len(st.Fields))

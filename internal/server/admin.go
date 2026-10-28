@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +22,7 @@ import (
 //	POST /v1/forms                 create  → FormJSON with the respondent url
 //	GET  /v1/forms[?status=]       list
 //	GET  /v1/forms/{id}[?fields=1] get
-//	GET  /v1/forms/{id}/wait?timeout=50s[&after=N]
+//	GET  /v1/forms/{id}/wait?timeout=50s
 //	POST /v1/forms/{id}/revoke
 //	POST /v1/forms/{id}/close      a multi form stops taking answers
 //	POST /v1/forms/{id}/secret     {"key", "forget"} → the value
@@ -35,10 +34,12 @@ const MaxAdminBody = 48 << 20
 
 // FormJSON is a form as the CLI prints it.
 type FormJSON struct {
-	ID        string         `json:"id"`
-	Title     string         `json:"title"`
-	Status    string         `json:"status"`
-	URL       string         `json:"url,omitempty"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
+	URL    string `json:"url,omitempty"`
+	// PublicURL: the link that works from any device, when url is the local one.
+	PublicURL string         `json:"publicUrl,omitempty"`
 	CreatedAt time.Time      `json:"createdAt"`
 	ExpiresAt time.Time      `json:"expiresAt"`
 	ClosedAt  *time.Time     `json:"closedAt,omitempty"`
@@ -46,6 +47,7 @@ type FormJSON struct {
 	// A multi form: every answer so far (not in a list), and how many.
 	Multi       bool              `json:"multi,omitempty"`
 	MaxAnswers  int               `json:"maxAnswers,omitempty"`
+	HideCount   bool              `json:"hideCount,omitempty"`
 	AnswerCount *int              `json:"answerCount,omitempty"`
 	Responses   []store.Response  `json:"responses,omitempty"`
 	Fields      []form.Field      `json:"fields,omitempty"`
@@ -60,7 +62,7 @@ func toJSON(st store.State, withFields, withResponses bool) FormJSON {
 	}
 	if st.Multi {
 		n := len(st.Responses)
-		j.Multi, j.MaxAnswers, j.AnswerCount = true, st.MaxAnswers, &n
+		j.Multi, j.MaxAnswers, j.HideCount, j.AnswerCount = true, st.MaxAnswers, st.HideCount, &n
 		if withResponses {
 			j.Responses = st.Responses
 		}
@@ -81,6 +83,9 @@ type createReq struct {
 	Meta        map[string]string `json:"meta"`
 	Multi       bool              `json:"multi"`
 	MaxAnswers  int               `json:"maxAnswers"`
+	HideCount   bool              `json:"hideCount"`
+	// Public: link the relay even for a form for one person.
+	Public bool `json:"public"`
 }
 
 type assetReq struct {
@@ -192,7 +197,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	params := store.CreateParams{
 		Name: req.Name, Title: req.Title, Description: req.Description,
 		Fields: fields, TTL: ttl, Assets: assets, Meta: req.Meta,
-		Multi: req.Multi, MaxAnswers: req.MaxAnswers,
+		Multi: req.Multi, MaxAnswers: req.MaxAnswers, HideCount: req.HideCount,
 	}
 	if s.Relay != nil {
 		params.Claim = s.Relay.Claim
@@ -208,7 +213,13 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 		s.Relay.Refresh()
 	}
 	out := toJSON(st, false, true)
-	out.URL = s.publicURL() + Prefix + st.ID + "?token=" + token
+	link := func(origin string) string { return origin + Prefix + st.ID + "?token=" + token }
+	// One person: the local link opens straight away on this computer, the
+	// public one goes along for their phone. Several people: the public one.
+	out.URL = link(s.publicURL())
+	if local := strings.TrimRight(s.cfg.LocalURL, "/"); local != "" && local != s.publicURL() && !req.Multi && !req.Public {
+		out.URL, out.PublicURL = link(local), out.URL
+	}
 	if s.Relay != nil && !s.Relay.Connected() {
 		out.Warning = "relay not connected: the link answers once `ask-form serve` reaches it"
 	}
@@ -281,16 +292,9 @@ func (s *Server) adminWait(w http.ResponseWriter, r *http.Request) {
 	if d > 55*time.Second {
 		d = 55 * time.Second
 	}
-	// after=N: a multi form also returns once it holds more than N answers.
-	after := -1
-	if a := r.URL.Query().Get("after"); a != "" {
-		if n, err := strconv.Atoi(a); err == nil && n >= 0 {
-			after = n
-		}
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), d)
 	defer cancel()
-	st, err := s.store.Wait(ctx, r.PathValue("id"), after)
+	st, err := s.store.Wait(ctx, r.PathValue("id"))
 	if err != nil {
 		apiError(w, http.StatusNotFound, "unknown form "+r.PathValue("id"))
 		return

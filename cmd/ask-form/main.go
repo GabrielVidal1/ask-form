@@ -51,9 +51,10 @@ Setup (once per machine):
 Client (JSON on stdout):
   ask-form create --title T (--fields JSON | --fields-file F | stdin) [--description D]
                   [--asset FILE]… [--ttl 24h] [--name NAME] [--meta k=v]… [--notify-cmd CMD]
-                  [--multi [--max N]]   one link, any number of answers (a team vote…)
+                  [--public]           url = the relay link (default for one person: this machine's)
+                  [--multi [--max N] [--hide-count]]   one link, any number of answers (a team vote…)
   ask-form wait <id> [--timeout 30m]   exit 0 submitted · 3 declined/revoked/expired · 4 timeout
-                  [--after N | --next] a multi form: also return once it holds more than N answers
+                                       (a multi form: at its close, with every answer)
   ask-form get <id> [--fields]
   ask-form list [--status pending|submitted|declined|revoked|expired|closed]
   ask-form revoke <id>
@@ -228,8 +229,12 @@ func cmdServe(args []string) int {
 		}
 		defaultURL = "http://" + *listen
 	}
+	localURL := ""
+	if *listen != "" {
+		localURL = "http://" + *listen
+	}
 	srv := server.New(server.Config{
-		PublicURL: *publicURL, DefaultURL: defaultURL, ClientIPHeader: *ipHeader, AdminToken: adminToken, Key: []byte(keyStr),
+		PublicURL: *publicURL, DefaultURL: defaultURL, LocalURL: localURL, ClientIPHeader: *ipHeader, AdminToken: adminToken, Key: []byte(keyStr),
 	}, st)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -447,6 +452,8 @@ func cmdCreate(args []string) int {
 	noNotify := fs.Bool("no-notify", false, "skip the notify command")
 	multiAnswers := fs.Bool("multi", false, "open to everyone with the link: any number of answers until it expires or `ask-form close`")
 	maxAnswers := fs.Int("max", 0, "with --multi: close once it holds this many answers")
+	hideCount := fs.Bool("hide-count", false, "with --multi: don't show respondents how many have answered")
+	public := fs.Bool("public", false, "make url the link that works from any device (default for one person: this machine's own)")
 	var assets, meta multi
 	fs.Var(&assets, "asset", "image referenced as {{asset:<basename>}} (repeatable)")
 	fs.Var(&meta, "meta", "k=v label kept with the form (repeatable)")
@@ -476,12 +483,15 @@ func cmdCreate(args []string) int {
 	if !json.Valid([]byte(raw)) {
 		return fail(exitUsage, "the field spec is not valid JSON")
 	}
-	if *maxAnswers != 0 && !*multiAnswers {
-		return fail(exitUsage, "--max goes with --multi")
+	if (*maxAnswers != 0 || *hideCount) && !*multiAnswers {
+		return fail(exitUsage, "--max and --hide-count go with --multi")
 	}
 	body := map[string]any{"title": *title, "description": *desc, "fields": json.RawMessage(raw), "ttl": *ttl, "name": *name}
 	if *multiAnswers {
-		body["multi"], body["maxAnswers"] = true, *maxAnswers
+		body["multi"], body["maxAnswers"], body["hideCount"] = true, *maxAnswers, *hideCount
+	}
+	if *public {
+		body["public"] = true
 	}
 	m := map[string]string{}
 	for _, kv := range meta {
@@ -533,7 +543,11 @@ func cmdCreate(args []string) int {
 		fmt.Fprintln(os.Stderr, "ask-form: warning: "+w)
 	}
 	if *multiAnswers {
-		fmt.Fprintf(os.Stderr, "ask-form: share the url with everyone who should answer, then wait in the background: ask-form wait %v --timeout 0 (all answers once it closes) or --next (the next answer)\n", out["id"])
+		fmt.Fprintf(os.Stderr, "ask-form: share the url with everyone who should answer, then wait in the background: ask-form wait %v --timeout 0 (returns at its close with every answer; `ask-form get` shows them meanwhile)\n", out["id"])
+		return exitOK
+	}
+	if _, ok := out["publicUrl"]; ok {
+		fmt.Fprintf(os.Stderr, "ask-form: show the url to the user (it opens on this computer; publicUrl opens on any device, their phone included), then wait in the background: ask-form wait %v --timeout 30m\n", out["id"])
 		return exitOK
 	}
 	fmt.Fprintf(os.Stderr, "ask-form: show the url to the user, then wait in the background: ask-form wait %v --timeout 30m\n", out["id"])
@@ -541,14 +555,19 @@ func cmdCreate(args []string) int {
 }
 
 // runNotify runs the user's notify hook. The URL travels in the environment,
-// never spliced into the command line.
+// never spliced into the command line; it is the link that opens anywhere,
+// since the hook's job is to reach the user's phone.
 func runNotify(cmdline string, f map[string]any) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	link := f["url"]
+	if p, ok := f["publicUrl"]; ok {
+		link = p
+	}
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdline)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("ASK_FORM_ID=%v", f["id"]), fmt.Sprintf("ASK_FORM_TITLE=%v", f["title"]),
-		fmt.Sprintf("ASK_FORM_URL=%v", f["url"]), fmt.Sprintf("ASK_FORM_EXPIRES_AT=%v", f["expiresAt"]))
+		fmt.Sprintf("ASK_FORM_URL=%v", link), fmt.Sprintf("ASK_FORM_EXPIRES_AT=%v", f["expiresAt"]))
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "ask-form: notify command failed: %v\n", err)
@@ -655,8 +674,6 @@ func cmdStatus(args []string) int {
 func cmdWait(args []string) int {
 	fs := flag.NewFlagSet("wait", flag.ExitOnError)
 	timeout := fs.Duration("timeout", 30*time.Minute, "give up after this long (0 = never); the form stays open")
-	after := fs.Int("after", -1, "a multi form: also return once it holds more than this many answers")
-	next := fs.Bool("next", false, "a multi form: also return at its next answer (--after its current count)")
 	id, ok := oneID(fs, args, "wait")
 	if !ok {
 		return exitUsage
@@ -664,18 +681,6 @@ func cmdWait(args []string) int {
 	c, err := newClient()
 	if err != nil {
 		return fail(exitErr, "%v", err)
-	}
-	if *next {
-		var cur map[string]any
-		if _, err := c.do(context.Background(), http.MethodGet, "/v1/forms/"+id, nil, &cur); err != nil {
-			return fail(exitErr, "%v", err)
-		}
-		n, _ := cur["answerCount"].(float64)
-		*after = int(n)
-	}
-	q := ""
-	if *after >= 0 {
-		q = fmt.Sprintf("&after=%d", *after)
 	}
 	var deadline time.Time
 	if *timeout > 0 {
@@ -695,7 +700,7 @@ func cmdWait(args []string) int {
 		}
 		var out map[string]any
 		ctx, cancel := context.WithTimeout(context.Background(), step+15*time.Second)
-		code, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/v1/forms/%s/wait?timeout=%s%s", id, step.Round(time.Second), q), nil, &out)
+		code, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/v1/forms/%s/wait?timeout=%s", id, step.Round(time.Second)), nil, &out)
 		cancel()
 		switch {
 		case code == http.StatusNotFound:
@@ -709,7 +714,7 @@ func cmdWait(args []string) int {
 		default:
 			warned = false
 			if out["multi"] == true {
-				if code, done := multiWaitDone(id, out, *after); done {
+				if code, done := multiWaitDone(id, out); done {
 					return code
 				}
 				break
@@ -739,18 +744,11 @@ func cmdWait(args []string) int {
 	}
 }
 
-// multiWaitDone reads a multi form's wait result: new answers past `after`
-// (still open) or the end of the form. Ending with answers is a success.
-func multiWaitDone(id string, out map[string]any, after int) (int, bool) {
+// multiWaitDone reads a multi form's wait result: done once the form ended.
+// Ending with answers is a success.
+func multiWaitDone(id string, out map[string]any) (int, bool) {
 	n, _ := out["answerCount"].(float64)
 	switch out["status"] {
-	case store.Pending:
-		if after >= 0 && int(n) > after {
-			printJSON(out)
-			fmt.Fprintf(os.Stderr, "ask-form: %s has %d answers and is still open — `ask-form wait %s --after %d` for the next one, `ask-form close %s` to stop it\n", id, int(n), id, int(n), id)
-			return exitOK, true
-		}
-		return 0, false
 	case store.Closed, store.Expired, store.Revoked:
 		printJSON(out)
 		if n == 0 {

@@ -313,23 +313,19 @@ func TestMultiAnswersThroughRelay(t *testing.T) {
 	}
 
 	waited := make(chan map[string]any, 1)
-	go func() { _, w := rg.api(t, "GET", "/v1/forms/"+id+"/wait?timeout=10s&after=0", nil, nil); waited <- w }()
+	go func() { _, w := rg.api(t, "GET", "/v1/forms/"+id+"/wait?timeout=10s", nil, nil); waited <- w }()
 	time.Sleep(50 * time.Millisecond)
 	c1, after := answer("checklist", " Lea@Example.com ")
 	if !strings.Contains(after, "your answers were sent") || !strings.Contains(after, "first to answer") {
 		t.Fatalf("after the first answer: %s", after)
 	}
-	select {
-	case w := <-waited:
-		rs, _ := w["responses"].([]any)
-		if w["status"] != "pending" || w["answerCount"] != 1.0 || len(rs) != 1 {
-			t.Fatalf("wait after=0: %v", w)
-		}
-		if a := rs[0].(map[string]any)["answers"].(map[string]any); a["email"] != "lea@example.com" || a["pick"] != "checklist" {
-			t.Fatalf("answers: %v", a)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("wait --after 0 did not return on the first answer")
+	_, got := rg.api(t, "GET", "/v1/forms/"+id, nil, nil)
+	rs, _ := got["responses"].([]any)
+	if got["status"] != "pending" || got["answerCount"] != 1.0 || len(rs) != 1 {
+		t.Fatalf("get after one: %v", got)
+	}
+	if a := rs[0].(map[string]any)["answers"].(map[string]any); a["email"] != "lea@example.com" || a["pick"] != "checklist" {
+		t.Fatalf("answers: %v", a)
 	}
 	// The same browser gets its recap, not the form again.
 	res, _ := c1.Get(rg.pub.URL + "/f/" + id)
@@ -343,11 +339,16 @@ func TestMultiAnswersThroughRelay(t *testing.T) {
 	if _, w := rg.api(t, "GET", "/v1/forms/"+id, nil, nil); w["answerCount"] != 2.0 || w["status"] != "pending" {
 		t.Fatalf("after two: %v", w)
 	}
-	// The third answer reaches maxAnswers: the form closes, the answers stay.
+	// The third answer reaches maxAnswers: the form closes, the answers stay,
+	// and the wait started at the beginning returns with all of them.
 	answer("checklist", "")
-	_, w := rg.api(t, "GET", "/v1/forms/"+id+"/wait?timeout=1s", nil, nil)
-	if w["status"] != "closed" || w["answerCount"] != 3.0 {
-		t.Fatalf("at the limit: %v", w)
+	select {
+	case w := <-waited:
+		if w["status"] != "closed" || w["answerCount"] != 3.0 || len(w["responses"].([]any)) != 3 {
+			t.Fatalf("at the limit: %v", w)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("wait did not return at the close")
 	}
 	if _, page := answer("tour", ""); !strings.Contains(page, "This form is closed") {
 		t.Fatalf("a fourth visitor: %s", page)
