@@ -17,7 +17,8 @@ import (
 // and data: images (the form's assets are inlined), and exactly one script —
 // ours, pinned by hash — which reports the document's height to the page and
 // fits a fixed-width mockup to its card. Any <script> or on* handler the agent
-// wrote is refused by that policy: blocks are script-free.
+// wrote is refused by that policy: html blocks and mockups are script-free.
+// A widget field's frame is the one exception (widget.go).
 
 // frameScript: dark-mode class, fit-to-width (mockups), height beacon. Fit
 // measures the mockup's own box (its top-level content, not what spills out
@@ -67,6 +68,12 @@ func frameCSP() string {
 // frameDoc builds the document for one block or mockup. fit: scale content
 // wider than the frame down to it (mockup cards).
 func frameDoc(st store.State, prefix, markup string, fit bool, asset func(name string) (string, bool)) string {
+	return frameDocWith(st, prefix, markup, fit, "", asset)
+}
+
+// frameDocWith is frameDoc with extra markup (a widget's SDK) at the top of
+// the head.
+func frameDocWith(st store.State, prefix, markup string, fit bool, sdk string, asset func(name string) (string, bool)) string {
 	// The form's assets, referenced by URL (prefix + name) in the spec, are
 	// inlined: an opaque origin can't send the cookie that guards them.
 	for _, a := range st.Assets {
@@ -78,7 +85,7 @@ func frameDoc(st store.State, prefix, markup string, fit bool, asset func(name s
 		}
 	}
 	head := `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-		`<style>` + themeCSS + frameBaseCSS + `</style>`
+		`<style>` + themeCSS + frameBaseCSS + `</style>` + sdk
 	script := `<script>` + frameScript + `</script>`
 	attr := ""
 	if fit {

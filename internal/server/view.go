@@ -89,6 +89,9 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 			DOMID: fmt.Sprintf("q%d", i), Picked: map[string]bool{}, Error: errs[f.Key],
 		}
 		fill(&pf, values)
+		if f.Type == form.Widget && values == nil {
+			pf.Value = form.DefaultJSON(f) // the JSON the widget starts from
+		}
 		pf.Reenter = values != nil && f.Type == form.Secret
 		pf.ShowIfJSON, pf.RequiredIfJSON = condJSON(f.ShowIf), condJSON(f.RequiredIf)
 		switch f.Type {
@@ -105,7 +108,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 				pf.RangeStart, pf.RangeEnd = fmt.Sprint(d["start"]), fmt.Sprint(d["end"])
 			}
 		}
-		if f.Type == form.HTML {
+		if f.Type == form.HTML || f.Type == form.Widget {
 			pf.FrameURL = fmt.Sprintf("%s/frame/%s", base, f.Key)
 			h := f.Height
 			if h <= 0 {

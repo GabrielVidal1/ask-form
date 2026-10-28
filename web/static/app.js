@@ -98,6 +98,7 @@
     if (isEmpty(f)) {
       if (!f.hasAttribute("data-required")) return "";
       if (otherPicked(f)) return "Type your answer next to “Other…”.";
+      if (t === "widget") return "Interact with this first.";
       return t === "multiselect" ? "Pick at least one." : "This question is required.";
     }
     if (t === "daterange") {
@@ -328,6 +329,9 @@
       var d = els.map(function (i) { return i.value; });
       return d[0] && d[1] ? { start: d[0], end: d[1] } : null;
     }
+    if (t === "widget") {
+      try { return els[0] && els[0].value ? JSON.parse(els[0].value) : null; } catch (e) { return null; }
+    }
     if (t === "list") {
       var prefix = "f." + key + ".";
       var rows = $all(".list-row", f).map(function (row) {
@@ -416,6 +420,11 @@
     for (var i = from + dir; i >= 0 && i < groups.length; i += dir) if (vis(i)) return i;
     return from;
   }
+  // widget.js (widget fields) drives the page through these.
+  window.askFormPage = {
+    touch: function (f) { touched[f.getAttribute("data-key")] = true; clearErr(f); applyConditions(); refresh(); saveDraft(); },
+    flag: flag
+  };
 
   // ── pages ─────────────────────────────────────────────────────────────────
   // A phone pages through the groups; a desktop shows them all, with the
@@ -644,6 +653,11 @@
       return d[0] || d[1] ? d[0] + " → " + d[1] : "";
     }
     var main = f.querySelector("input, textarea");
+    if (t === "widget" && main) {
+      var wv = main.value.trim();
+      try { var j = JSON.parse(wv); wv = typeof j === "string" ? j : JSON.stringify(j); } catch (e) { /* shown as typed */ }
+      return wv.length > 200 ? wv.slice(0, 200) + "…" : wv;
+    }
     return main ? main.value.trim() : "";
   }
   function openConfirm(by) {

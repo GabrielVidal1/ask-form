@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/f/_static/app.css">
 {{if .PageCSS}}<style nonce="{{.Nonce}}">{{.PageCSS}}</style>{{end}}
 <script src="/f/_static/app.js" defer></script>
+<script src="/f/_static/widget.js" defer></script>
 </head>
 <body>
 {{end}}
@@ -141,6 +142,15 @@
     </div>
     {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
+{{else if eq .Type "widget"}}
+  <div class="label" id="{{.DOMID}}-lab">{{template "label" .}}</div>
+  <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-widget data-schema="{{.Schema}}" disabled>
+  <iframe class="frame widget-frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label "Interactive control"}}" aria-labelledby="{{.DOMID}}-lab" referrerpolicy="no-referrer"></iframe>
+  <noscript>
+    <p class="help">This question needs JavaScript. Without it, type the answer as JSON{{if .Schema}} (a {{.Schema}}){{end}}.</p>
+    <textarea name="{{.Name}}" rows="3" maxlength="16384" aria-labelledby="{{.DOMID}}-lab"{{if .Required}} required{{end}}>{{.Value}}</textarea>
+  </noscript>
+  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
 {{else if eq .Type "checkbox"}}
   <label class="check">
     <input type="checkbox" name="{{.Name}}" value="on"{{if .Checked}} checked{{end}}>

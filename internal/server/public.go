@@ -91,11 +91,8 @@ func (s *Server) publicHandler() http.Handler {
 func StaticHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := path.Base(r.URL.Path)
-		types := map[string]string{
-			"app.css": "text/css; charset=utf-8", "theme.css": "text/css; charset=utf-8",
-			"app.js": "text/javascript; charset=utf-8",
-		}
-		ct, ok := types[name]
+		types := map[string]string{".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
+		ct, ok := types[path.Ext(name)]
 		if !ok {
 			notFound(w)
 			return
@@ -404,7 +401,8 @@ func (s *Server) frame(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	doc := frameDoc(st, Prefix+st.ID+"/assets/", markup, fit, func(name string) (string, bool) {
+	sdk, csp := frameFor(st.Fields, r.PathValue("key"), r.PathValue("n"))
+	doc := frameDocWith(st, Prefix+st.ID+"/assets/", markup, fit, sdk, func(name string) (string, bool) {
 		b, a, err := s.store.Asset(st.ID, name)
 		if err != nil {
 			return "", false
@@ -413,7 +411,7 @@ func (s *Server) frame(w http.ResponseWriter, r *http.Request) {
 	})
 	h := w.Header()
 	baseHeaders(h)
-	h.Set("Content-Security-Policy", frameCSP())
+	h.Set("Content-Security-Policy", csp)
 	h.Set("X-Frame-Options", "SAMEORIGIN")
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(doc))

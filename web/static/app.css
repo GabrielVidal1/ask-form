@@ -141,6 +141,7 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .frame-open { display: inline-block; margin-top: 4px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
 .js .frame.autosize { resize: none; }
 .js .frame-open { display: none; }
+html:not(.js) .widget-frame { display: none; }
 
 /* choice cards: a picture or a mockup is what's being judged, so it gets the
    room — one per row on a phone, two on anything wider. A field's `columns`

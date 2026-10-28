@@ -114,6 +114,15 @@ Each release also carries a build provenance attestation:
 - **html blocks and mockups** are separate sandboxed documents with their own
   CSP. Inline styles are allowed; scripts are not, except our hash-pinned
   sizing beacon.
+- **widgets** are the one frame that runs the asking agent's own script. Same
+  sandbox as an html block (`sandbox allow-scripts` alone, so an opaque origin
+  with no cookie, no top navigation, no popups, no forms) and
+  `default-src 'none'`, so the script can't fetch, open a socket or load
+  anything remote; the page's `frame-src 'self'` keeps the frame from
+  navigating elsewhere. The page takes a value only from the frame it put in
+  that field, as JSON of at most 16 KB checked against the field's `schema`.
+  The script is the agent's own, so treat a widget as code the agent chose to
+  show: never put a secret in one.
 - **Logs** never contain a query string.
 - **Submissions**:
   - per-IP limits on failed token attempts, on submissions, and overall;

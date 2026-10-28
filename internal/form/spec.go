@@ -4,7 +4,8 @@
 // The spec is the one the ai-agent's forms use (backend/forms/store.py), so a
 // spec written for one works with the other: text, textarea, number, select,
 // multiselect, radio, checkbox, slider, date, email and secret questions, plus
-// the display-only markdown and html blocks, and since v0.6 list, time,
+// the display-only markdown and html blocks, the widget (a control the agent
+// writes in HTML + JS that returns one JSON value), and since v0.6 list, time,
 // datetime, daterange and rating questions, the diff and details blocks and
 // the `showIf` / `requiredIf` conditions. `file` is not supported here — a
 // public page takes no uploads.
@@ -42,6 +43,7 @@ const (
 	Rating      = "rating"    // one tap on a numbered scale: stars or numbers
 	Diff        = "diff"      // display: a unified diff
 	Details     = "details"   // display: a collapsible section
+	Widget      = "widget"    // a control the agent writes: HTML + JS returning one JSON value
 )
 
 // Column types of a table-like list.
@@ -77,7 +79,7 @@ const (
 
 var fieldTypes = []string{Text, Textarea, Number, Select, Multiselect, Radio,
 	Checkbox, Slider, Date, Email, Secret, Markdown, HTML,
-	List, Time, Datetime, Daterange, Rating, Diff, Details}
+	List, Time, Datetime, Daterange, Rating, Diff, Details, Widget}
 
 // Option is one choice of a select / radio / multiselect field. A visual
 // option carries an image (a URL or `{{asset:<file>}}`) and/or an html mockup;
@@ -116,6 +118,7 @@ type Field struct {
 	Text        string   `json:"text,omitempty"` // markdown block source
 	HTML        string   `json:"html,omitempty"` // html block markup
 	Height      int      `json:"height,omitempty"`
+	Schema      string   `json:"schema,omitempty"` // widget: the JSON kind it returns
 	Options     []Option `json:"options,omitempty"`
 	Other       bool     `json:"other,omitempty"`
 	Columns     int      `json:"columns,omitempty"`
@@ -339,6 +342,11 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 					}
 					f.Aspect = aspect
 				}
+			}
+		}
+		if ftype == Widget {
+			if err := normalizeWidget(&f, m); err != nil {
+				return nil, fmt.Errorf("field %q: %w", key, err)
 			}
 		}
 		if ftype == Number || ftype == Slider {
