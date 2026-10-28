@@ -17,7 +17,7 @@ link, they answer in a browser, you read the answers as JSON.
 #    It returns at once. Show the user the "url": it holds the form's token,
 #    so don't log it anywhere else.
 ask-form create --title "Project setup" --description "Two choices before I scaffold." \
-  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public]
+  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public] [--open]
 
 # 2. Wait for the answer IN THE BACKGROUND (a background shell task, or under a
 #    monitor). You are re-invoked when it exits; keep working meanwhile.
@@ -30,6 +30,12 @@ Exit codes of `wait`: 0 submitted · 3 declined/revoked/expired · 4 timed out
 The `url` opens on this computer (no relay in between). `publicUrl` is the
 same form from any device: give that one when the user is away from this
 computer or asks for their phone, or pass `--public` to make it the `url`.
+
+**On the user's desktop, pass `--open`**: the form opens in their default
+browser right away (`"opened": true`); tell them it's there and still show the
+url. It opens nothing over SSH or on a machine without a display
+(`"opened": false`): show the url as usual. Leave it off for a `--multi` form,
+which is for other people to answer.
 
 ## Many people, one form
 

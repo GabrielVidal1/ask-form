@@ -52,6 +52,7 @@ Client (JSON on stdout):
   ask-form create --title T (--fields JSON | --fields-file F | stdin) [--description D]
                   [--asset FILE]… [--ttl 24h] [--name NAME] [--meta k=v]… [--notify-cmd CMD]
                   [--public]           url = the relay link (default for one person: this machine's)
+                  [--open]             also open the url in this desktop's browser
                   [--multi [--max N] [--hide-count]]   one link, any number of answers (a team vote…)
   ask-form wait <id> [--timeout 30m]   exit 0 submitted · 3 declined/revoked/expired · 4 timeout
                                        (a multi form: at its close, with every answer)
@@ -454,6 +455,7 @@ func cmdCreate(args []string) int {
 	maxAnswers := fs.Int("max", 0, "with --multi: close once it holds this many answers")
 	hideCount := fs.Bool("hide-count", false, "with --multi: don't show respondents how many have answered")
 	public := fs.Bool("public", false, "make url the link that works from any device (default for one person: this machine's own)")
+	open := fs.Bool("open", false, "also open the url in this desktop's default browser (nothing over SSH or without a display)")
 	var assets, meta multi
 	fs.Var(&assets, "asset", "image referenced as {{asset:<basename>}} (repeatable)")
 	fs.Var(&meta, "meta", "k=v label kept with the form (repeatable)")
@@ -538,6 +540,10 @@ func cmdCreate(args []string) int {
 	if *notifyCmd != "" && !*noNotify {
 		out["notified"] = runNotify(*notifyCmd, out)
 	}
+	if *open {
+		u, _ := out["url"].(string)
+		out["opened"] = u != "" && openBrowser(u)
+	}
 	printJSON(out)
 	if w, _ := out["warning"].(string); w != "" {
 		fmt.Fprintln(os.Stderr, "ask-form: warning: "+w)
@@ -545,6 +551,12 @@ func cmdCreate(args []string) int {
 	if *multiAnswers {
 		fmt.Fprintf(os.Stderr, "ask-form: share the url with everyone who should answer, then wait in the background: ask-form wait %v --timeout 0 (returns at its close with every answer; `ask-form get` shows them meanwhile)\n", out["id"])
 		return exitOK
+	}
+	if opened, _ := out["opened"].(bool); opened {
+		fmt.Fprintf(os.Stderr, "ask-form: the form is open in the user's browser; say so, with the url in case it went to another window, then wait in the background: ask-form wait %v --timeout 30m\n", out["id"])
+		return exitOK
+	} else if *open {
+		fmt.Fprintln(os.Stderr, "ask-form: no desktop browser to open here (SSH session or no display)")
 	}
 	if _, ok := out["publicUrl"]; ok {
 		fmt.Fprintf(os.Stderr, "ask-form: show the url to the user (it opens on this computer; publicUrl opens on any device, their phone included), then wait in the background: ask-form wait %v --timeout 30m\n", out["id"])
