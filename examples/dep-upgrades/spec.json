@@ -1,6 +1,6 @@
 {
  "title": "Dependencies: 14 behind",
- "order": 6,
+ "order": 7,
  "summary": "Upgrade round: the outdated packages with what each major bump breaks in this code, then which ones go in now.",
  "description": "`npm outdated` lists 14 packages. The 10 minor and patch updates pass the tests together. I read the changelogs of the 4 major ones against this codebase: here's what each would touch. Pick this round's scope.",
  "fields": [

@@ -1,6 +1,6 @@
 {
  "title": "Splitting server.ts: the plan",
- "order": 4,
+ "order": 5,
  "summary": "Sign off a refactor before any code moves: the plan drawn, then scope, PR strategy and how strict to be about behaviour.",
  "description": "`api/server.ts` has grown to 2,412 lines: routes, validation, queries and emails in one file. Here is how I'd split it. Nothing moves until you've answered; my picks are pre-selected.",
  "fields": [

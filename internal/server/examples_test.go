@@ -17,8 +17,8 @@ func TestExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 6 {
-		t.Fatalf("want 6 examples, got %d", len(list))
+	if len(list) != 7 {
+		t.Fatalf("want 7 examples, got %d", len(list))
 	}
 	srv := httptest.NewServer(ExamplesHandler(list, ""))
 	defer srv.Close()
@@ -30,7 +30,7 @@ func TestExamples(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	if code, body := get("/examples"); code != 200 || strings.Count(body, `class="example-card"`) != 6 {
+	if code, body := get("/examples"); code != 200 || strings.Count(body, `class="example-card"`) != 7 {
 		t.Fatalf("index: %d", code)
 	}
 	for _, ex := range list {
@@ -92,7 +92,12 @@ func TestExamples(t *testing.T) {
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(res.Body)
-		if res.StatusCode != 200 || !strings.Contains(string(b), `&#34;status&#34;: &#34;submitted&#34;`) {
+		// A multi form stays open, its answer in `responses`.
+		want := `&#34;status&#34;: &#34;submitted&#34;`
+		if ex.State.Multi {
+			want = `&#34;answerCount&#34;: 1`
+		}
+		if res.StatusCode != 200 || !strings.Contains(string(b), want) {
 			t.Fatalf("%s submit: %d %s", ex.Name, res.StatusCode, string(b)[:min(400, len(b))])
 		}
 	}

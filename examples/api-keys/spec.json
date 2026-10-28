@@ -47,6 +47,28 @@
    ]
   },
   {
+   "key": "pricing_page",
+   "label": "Pricing page",
+   "type": "radio",
+   "required": true,
+   "group": "Stripe",
+   "default": "toggle",
+   "help": "If people can pay yearly, the toggle shows the saving up front.",
+   "options": [
+    {
+     "value": "one",
+     "label": "One plan",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Pro</div><div style=\"font-size:34px;font-weight:800;letter-spacing:-.02em\">€9<small style=\"font-size:13px;color:hsl(var(--muted-foreground));font-weight:500\">/mo</small></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0\">Subscribe</div></div>"
+    },
+    {
+     "value": "toggle",
+     "label": "Monthly / yearly toggle",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;\"><div style=\"display:flex;border:1px solid hsl(var(--border));border-radius:99px;padding:3px;font-size:11px;font-weight:600\"><span style=\"padding:3px 10px;color:hsl(var(--muted-foreground))\">Monthly</span><span style=\"padding:3px 10px;border-radius:99px;background:hsl(var(--primary));color:#fff\">Yearly</span></div><div style=\"font-size:34px;font-weight:800;letter-spacing:-.02em\">€90<small style=\"font-size:13px;color:hsl(var(--muted-foreground));font-weight:500\">/yr</small></div><div style=\"font-size:11px;font-weight:700;color:hsl(140 55% 36%)\">2 months free</div><div style=\"height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0\">Subscribe</div></div>"
+    }
+   ],
+   "aspect": "3/4"
+  },
+  {
    "key": "price",
    "label": "Price per month",
    "type": "number",

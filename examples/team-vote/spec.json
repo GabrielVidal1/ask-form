@@ -1,0 +1,52 @@
+{
+ "title": "Onboarding: which one?",
+ "order": 4,
+ "multi": true,
+ "summary": "One link for the whole team: everyone votes on two mockups, the agent counts and builds the winner.",
+ "description": "Two takes on the first screen a new user sees. Pick the one you would ship. The vote stays open until Friday 18:00; I'll build whichever wins.",
+ "fields": [
+  {
+   "key": "name",
+   "label": "Your name",
+   "type": "text",
+   "required": true,
+   "group": "Your vote"
+  },
+  {
+   "key": "email",
+   "label": "Email",
+   "type": "email",
+   "group": "Your vote",
+   "help": "Optional: so I know who to ask if I have a question about your vote."
+  },
+  {
+   "key": "onboarding",
+   "label": "Which onboarding?",
+   "type": "radio",
+   "required": true,
+   "group": "Your vote",
+   "options": [
+    {
+     "value": "checklist",
+     "label": "Checklist",
+     "description": "Three steps, ticked off as you go",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Get started</div><div style=\"height:7px;border-radius:4px;background:hsl(var(--muted));overflow:hidden\"><div style=\"width:33%;height:100%;background:hsl(var(--primary))\"></div></div><div style=\"display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px\"><span style=\"flex:none;width:18px;height:18px;border-radius:5px;border:2px solid hsl(var(--primary));background:hsl(var(--primary));display:grid;place-items:center;box-sizing:border-box\"><span style=\"color:#fff;font-size:10px;font-weight:800\">✓</span></span><b style=\"font-weight:600\">Create a board</b></div><div style=\"display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px\"><span style=\"flex:none;width:18px;height:18px;border-radius:5px;border:2px solid hsl(var(--border));background:transparent;display:grid;place-items:center;box-sizing:border-box\"></span><b style=\"font-weight:600\">Invite your team</b></div><div style=\"display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px\"><span style=\"flex:none;width:18px;height:18px;border-radius:5px;border:2px solid hsl(var(--border));background:transparent;display:grid;place-items:center;box-sizing:border-box\"></span><b style=\"font-weight:600\">Add a first task</b></div></div>"
+    },
+    {
+     "value": "tour",
+     "label": "Guided tour",
+     "description": "Tooltips walk you through the app",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"position:relative;height:100%;display:flex;flex-direction:column;gap:9px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><div style=\"height:9px;width:30%;border-radius:5px;background:hsl(var(--muted))\"></div><span style=\"width:28px;height:28px;border-radius:50%;background:hsl(var(--primary));color:#fff;display:grid;place-items:center;font-weight:800;font-size:18px;box-shadow:0 0 0 6px hsl(var(--primary) / .18)\">+</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"position:absolute;right:0;top:46px;width:78%;border-radius:10px;background:hsl(var(--foreground));color:hsl(var(--card));padding:10px;display:grid;gap:5px;font-weight:600\">✨ Tap + to add your first task<span style=\"font-size:10px;opacity:.7;font-weight:500\">1 of 4 · Next</span></div></div></div>"
+    }
+   ],
+   "aspect": "3/4"
+  },
+  {
+   "key": "why",
+   "label": "Why that one?",
+   "type": "textarea",
+   "group": "Your vote",
+   "placeholder": "Optional"
+  }
+ ]
+}

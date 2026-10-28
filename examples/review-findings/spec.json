@@ -122,32 +122,29 @@
   },
   {
    "type": "markdown",
-   "group": "Cleanups",
-   "label": "5 · Dead code",
-   "text": "`formatCurrencyOld` and `legacyTaxRate` have no callers left since this branch."
+   "group": "Worth fixing",
+   "text": "**5 · The invoice table on a phone**\n\n`InvoiceTable` keeps its five columns below 640 px, so on a phone it scrolls sideways and the status column is off screen."
   },
   {
-   "key": "f5_dead_code",
-   "label": "What should I do?",
+   "key": "f5_mobile_table",
+   "label": "How should it look on a phone?",
    "type": "radio",
    "required": true,
-   "group": "Cleanups",
-   "default": "fix",
+   "group": "Worth fixing",
+   "default": "cards",
    "options": [
     {
-     "value": "fix",
-     "label": "Fix it",
-     "description": "Delete both"
+     "value": "table",
+     "label": "Leave it: scrolls sideways",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Invoices</div><div style=\"width:150%;display:grid;gap:8px\"><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1042</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1041</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1040</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1039</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1038</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div></div><div style=\"margin-top:auto;text-align:center;font-size:11px;color:hsl(var(--destructive))\">← scrolls sideways →</div></div>"
     },
     {
-     "value": "skip",
-     "label": "Leave it"
-    },
-    {
-     "value": "issue",
-     "label": "Open an issue for later"
+     "value": "cards",
+     "label": "Stack each invoice as a card",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Invoices</div><div style=\"border:1px solid hsl(var(--border));border-radius:10px;padding:9px;display:grid;gap:7px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><b>#1042</b><span style=\"font-size:10px;font-weight:700;border-radius:7px;padding:2px 7px;background:hsl(var(--primary) / .14);color:hsl(var(--primary))\">due</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"border:1px solid hsl(var(--border));border-radius:10px;padding:9px;display:grid;gap:7px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><b>#1041</b><span style=\"font-size:10px;font-weight:700;border-radius:7px;padding:2px 7px;background:hsl(140 50% 45% / .16);color:hsl(140 55% 36%)\">paid</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"border:1px solid hsl(var(--border));border-radius:10px;padding:9px;display:grid;gap:7px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><b>#1040</b><span style=\"font-size:10px;font-weight:700;border-radius:7px;padding:2px 7px;background:hsl(140 50% 45% / .16);color:hsl(140 55% 36%)\">paid</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div></div></div>"
     }
-   ]
+   ],
+   "aspect": "3/4"
   },
   {
    "type": "markdown",

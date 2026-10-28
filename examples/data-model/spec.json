@@ -1,6 +1,6 @@
 {
  "title": "Comments: the data model",
- "order": 5,
+ "order": 6,
  "summary": "Design review: the schema drawn as a diagram, the endpoints in a table, then the open choices: threading, IDs, deletion, pagination.",
  "description": "Comments on posts, with replies and reactions. Here is the schema and the API as I'd build them. A few choices are yours; my picks are pre-selected, with why.",
  "fields": [
