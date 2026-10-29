@@ -196,12 +196,14 @@ func (s *Server) answered(r *http.Request, st store.State) *store.Response {
 func (s *Server) renderForm(w http.ResponseWriter, st store.State, values url.Values, errs map[string]string, code int) {
 	nonce := newNonce()
 	page := buildPage(st, Prefix+st.ID, values, errs, s.csrf(st), nonce)
+	page.Brand = pageLook(s.look())
 	s.render(w, "form", page, pageCSP(nonce), code)
 }
 
 type closedPage struct {
 	ID, Title, Status, When, Nonce string
 	PageCSS                        template.CSS
+	Brand                          pageBrand
 	Recap                          []recapItem
 	Multi, Mine, ShowCount         bool // a multi form; this browser answered it; its count shows
 	Count                          int  // its answers
@@ -213,6 +215,7 @@ func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store
 	p := closedPage{
 		ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce(),
 		Multi: st.Multi, Count: len(st.Responses), ShowCount: st.Multi && !st.HideCount,
+		Brand: pageLook(s.look()),
 	}
 	if st.ClosedAt != nil {
 		p.When = st.ClosedAt.UTC().Format("2 Jan 2006, 15:04 UTC")
@@ -230,6 +233,7 @@ func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store
 type messagePage struct {
 	Title, Message, Nonce string
 	PageCSS               template.CSS
+	Brand                 pageBrand
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any, csp string, code int) {
@@ -371,7 +375,7 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) message(w http.ResponseWriter, code int, title, msg string) {
-	p := messagePage{Title: title, Message: msg, Nonce: newNonce()}
+	p := messagePage{Title: title, Message: msg, Nonce: newNonce(), Brand: pageLook(s.look())}
 	s.render(w, "message", p, pageCSP(p.Nonce), code)
 }
 
@@ -405,7 +409,7 @@ func (s *Server) frame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sdk, csp := frameFor(st.Fields, r.PathValue("key"), r.PathValue("n"))
-	doc := frameDocWith(st, Prefix+st.ID+"/assets/", markup, fit, sdk, func(name string) (string, bool) {
+	doc := frameDocWith(st, Prefix+st.ID+"/assets/", markup, fit, sdk, s.look().FrameCSS(), func(name string) (string, bool) {
 		b, a, err := s.store.Asset(st.ID, name)
 		if err != nil {
 			return "", false
