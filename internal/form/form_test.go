@@ -51,9 +51,27 @@ func TestNormalizeAutoSecretAndNoDefault(t *testing.T) {
 	}
 }
 
+func TestCardAspect(t *testing.T) {
+	for in, want := range map[string]string{
+		"": "auto", "auto": "auto", "1": "1", "1/2": "1/2", "2/1": "2/1",
+		"16/9": "2/1", "4/3": "1", "3/4": "1", "9/16": "1/2", "0.4": "1/2", "3": "2/1", "0/1": "auto",
+	} {
+		if got := CardAspect(in); got != want {
+			t.Errorf("CardAspect(%q) = %q, want %q", in, got, want)
+		}
+	}
+	f := norm(t, `[{"key":"s","type":"radio","options":[{"image":"{{asset:a.png}}"},{"value":"b","html":"<b>b</b>"}],"aspect":"1:2"}]`)
+	if f[0].Aspect != "1/2" {
+		t.Errorf("aspect 1:2 → %q", f[0].Aspect)
+	}
+	if o := f[0].Options; o[0].Value != "option-1" || o[0].Label != "Option 1" || !o[0].Bare || o[1].Label != "b" || !o[1].Bare {
+		t.Errorf("unlabelled options: %+v", o)
+	}
+}
+
 func TestNormalizeChoices(t *testing.T) {
 	f := norm(t, `[{"key":"s","type":"radio","options":["a","a",{"value":"b","label":"B","image":"{{asset:x.png}}"}],"aspect":"16/9","columns":9}]`)
-	if len(f[0].Options) != 2 || !f[0].Other || !f[0].Visual() || f[0].Columns != MaxColumns || f[0].Aspect != "16/9" {
+	if len(f[0].Options) != 2 || !f[0].Other || !f[0].Visual() || f[0].Columns != MaxColumns || f[0].Aspect != "2/1" {
 		t.Fatalf("choice: %+v", f[0])
 	}
 	for _, bad := range []string{
@@ -62,6 +80,7 @@ func TestNormalizeChoices(t *testing.T) {
 		`[{"key":"x","type":"wat"}]`,
 		`[{"type":"html"}]`,
 		`[{"key":"s","type":"radio","options":[{"value":"a","image":"{{asset:a.png}}"},"b"],"aspect":"0/1"}]`,
+		`[{"key":"s","type":"radio","options":[{"value":"a","image":"{{asset:a.png}}"},"b"],"aspect":"1/0"}]`,
 		`[]`,
 		`{}`,
 	} {
