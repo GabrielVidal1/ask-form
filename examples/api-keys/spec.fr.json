@@ -1,0 +1,161 @@
+{
+ "title": "Stripe + Sentry\u00a0: clés et paramètres",
+ "order": 3,
+ "summary": "Des identifiants sans passer par le chat\u00a0: les champs secrets vont directement dans .env, l'agent apprend seulement qu'ils sont renseignés.",
+ "description": "Le code de facturation est prêt sur `feat/billing`\u202f; il lui faut vos clés. **Les champs secrets ne me parviennent jamais**\u00a0: je sais seulement qu'ils sont renseignés et leur longueur, et ils vont directement dans `.env.local`. Des clés en mode test suffisent pour l'instant.",
+ "fields": [
+  {
+   "type": "markdown",
+   "group": "Stripe",
+   "label": "Où les trouver",
+   "text": "Tableau de bord Stripe → **Developers → API keys**, mode test activé. Le secret du webhook peut attendre\u00a0: si vous le laissez vide, je crée l'endpoint avec la CLI Stripe et je le renseigne moi-même."
+  },
+  {
+   "key": "stripe_secret_key",
+   "label": "Clé secrète Stripe (`sk_test_…`)",
+   "type": "secret",
+   "required": true,
+   "group": "Stripe"
+  },
+  {
+   "key": "stripe_webhook_secret",
+   "label": "Secret de signature du webhook (`whsec_…`)",
+   "type": "secret",
+   "group": "Stripe"
+  },
+  {
+   "key": "billing_model",
+   "label": "Pour quoi vos utilisateurs paient-ils\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Stripe",
+   "default": "monthly",
+   "options": [
+    {
+     "value": "one-time",
+     "label": "Un achat unique"
+    },
+    {
+     "value": "monthly",
+     "label": "Un abonnement mensuel"
+    },
+    {
+     "value": "monthly-yearly",
+     "label": "Mensuel ou annuel",
+     "description": "Annuel = deux mois offerts"
+    }
+   ]
+  },
+  {
+   "key": "pricing_page",
+   "label": "Page de tarifs",
+   "type": "radio",
+   "required": true,
+   "group": "Stripe",
+   "default": "toggle",
+   "help": "Si vos utilisateurs peuvent payer à l'année, le sélecteur met l'économie en avant.",
+   "options": [
+    {
+     "value": "one",
+     "label": "Une seule offre",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Pro</div><div style=\"font-size:34px;font-weight:800;letter-spacing:-.02em\">9\u00a0€<small style=\"font-size:13px;color:hsl(var(--muted-foreground));font-weight:500\">/mois</small></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0\">S'abonner</div></div>"
+    },
+    {
+     "value": "toggle",
+     "label": "Bascule mensuel / annuel",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;\"><div style=\"display:flex;border:1px solid hsl(var(--border));border-radius:99px;padding:3px;font-size:11px;font-weight:600\"><span style=\"padding:3px 10px;color:hsl(var(--muted-foreground))\">Mensuel</span><span style=\"padding:3px 10px;border-radius:99px;background:hsl(var(--primary));color:#fff\">Annuel</span></div><div style=\"font-size:34px;font-weight:800;letter-spacing:-.02em\">90\u00a0€<small style=\"font-size:13px;color:hsl(var(--muted-foreground));font-weight:500\">/an</small></div><div style=\"font-size:11px;font-weight:700;color:hsl(140 55% 36%)\">2 mois offerts</div><div style=\"height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0\">S'abonner</div></div>"
+    }
+   ],
+   "aspect": "3/4"
+  },
+  {
+   "key": "price",
+   "label": "Prix par mois",
+   "type": "number",
+   "required": true,
+   "group": "Stripe",
+   "min": 1,
+   "step": 0.5,
+   "default": 9
+  },
+  {
+   "key": "currency",
+   "label": "Devise",
+   "type": "select",
+   "group": "Stripe",
+   "default": "eur",
+   "options": [
+    {
+     "value": "eur",
+     "label": "EUR (€)"
+    },
+    {
+     "value": "usd",
+     "label": "USD ($)"
+    },
+    {
+     "value": "gbp",
+     "label": "GBP (£)"
+    }
+   ]
+  },
+  {
+   "key": "stripe_tax",
+   "label": "Laisser Stripe Tax calculer la TVA et les taxes de vente",
+   "type": "checkbox",
+   "group": "Stripe",
+   "default": true
+  },
+  {
+   "key": "sentry_dsn",
+   "label": "DSN Sentry",
+   "type": "text",
+   "required": true,
+   "group": "Sentry",
+   "placeholder": "https://…@o123456.ingest.sentry.io/789",
+   "help": "Sentry → Project settings → Client Keys. Ce n'est pas un secret\u00a0: il est inclus dans le bundle du navigateur."
+  },
+  {
+   "key": "sentry_auth_token",
+   "label": "Token d'authentification Sentry, pour téléverser les source maps",
+   "type": "secret",
+   "group": "Sentry",
+   "help": "Facultatif. Sans lui, les stack traces pointent vers du code minifié."
+  },
+  {
+   "key": "environments",
+   "label": "Remonter les erreurs depuis",
+   "type": "multiselect",
+   "group": "Sentry",
+   "default": [
+    "production",
+    "staging"
+   ],
+   "options": [
+    {
+     "value": "production",
+     "label": "Production"
+    },
+    {
+     "value": "staging",
+     "label": "Staging"
+    },
+    {
+     "value": "local",
+     "label": "Dev local"
+    }
+   ]
+  },
+  {
+   "key": "trace_rate",
+   "label": "Part des requêtes à tracer (%)",
+   "type": "slider",
+   "group": "Sentry",
+   "min": 0,
+   "max": 100,
+   "step": 5,
+   "default": 10,
+   "help": "10\u202f% reste largement dans le quota du plan gratuit avec votre trafic."
+  }
+ ]
+}

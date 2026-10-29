@@ -1,0 +1,167 @@
+{
+ "title": "Commentaires\u00a0: le modèle de données",
+ "order": 6,
+ "summary": "Revue de conception\u00a0: le schéma sous forme de diagramme, les endpoints dans un tableau, puis les choix ouverts\u00a0: fils de réponses, identifiants, suppression, pagination.",
+ "description": "Des commentaires sur des posts, avec réponses et réactions. Voici le schéma et l'API tels que je les construirais. Quelques choix vous reviennent\u202f; mes préférences sont pré-sélectionnées, avec le pourquoi.",
+ "fields": [
+  {
+   "type": "html",
+   "group": "Le modèle",
+   "label": "Schéma",
+   "html": "<svg viewBox=\"0 0 420 250\" xmlns=\"http://www.w3.org/2000/svg\" style=\"display:block;width:100%;max-width:560px;height:auto;margin:0 auto;font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace\">\n<g fill=\"hsl(var(--card))\" stroke=\"hsl(var(--border))\"><rect x=\"6\" y=\"20\" width=\"118\" height=\"86\" rx=\"10\"/><rect x=\"6\" y=\"140\" width=\"118\" height=\"70\" rx=\"10\"/></g>\n<rect x=\"150\" y=\"6\" width=\"134\" height=\"238\" rx=\"10\" fill=\"hsl(var(--primary) / .08)\" stroke=\"hsl(var(--primary))\"/>\n<rect x=\"306\" y=\"40\" width=\"108\" height=\"98\" rx=\"10\" fill=\"hsl(var(--primary) / .08)\" stroke=\"hsl(var(--primary))\"/>\n<g font-weight=\"700\" fill=\"hsl(var(--foreground))\" font-family=\"system-ui,sans-serif\" font-size=\"14\"><text x=\"18\" y=\"42\">posts</text><text x=\"18\" y=\"162\">users</text><text x=\"162\" y=\"28\">comments</text><text x=\"318\" y=\"62\">reactions</text></g>\n<g fill=\"hsl(var(--muted-foreground))\">\n<text x=\"18\" y=\"64\">id</text><text x=\"18\" y=\"82\">author_id</text><text x=\"18\" y=\"100\">…</text>\n<text x=\"18\" y=\"184\">id</text><text x=\"18\" y=\"202\">name</text>\n<text x=\"162\" y=\"52\">id</text><text x=\"162\" y=\"72\">post_id</text><text x=\"162\" y=\"92\">parent_id</text><text x=\"162\" y=\"112\">author_id</text><text x=\"162\" y=\"132\">body</text><text x=\"162\" y=\"152\">created_at</text><text x=\"162\" y=\"172\">edited_at</text><text x=\"162\" y=\"192\">deleted_at</text><text x=\"162\" y=\"212\">reply_count</text>\n<text x=\"318\" y=\"84\">comment_id</text><text x=\"318\" y=\"104\">user_id</text><text x=\"318\" y=\"124\">emoji</text></g>\n<g fill=\"none\" stroke=\"hsl(var(--muted-foreground))\" stroke-width=\"1.4\"><path d=\"M124 60H136V68H150\"/><path d=\"M124 180H136V108H150\"/><path d=\"M284 48H296V80H306\"/><path d=\"M284 88C300 88 300 100 284 100\"/></g>\n<text x=\"210\" y=\"236\" fill=\"hsl(var(--muted-foreground))\" font-family=\"system-ui,sans-serif\" font-size=\"11\" text-anchor=\"middle\">parent_id → comments.id (une réponse)</text>\n</svg>"
+  },
+  {
+   "type": "markdown",
+   "group": "Le modèle",
+   "label": "Endpoints",
+   "text": "| Route | Rôle |\n|---|---|\n| `GET /posts/:id/comments` | liste, du plus récent au plus ancien, paginée |\n| `POST /posts/:id/comments` | ajoute\u202f; `parent_id` pour une réponse |\n| `PATCH /comments/:id` | modifie, auteur uniquement |\n| `DELETE /comments/:id` | supprime, auteur ou propriétaire du post |\n| `PUT /comments/:id/reactions/:emoji` | active ou retire une réaction |"
+  },
+  {
+   "key": "threading",
+   "label": "Jusqu'à quelle profondeur vont les réponses\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Le modèle",
+   "default": "one-level",
+   "help": "Un seul niveau se lit bien sur mobile et garde la liste en une seule requête.",
+   "options": [
+    {
+     "value": "one-level",
+     "label": "Un niveau",
+     "description": "Des réponses sous un commentaire, pas de réponses aux réponses (comme les fils Slack)"
+    },
+    {
+     "value": "tree",
+     "label": "Un arbre complet",
+     "description": "Profondeur illimitée (comme Reddit)\u202f; demande une requête récursive"
+    },
+    {
+     "value": "flat",
+     "label": "Pas de réponses",
+     "description": "Supprimer parent_id"
+    }
+   ]
+  },
+  {
+   "key": "ids",
+   "label": "Type d'identifiant",
+   "type": "radio",
+   "required": true,
+   "group": "Le modèle",
+   "default": "uuid7",
+   "options": [
+    {
+     "value": "uuid7",
+     "label": "UUID v7",
+     "description": "Triable par date, sans risque dans les URL"
+    },
+    {
+     "value": "serial",
+     "label": "Entiers auto-incrémentés",
+     "description": "Ce qu'utilisent les posts aujourd'hui\u202f; révèle le nombre de commentaires"
+    },
+    {
+     "value": "ulid",
+     "label": "Chaînes ULID"
+    }
+   ]
+  },
+  {
+   "key": "deletion",
+   "label": "Que se passe-t-il quand quelqu'un supprime un commentaire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Comportement",
+   "default": "soft",
+   "options": [
+    {
+     "value": "soft",
+     "label": "Il affiche «\u00a0supprimé\u00a0», les réponses restent",
+     "description": "Soft delete\u00a0: la ligne garde deleted_at, le corps est effacé"
+    },
+    {
+     "value": "cascade",
+     "label": "Il disparaît, avec ses réponses"
+    },
+    {
+     "value": "orphan",
+     "label": "Il disparaît, les réponses remontent"
+    }
+   ]
+  },
+  {
+   "key": "edit_window",
+   "label": "Combien de temps un commentaire reste-t-il modifiable\u202f? (en minutes, 0 = toujours)",
+   "type": "number",
+   "group": "Comportement",
+   "min": 0,
+   "step": 5,
+   "default": 15
+  },
+  {
+   "key": "reactions",
+   "label": "Quelles réactions\u202f?",
+   "type": "multiselect",
+   "group": "Comportement",
+   "default": [
+    "👍",
+    "❤️",
+    "😂",
+    "🎉"
+   ],
+   "options": [
+    "👍",
+    "❤️",
+    "😂",
+    "🎉",
+    "😮",
+    "👀"
+   ]
+  },
+  {
+   "key": "notify",
+   "label": "Prévenir l'auteur du post par e-mail des nouveaux commentaires (regroupés, au plus une fois par heure)",
+   "type": "checkbox",
+   "group": "Comportement",
+   "default": true
+  },
+  {
+   "key": "pagination",
+   "label": "Pagination de la liste",
+   "type": "radio",
+   "required": true,
+   "group": "API",
+   "default": "cursor",
+   "options": [
+    {
+     "value": "cursor",
+     "label": "Curseur",
+     "description": "`?after=<id>`\u00a0: stable pendant que de nouveaux commentaires arrivent"
+    },
+    {
+     "value": "offset",
+     "label": "Numéros de page",
+     "description": "`?page=3`\u00a0: peut répéter ou sauter un commentaire"
+    }
+   ]
+  },
+  {
+   "key": "json_case",
+   "label": "Noms des champs dans le JSON",
+   "type": "radio",
+   "group": "API",
+   "default": "camel",
+   "help": "Le reste de votre API utilise camelCase.",
+   "options": [
+    {
+     "value": "camel",
+     "label": "camelCase (createdAt)"
+    },
+    {
+     "value": "snake",
+     "label": "snake_case (created_at)"
+    }
+   ]
+  }
+ ]
+}

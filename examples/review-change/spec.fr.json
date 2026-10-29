@@ -1,0 +1,95 @@
+{
+ "title": "Relire une modification avant que je fusionne",
+ "order": 8,
+ "summary": "Des questions de suivi qui n'apparaissent que si elles s'appliquent, un diff à lire, une note en étoiles, un tableau de modifications demandées et des champs d'heure.",
+ "description": "J'ai corrigé la boucle de retry de l'uploader. Lisez le diff, donnez un verdict, et le formulaire ne demande que ce que ce verdict exige\u00a0: les modifications demandées si vous approuvez avec modifications, une raison si vous refusez, une fenêtre de merge si ça passe.",
+ "fields": [
+  {
+   "type": "diff",
+   "label": "uploader/retry.go",
+   "group": "La modification",
+   "text": "diff --git a/uploader/retry.go b/uploader/retry.go\nindex 3f2a1c9..8be07d4 100644\n--- a/uploader/retry.go\n+++ b/uploader/retry.go\n@@ -18,12 +18,17 @@ func (u *Uploader) send(ctx context.Context, chunk []byte) error {\n \tvar err error\n-\tfor i := 0; i < 5; i++ {\n-\t\terr = u.post(ctx, chunk)\n-\t\tif err == nil {\n-\t\t\treturn nil\n-\t\t}\n-\t\ttime.Sleep(time.Second)\n+\tbackoff := 250 * time.Millisecond\n+\tfor i := 0; i < 5; i++ {\n+\t\terr = u.post(ctx, chunk)\n+\t\tif err == nil || !retryable(err) {\n+\t\t\treturn err\n+\t\t}\n+\t\tselect {\n+\t\tcase <-time.After(backoff):\n+\t\t\tbackoff *= 2\n+\t\tcase <-ctx.Done():\n+\t\t\treturn ctx.Err()\n+\t\t}\n \t}\n \treturn err\n }"
+  },
+  {
+   "type": "details",
+   "group": "La modification",
+   "label": "Pourquoi un backoff exponentiel, et pourquoi seules certaines erreurs sont rejouées",
+   "text": "Une pause fixe d'une seconde martelait un serveur en difficulté cinq fois en cinq secondes, et rejouait les **400**, qui ne peuvent jamais réussir.\n\n- 250 ms, 500 ms, 1 s, 2 s, 4 s\u00a0: environ 8 s au total, comme avant.\n- `retryable` est vrai uniquement pour les erreurs réseau, les 429 et les 5xx.\n- Un contexte annulé arrête désormais la boucle immédiatement."
+  },
+  {
+   "key": "verdict",
+   "label": "Verdict",
+   "type": "radio",
+   "required": true,
+   "group": "Verdict",
+   "default": "approve",
+   "options": [
+    {"value": "approve", "label": "Approuver", "description": "Fusionner tel quel"},
+    {"value": "changes", "label": "Approuver avec modifications", "description": "Fusionner une fois les points ci-dessous traités"},
+    {"value": "reject", "label": "Refuser", "description": "Ne pas fusionner"}
+   ]
+  },
+  {
+   "key": "clarity",
+   "label": "Le diff est-il clair\u202f?",
+   "type": "rating",
+   "group": "Verdict",
+   "minLabel": "confus",
+   "maxLabel": "évident"
+  },
+  {
+   "key": "requested",
+   "label": "Modifications demandées",
+   "type": "list",
+   "group": "Verdict",
+   "required": true,
+   "help": "Une ligne par point. Demandé uniquement parce que vous approuvez avec modifications.",
+   "showIf": {"key": "verdict", "equals": "changes"},
+   "columns": [
+    {"key": "where", "label": "Où", "placeholder": "fichier ou fonction"},
+    {"key": "what", "label": "Quoi modifier"},
+    {"key": "severity", "label": "Gravité", "type": "select", "options": ["nit", "souhaitable", "obligatoire"]}
+   ]
+  },
+  {
+   "key": "reason",
+   "label": "Qu'est-ce qui vous ferait changer d'avis\u202f?",
+   "type": "textarea",
+   "group": "Verdict",
+   "help": "Facultatif si vous approuvez avec modifications, obligatoire si vous refusez.",
+   "showIf": {"key": "verdict", "in": ["changes", "reject"]},
+   "requiredIf": {"key": "verdict", "equals": "reject"}
+  },
+  {
+   "key": "window",
+   "label": "La fenêtre de merge commence à",
+   "type": "time",
+   "group": "Déploiement",
+   "default": "22:00",
+   "showIf": {"key": "verdict", "in": ["approve", "changes"]}
+  },
+  {
+   "key": "freeze",
+   "label": "Dates où je ne dois pas déployer",
+   "type": "daterange",
+   "group": "Déploiement",
+   "help": "Facultatif\u00a0: des vacances, un lancement.",
+   "showIf": {"key": "verdict", "in": ["approve", "changes"]}
+  },
+  {
+   "key": "tell",
+   "label": "Prévenir l'équipe une fois fusionné",
+   "type": "checkbox",
+   "group": "Déploiement",
+   "showIf": {"key": "verdict", "in": ["approve", "changes"]}
+  },
+  {
+   "key": "team_email",
+   "label": "Adresse de l'équipe",
+   "type": "email",
+   "group": "Déploiement",
+   "showIf": {"key": "tell", "equals": true},
+   "requiredIf": {"key": "tell", "equals": true}
+  }
+ ]
+}

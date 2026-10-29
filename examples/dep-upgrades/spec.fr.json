@@ -1,0 +1,120 @@
+{
+ "title": "Dépendances\u00a0: 14 en retard",
+ "order": 7,
+ "summary": "Tour de mises à jour\u00a0: les paquets obsolètes avec ce que chaque montée de version majeure casse dans ce code, puis ceux qui passent maintenant.",
+ "description": "`npm outdated` liste 14 paquets. Les 10 mises à jour mineures et correctifs passent les tests ensemble. J'ai lu les changelogs des 4 versions majeures au regard de ce code\u00a0: voici ce que chacune toucherait. Choisissez le périmètre de ce tour.",
+ "fields": [
+  {
+   "type": "markdown",
+   "group": "Ce qui est en retard",
+   "label": "Les quatre versions majeures",
+   "text": "| Paquet | Actuel → dernière | Ce que ça casse ici | Travail |\n|---|---|---|---|\n| react, react-dom | 18.3 → 19.2 | `forwardRef` dans 3 composants (`ref` est désormais une prop) | ~1 h |\n| vite | 5.4 → 7.1 | Node 20.19+ requis\u202f; notre config est compatible | ~15 min |\n| eslint | 8.57 → 9.36 | `.eslintrc` doit devenir un `eslint.config.js` au format flat | ~30 min |\n| zod | 3.23 → 4.1 | API des messages d'erreur renommée, 41 points d'appel | ~2 h |"
+  },
+  {
+   "key": "majors",
+   "label": "Quelles montées de version majeure faire maintenant\u202f?",
+   "type": "multiselect",
+   "group": "Ce qui est en retard",
+   "default": [
+    "vite",
+    "eslint",
+    "react"
+   ],
+   "help": "Zod 4 est le seul qui demande vraiment du travail\u202f; je lui consacrerais un tour à part.",
+   "options": [
+    {
+     "value": "react",
+     "label": "React 19",
+     "description": "3 composants"
+    },
+    {
+     "value": "vite",
+     "label": "Vite 7"
+    },
+    {
+     "value": "eslint",
+     "label": "ESLint 9",
+     "description": "Je réécris la config"
+    },
+    {
+     "value": "zod",
+     "label": "Zod 4",
+     "description": "41 points d'appel"
+    }
+   ]
+  },
+  {
+   "key": "minor",
+   "label": "Appliquer aussi les 10 mises à jour mineures et correctifs",
+   "type": "checkbox",
+   "group": "Ce qui est en retard",
+   "default": true
+  },
+  {
+   "key": "delivery",
+   "label": "Comment les voulez-vous\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Livraison",
+   "default": "pr-each",
+   "options": [
+    {
+     "value": "pr-each",
+     "label": "Une PR par version majeure, une pour le reste",
+     "description": "Facile d'en annuler une"
+    },
+    {
+     "value": "one-pr",
+     "label": "Une seule PR pour tout"
+    },
+    {
+     "value": "main",
+     "label": "Directement sur main une fois les tests au vert"
+    }
+   ]
+  },
+  {
+   "key": "node",
+   "label": "Version de Node (.nvmrc et CI)",
+   "type": "select",
+   "group": "Livraison",
+   "default": "22",
+   "options": [
+    {
+     "value": "20",
+     "label": "20 (≥ 20.19 requis pour Vite 7)"
+    },
+    {
+     "value": "22",
+     "label": "22 LTS"
+    },
+    {
+     "value": "24",
+     "label": "24"
+    }
+   ]
+  },
+  {
+   "key": "keep_current",
+   "label": "Après ce tour",
+   "type": "radio",
+   "group": "Livraison",
+   "default": "renovate",
+   "options": [
+    {
+     "value": "renovate",
+     "label": "Configurer Renovate",
+     "description": "PR groupées chaque semaine\u202f; les correctifs se fusionnent tout seuls quand la CI est verte"
+    },
+    {
+     "value": "dependabot",
+     "label": "Configurer Dependabot"
+    },
+    {
+     "value": "nothing",
+     "label": "Rien\u00a0: reposez-moi la question dans quelques mois"
+    }
+   ]
+  }
+ ]
+}
