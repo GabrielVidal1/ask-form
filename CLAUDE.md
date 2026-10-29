@@ -55,8 +55,23 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `script-src 'unsafe-inline'`, still no network); don't widen it, and keep
   `widget.js` accepting messages only from the field's own iframe.
 - `/forms/` is the old prefix: it must keep answering (links already sent).
+- Languages (`internal/i18n`): what a respondent reads is English (the
+  catalogue keys) or French (`fr.go`); a form's `lang` is fixed at create
+  (`create --lang`, else serve's `--lang`/`ASK_FORM_LANG`, else en) and the
+  parts it gets by itself ("Anything else?", "Option 2") are written in it.
+  Templates say `{{t "…"}}` / `{{tn n "one" "other"}}`; Go `i18n.T(lang, …)`;
+  the page scripts `tr("…", {n: …})`, reading the machine's catalogue from
+  `<html data-l10n>` (the relay serves the scripts but never the
+  translations: a machine's language doesn't wait on a relay). A new string
+  needs its French entry: `TestCatalogueComplete` fails otherwise, and a
+  script string also goes in `jsKeys`. Another language = one file like
+  `fr.go` (catalogue, plural rule, date) plus `examples/*/spec.<lang>.json`.
+  The relay serves `/fr/examples` from `spec.fr.json`; the not-found page
+  stays English (same bytes for every unknown link).
 - `examples/<name>/spec.json` (+ images): adding one = a new folder plus a
-  relay rebuild; `internal/server/examples_test.go` checks each renders.
+  relay rebuild; `internal/server/examples_test.go` checks each renders. Its
+  French twin `spec.fr.json` keeps every key, type, option value and
+  condition; only the text a person reads changes.
 - The landing page is a React + Vite app in `landing/app/` (GSAP, lucide,
   `@gabvdl/ui` from public npm for `PhonePreview`/`ProgressiveText`). Its
   build in `landing/dist/` is **committed**, so the relay and CI build with Go

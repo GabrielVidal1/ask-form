@@ -17,7 +17,7 @@ link, they answer in a browser, you read the answers as JSON.
 #    It returns at once. Show the user the "url": it holds the form's token,
 #    so don't log it anywhere else.
 ask-form create --title "Project setup" --description "Two choices before I scaffold." \
-  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public] [--open]
+  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public] [--open] [--lang fr]
 
 # 2. Wait for the answer IN THE BACKGROUND (a background shell task, or under a
 #    monitor). You are re-invoked when it exits; keep working meanwhile.
@@ -36,6 +36,14 @@ browser right away (`"opened": true`); tell them it's there and still show the
 url. It opens nothing over SSH or on a machine without a display
 (`"opened": false`): show the url as usual. Leave it off for a `--multi` form,
 which is for other people to answer.
+
+**Write the form in the user's language, and pass it with `--lang`.** The
+title, the questions and the options are yours to write; `--lang en|fr` sets
+the language of everything around them: the buttons, the errors, the thanks
+page, the "Other…" choice and the "Anything else?" box. Keep the two the
+same: questions in French go with `--lang fr`. Without the flag, the form
+takes the machine's default (`ask-form setup --lang fr` sets it), else
+English. The answers JSON is the same in every language.
 
 ## Many people, one form
 
