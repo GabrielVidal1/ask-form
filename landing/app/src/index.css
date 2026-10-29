@@ -211,13 +211,14 @@
 .pf-cards.n2 { grid-template-columns: 1fr 1fr; }
 .pf-cards.n3 { grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .pf-cards.n3 .mk { padding: 8px 6px; gap: 5px; }
-.pf-cards.n3 .pf-cap { font-size: 12.5px; padding: 6px 7px; }
+.pf-cards.n3 .pf-cap { font-size: 12.5px; padding: 6px 7px; gap: 5px; }
 .pf-card { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); transition: border-color .2s, box-shadow .2s; }
 .pf-card.on { border-color: var(--accent); box-shadow: 0 0 0 2px hsl(24 95% 53% / .55); }
 .pf-visual { aspect-ratio: 3 / 4; background: var(--muted); overflow: hidden; }
-.pf-cap { display: block; padding: 7px 9px; font-size: 13.5px; line-height: 1.3; }
-.pf-tick { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; background: rgb(0 0 0 / .25); display: grid; place-items: center; color: #fff; transition: background .2s; }
-.pf-card.on .pf-tick { background: var(--accent); }
+.pf-cap { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-top: 1px solid var(--line); font-size: 13.5px; line-height: 1.3; }
+.pf-card.on .pf-cap { background: hsl(24 95% 53% / .07); }
+.pf-tick { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted-fg); display: grid; place-items: center; color: #fff; transition: background .2s, border-color .2s; }
+.pf-card.on .pf-tick { background: var(--accent); border-color: var(--accent); }
 .pf-finding { margin: 0 0 14px; font-size: 15px; }
 .pf-finding b { display: block; margin-bottom: 4px; }
 .pf-finding pre { margin: 8px 0 0; background: var(--muted); border-radius: 9px; padding: 8px 10px; font: 12.5px/1.5 var(--font-mono); white-space: pre; overflow: hidden; }
