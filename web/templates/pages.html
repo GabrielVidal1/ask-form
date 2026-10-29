@@ -182,19 +182,18 @@
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
     {{if .Visual}}
-      <div class="cards{{if eq .Type "multiselect"}} multi{{end}}">
+      <div class="cards{{if .FitContent}} fit-content{{end}}">
       {{range $i, $o := .Options}}
         <label class="card{{if not $o.Visual}} plain{{end}}">
-          <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}{{if and $.Required (ne $.Type "multiselect")}} required{{end}}>
-          <span class="tick" aria-hidden="true"></span>
           {{if $o.Image}}
             <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"><a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size">{{template "zoom-icon"}}</a></span>
           {{else if $o.HTML}}
-            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size" data-zoom-frame>{{template "zoom-icon"}}</a></span>
-          {{else}}
-            <span class="visual text-card"><span>{{inline $o.Label}}</span></span>
+            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size" data-zoom-frame data-zoom-label="{{$o.Label}}">{{template "zoom-icon"}}</a></span>
           {{end}}
-          {{if and $o.Visual (not $o.Bare)}}<span class="caption"><span>{{inline $o.Label}}</span>{{if $o.Description}}<small>{{inline $o.Description}}</small>{{end}}</span>{{end}}
+          <span class="bar">
+            <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}{{if and $.Required (ne $.Type "multiselect")}} required{{end}}>
+            <span class="bar-text"><span>{{inline $o.Label}}</span>{{if $o.Description}}<small>{{inline $o.Description}}</small>{{end}}</span>
+          </span>
         </label>
       {{end}}
       </div>
