@@ -149,9 +149,11 @@ function FormBlock({ b, i, state }: { b: Block; i: number; state: PhoneState }) 
             <div className={'pf-cards n' + b.options.length}>
               {b.options.map((o, j) => (
                 <div key={j} className={'pf-card' + (picked === j ? ' on' : '')} data-tap={`${i}-${j}`}>
-                  <span className="pf-tick">{picked === j && <Check size={12} strokeWidth={3.5} />}</span>
                   <div className="pf-visual">{o.mock?.()}</div>
-                  <span className="pf-cap">{o.label}</span>
+                  <span className="pf-cap">
+                    <span className="pf-tick">{picked === j && <Check size={11} strokeWidth={3.5} />}</span>
+                    {o.label}
+                  </span>
                 </div>
               ))}
             </div>

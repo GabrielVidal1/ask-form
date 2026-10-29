@@ -91,7 +91,7 @@ type Option struct {
 	Description string `json:"description,omitempty"`
 	Image       string `json:"image,omitempty"`
 	HTML        string `json:"html,omitempty"`
-	// Bare: no caption under the card (a visual option given without a label).
+	// Bare: a visual option given without a label (its picture has no alt text).
 	Bare bool `json:"bare,omitempty"`
 }
 
@@ -152,6 +152,41 @@ func (f Field) Display() bool { return isBlock(f.Type) }
 // Choice reports whether the field picks among options.
 func (f Field) Choice() bool {
 	return f.Type == Select || f.Type == Radio || f.Type == Multiselect
+}
+
+// AspectAuto: each choice card takes the ratio of what it shows.
+const AspectAuto = "auto"
+
+// CardAspect is the ratio (width/height) a field's choice cards get:
+// AspectAuto — the default — or one of "1/2", "1" and "2/1". Any other ratio
+// (older forms took any W/H) snaps to the nearest of the three.
+func CardAspect(s string) string {
+	r, ok := aspectRatio(s)
+	if !ok {
+		return AspectAuto
+	}
+	best, dist := "1", math.Abs(math.Log(r))
+	for _, c := range []struct {
+		v string
+		r float64
+	}{{"1/2", .5}, {"2/1", 2}} {
+		if d := math.Abs(math.Log(r / c.r)); d < dist {
+			best, dist = c.v, d
+		}
+	}
+	return best
+}
+
+// aspectRatio reads "N" or "W/H"; false for "auto", nothing or no ratio.
+func aspectRatio(s string) (float64, bool) {
+	w, h, cut := strings.Cut(s, "/")
+	a, err := strconv.ParseFloat(w, 64)
+	b := 1.0
+	if err == nil && cut {
+		b, err = strconv.ParseFloat(h, 64)
+	}
+	r := a / b
+	return r, err == nil && a > 0 && b > 0 && !math.IsInf(r, 0) && !math.IsNaN(r)
 }
 
 // Visual reports whether the field renders as a grid of choice cards.
@@ -337,12 +372,12 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 				if c, ok := num(m["columns"]); ok {
 					f.Columns = int(math.Max(1, math.Min(MaxColumns, c)))
 				}
-				aspect := strings.ToLower(strings.Join(strings.Fields(str(m["aspect"])), ""))
+				aspect := strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(str(m["aspect"])), "")), ":", "/")
 				if aspect != "" {
-					if !aspectRe.MatchString(aspect) || strings.HasPrefix(aspect, "0") {
-						return nil, fmt.Errorf("field %q: aspect %q is not auto, N or W/H (e.g. 16/9)", key, aspect)
+					if _, ratio := aspectRatio(aspect); !aspectRe.MatchString(aspect) || (aspect != AspectAuto && !ratio) {
+						return nil, fmt.Errorf("field %q: aspect %q is not auto, 1/2, 1 or 2/1", key, aspect)
 					}
-					f.Aspect = aspect
+					f.Aspect = CardAspect(aspect)
 				}
 			}
 		}
@@ -422,7 +457,8 @@ func option(o any, key string, n int) (*Option, error) {
 	if m["value"] != nil {
 		val = clip(strings.TrimSpace(str(m["value"])), MaxLabelChars)
 	}
-	if val == "" && (image != "" || html != "") {
+	auto := val == "" && (image != "" || html != "")
+	if auto {
 		val = fmt.Sprintf("option-%d", n+1)
 	}
 	if val == "" {
@@ -432,7 +468,11 @@ func option(o any, key string, n int) (*Option, error) {
 		return nil, fmt.Errorf("field %q: %q is a reserved option value", key, OtherValue)
 	}
 	opt := &Option{Value: val, Label: lab, Image: image}
-	if opt.Label == "" {
+	switch {
+	case opt.Label != "":
+	case auto:
+		opt.Label = fmt.Sprintf("Option %d", n+1) // what its card's title bar shows
+	default:
 		opt.Label = val
 	}
 	opt.Description = clip(strings.TrimSpace(str(m["description"])), MaxHelpChars)

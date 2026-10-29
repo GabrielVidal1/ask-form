@@ -27,6 +27,7 @@ type pageField struct {
 	Reenter         bool     // a secret to type again after an invalid send
 	FrameURL        string   // html block document
 	OptionFrames    []string // per option: its mockup document, "" when none
+	FitContent      bool     // choice cards take the ratio of what they show
 	UploadURL       string   // file field: where its chunks go ("" in a demo: nothing is stored)
 	FileHint        string   // file field: "Images, PDF · up to 10 MB"
 	Num             struct{ Min, Max, Step string }
@@ -157,20 +158,11 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 				// From the width the grid gets 2 columns at (app.css); a phone keeps 1.
 				fmt.Fprintf(&css, "@media (min-width:560px){#%s .cards{grid-template-columns:repeat(%d,minmax(0,1fr))}}", pf.DOMID, f.Columns)
 			}
-			aspect := f.Aspect
-			if aspect == "" {
-				aspect = "1"
-				for _, o := range f.Options {
-					if o.HTML != "" {
-						aspect = "4/3"
-					}
-				}
-			}
-			if aspect != "auto" {
-				// Validated by the spec (auto, N or W/H): safe inside CSS.
-				fmt.Fprintf(&css, "#%s .visual:not(.text-card){aspect-ratio:%s}", pf.DOMID, aspect)
-			} else {
-				fmt.Fprintf(&css, "#%s .visual img{height:auto;object-fit:contain}#%s .visual:not(.text-card){aspect-ratio:auto}", pf.DOMID, pf.DOMID)
+			aspect := form.CardAspect(f.Aspect)
+			pf.FitContent = aspect == form.AspectAuto
+			if !pf.FitContent {
+				// One of CardAspect's few values: safe inside CSS.
+				fmt.Fprintf(&css, "#%s .visual{aspect-ratio:%s}", pf.DOMID, aspect)
 			}
 		}
 		if f.Min != nil {

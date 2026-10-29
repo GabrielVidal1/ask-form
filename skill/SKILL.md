@@ -124,8 +124,12 @@ file's path on **this computer**, not its bytes.
 - Pictures only through `--asset <file>` plus `{{asset:<basename>}}`. Remote
   images are blocked.
 - Picture and mockup choices show one card per row on a phone, two from 560 px
-  (`columns` 1–6 changes that count, never the phone's). Draw a mockup at a
-  fixed width (240–360 px): it is scaled to fill its card.
+  (`columns` 1–6 changes that count, never the phone's). Each card is the
+  picture over a title bar (the check, `label`, `description`); give every
+  option a `label`. A card takes the ratio of what it shows, unless the field
+  sets `"aspect"`: `"1/2"` (tall), `"1"` or `"2/1"` (wide). Draw a mockup at a
+  fixed width (240–600 px): it is scaled to fill its card, and the fullscreen
+  view, whole; a photo fills its card, cropped.
 - Put your recommendation in `default` and say why in `help`, so the user can
   accept it in one tap.
 

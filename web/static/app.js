@@ -25,13 +25,24 @@
   var closed = document.querySelector("[data-closed]");
   if (closed) store.del("ask-form:draft:" + closed.getAttribute("data-closed"));
 
-  // html blocks report their height (frame documents post it; only the
-  // ones without a fixed height follow it).
+  // Frame documents report their size. An html block without a fixed height
+  // follows its height; a mockup reports the size it is drawn at, which a
+  // card that fits its content takes as its ratio and the fullscreen view
+  // as its shape (the frame then scales the mockup to fill either).
   window.addEventListener("message", function (e) {
     var d = e.data;
     if (!d || d.type !== "ask-form:frame" || typeof d.h !== "number") return;
     $all("iframe.frame.autosize").forEach(function (f) {
       if (f.contentWindow === e.source) f.style.height = Math.max(40, Math.min(4000, Math.ceil(d.h) + 2)) + "px";
+    });
+    if (!(d.w > 0 && d.h > 0)) return;
+    $all(".fit-content .mock iframe, .overlay iframe").forEach(function (f) {
+      if (f.contentWindow !== e.source) return;
+      f.setAttribute("data-w", d.w);
+      f.setAttribute("data-h", d.h);
+      if (d.fluid) f.setAttribute("data-fluid", "");
+      if (f.closest(".overlay")) fitOverlay(f);
+      else f.parentNode.style.aspectRatio = d.w + " / " + d.h;
     });
   });
 
@@ -624,7 +635,7 @@
   function choiceText(i) {
     var lab = i.closest("label");
     if (!lab) return i.value;
-    var c = lab.querySelector(".caption span, .choice-text span, .text-card span");
+    var c = lab.querySelector(".bar-text span, .choice-text span");
     return c ? c.textContent.trim() : i.value;
   }
   function answerOf(f) {
@@ -720,7 +731,7 @@
         e.stopPropagation();
         var field = a.closest(".field");
         if (a.hasAttribute("data-zoom-frame") || a.classList.contains("frame-open")) {
-          openOverlay([{ frame: a.getAttribute("href") }], 0);
+          openOverlay([{ frame: a.getAttribute("href"), label: a.getAttribute("data-zoom-label") || "" }], 0);
           return;
         }
         var imgs = $all("img[data-zoom]", field || document);
@@ -729,6 +740,22 @@
         openOverlay(list, Math.max(0, at));
       });
     });
+  }
+  // The fullscreen view of a mockup: its own shape, as large as the screen
+  // allows below the close button and above the label; a fluid one as wide
+  // as the view lets it read, as tall as it is.
+  function fitOverlay(f) {
+    var w = Number(f.getAttribute("data-w")), h = Number(f.getAttribute("data-h"));
+    var aw = window.innerWidth - 32, ah = window.innerHeight - 128;
+    if (!(w > 0 && h > 0 && aw > 0 && ah > 0)) return;
+    if (f.hasAttribute("data-fluid")) {
+      f.style.width = Math.min(aw, 1280) + "px";
+      f.style.height = Math.min(ah, h) + "px";
+      return;
+    }
+    var z = Math.min(aw / w, ah / h);
+    f.style.width = Math.floor(w * z) + "px";
+    f.style.height = Math.floor(h * z) + "px";
   }
   function openOverlay(list, at) {
     var ov = make("div", "overlay");
@@ -757,7 +784,8 @@
       }
       label.textContent = list.length > 1 ? (at + 1) + "/" + list.length + (it.label ? " · " + it.label : "") : (it.label || "");
     }
-    function done() { ov.remove(); document.removeEventListener("keydown", key); }
+    function done() { ov.remove(); document.removeEventListener("keydown", key); window.removeEventListener("resize", refit); }
+    function refit() { var f = holder.querySelector("iframe"); if (f) fitOverlay(f); }
     function key(e) {
       if (e.key === "Escape") done();
       if (e.key === "ArrowLeft" && list.length > 1) { at = (at - 1 + list.length) % list.length; render(); }
@@ -777,6 +805,7 @@
     close.addEventListener("click", done);
     ov.addEventListener("click", function (e) { if (e.target === ov) done(); });
     document.addEventListener("keydown", key);
+    window.addEventListener("resize", refit);
     render();
     document.body.appendChild(ov);
     close.focus();
