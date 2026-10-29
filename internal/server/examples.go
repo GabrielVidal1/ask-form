@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/form"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
@@ -121,15 +122,47 @@ type examplesHandler struct {
 	byName   map[string]*Example
 	ipHeader string
 	submits  *limiter
+	brand    func() brand.Brand // a brand preview's; nil = ask-form's own look
 }
 
 // ExamplesHandler serves the examples under /examples. ipHeader names the
 // trusted proxy header holding the visitor's address (for the rate limit).
 func ExamplesHandler(list []Example, ipHeader string) http.Handler {
+	return examplesMux(newExamples(list, ipHeader))
+}
+
+// PreviewHandler is `ask-form brand preview`: the examples drawn with a
+// brand (look, called on every page so an edit shows on reload), and the
+// static files their pages link to. For a loopback listener.
+func PreviewHandler(list []Example, look func() brand.Brand) http.Handler {
+	h := newExamples(list, "")
+	h.brand = look
+	mux := http.NewServeMux()
+	mux.Handle("GET "+Prefix+"_static/{file}", StaticHandler())
+	mux.Handle("/examples", examplesMux(h))
+	mux.Handle("/examples/", examplesMux(h))
+	mux.Handle("GET /{$}", http.RedirectHandler("/examples", http.StatusFound))
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
+	return mux
+}
+
+func newExamples(list []Example, ipHeader string) *examplesHandler {
 	h := &examplesHandler{list: list, byName: map[string]*Example{}, ipHeader: ipHeader, submits: newLimiter(30, 10*time.Minute)}
 	for i := range list {
 		h.byName[list[i].Name] = &list[i]
 	}
+	return h
+}
+
+// look is the preview's brand (zero outside a preview).
+func (h *examplesHandler) look() brand.Brand {
+	if h.brand == nil {
+		return brand.Brand{}
+	}
+	return h.brand()
+}
+
+func examplesMux(h *examplesHandler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /examples", h.index)
 	mux.HandleFunc("GET /examples/{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -150,11 +183,12 @@ func (h *examplesHandler) get(r *http.Request) *Example { return h.byName[r.Path
 type examplesPage struct {
 	Title, Nonce string
 	PageCSS      template.CSS
+	Brand        pageBrand
 	Examples     []Example
 }
 
 func (h *examplesHandler) index(w http.ResponseWriter, r *http.Request) {
-	p := examplesPage{Title: "ask-form examples", Nonce: newNonce(), Examples: h.list}
+	p := examplesPage{Title: "ask-form examples", Nonce: newNonce(), Examples: h.list, Brand: pageLook(h.look())}
 	renderPage(w, "examples", p, pageCSP(p.Nonce), http.StatusOK)
 }
 
@@ -171,13 +205,15 @@ func (h *examplesHandler) renderForm(w http.ResponseWriter, ex *Example, values 
 	nonce := newNonce()
 	base := "/examples/" + ex.Name
 	page := buildPage(ex.State, base, values, errs, "", nonce)
-	page.Demo = &demoInfo{Index: "/examples", Spec: base + "/spec.json"}
+	page.Demo = &demoInfo{Index: "/examples", Spec: base + "/spec.json", Preview: h.brand != nil}
+	page.Brand = pageLook(h.look())
 	renderPage(w, "form", page, pageCSP(nonce), code)
 }
 
 type demoResultPage struct {
 	Title, Nonce, JSON, Back string
 	PageCSS                  template.CSS
+	Brand                    pageBrand
 	Recap                    []recapItem
 	Demo                     *demoInfo
 }
@@ -235,7 +271,7 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 	st.ExpiresAt = st.CreatedAt.Add(24 * time.Hour)
 	b, _ := json.MarshalIndent(toJSON(st, false, true), "", "  ")
 	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: "/examples/" + ex.Name, Recap: recap(st.Fields, res.Answers),
-		Demo: &demoInfo{Index: "/examples", Spec: "/examples/" + ex.Name + "/spec.json"}}
+		Demo: &demoInfo{Index: "/examples", Spec: "/examples/" + ex.Name + "/spec.json", Preview: h.brand != nil}, Brand: pageLook(h.look())}
 	log.Printf("example %s answered (%d answers, not stored)", ex.Name, len(res.Answers))
 	renderPage(w, "demo-result", p, pageCSP(p.Nonce), http.StatusOK)
 }
@@ -295,7 +331,7 @@ func (h *examplesHandler) frame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sdk, csp := frameFor(ex.State.Fields, r.PathValue("key"), r.PathValue("n"))
-	doc := frameDocWith(ex.State, "/examples/"+ex.Name+"/assets/", markup, fit, sdk, func(name string) (string, bool) {
+	doc := frameDocWith(ex.State, "/examples/"+ex.Name+"/assets/", markup, fit, sdk, h.look().FrameCSS(), func(name string) (string, bool) {
 		a, ok := ex.assets[name]
 		if !ok {
 			return "", false

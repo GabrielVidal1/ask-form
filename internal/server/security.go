@@ -28,10 +28,11 @@ func baseHeaders(h http.Header) {
 }
 
 // pageCSP is the answer page's policy: same-origin script and styles only,
-// plus the page's own <style nonce> (per-field aspect ratios, columns).
+// plus the page's own <style nonce> (per-field aspect ratios, columns, the
+// machine's brand — whose fonts and images come inlined as data: URIs).
 func pageCSP(nonce string) string {
 	return "default-src 'none'; script-src 'self'; style-src 'self' 'nonce-" + nonce + "'; " +
-		"img-src 'self' data:; connect-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; " +
+		"img-src 'self' data:; font-src data:; connect-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; " +
 		"base-uri 'none'; manifest-src 'none'"
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -87,6 +88,17 @@ type Server struct {
 	// Events gets every form's lifecycle (internal/webhook); nil = nobody
 	// listens. `created` carries the links, the only event that does.
 	Events Notifier
+	// Brand is this machine's look for its pages (internal/brand: `ask-form
+	// brand set`); nil = ask-form's own.
+	Brand func() brand.Brand
+}
+
+// look is the brand this machine's pages get right now.
+func (s *Server) look() brand.Brand {
+	if s.Brand == nil {
+		return brand.Brand{}
+	}
+	return s.Brand()
 }
 
 // Notifier is where form events go (a webhook, a test's recorder).

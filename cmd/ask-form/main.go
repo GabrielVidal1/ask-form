@@ -34,6 +34,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
@@ -49,6 +50,11 @@ Setup (once per machine):
   ask-form upgrade [--check] [--version vX.Y.Z] [--force]
   ask-form skill install | print [--body] | refresh
   ask-form uninstall [--purge]
+
+Branding (once per machine; every form it serves):
+  ask-form brand set [FILE.css | -] [--name TEXT] [--logo IMAGE] [--primary COLOR] [--font FONT]
+  ask-form brand show [--css] | clear [css|name|logo|primary|font]… | init
+  ask-form brand preview [FILE.css] [the flags of set] [--no-open]
 
 Client (JSON on stdout):
   ask-form create --title T (--fields JSON | --fields-file F | stdin) [--description D]
@@ -123,6 +129,8 @@ func main() {
 		code = cmdUpgrade(args)
 	case "skill":
 		code = cmdSkill(args)
+	case "brand":
+		code = cmdBrand(args)
 	case "version", "--version", "-v":
 		printJSON(map[string]string{"version": server.Version})
 	case "help", "-h", "--help":
@@ -197,7 +205,7 @@ func secretFile(path string, create bool) (string, error) {
 func cmdServe(args []string) int {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	data := fs.String("data", dataDir(), "store directory (forms/, responses/, secrets/, assets/)")
-	conf := fs.String("config", configDir(), "config directory (admin-token, relay-token)")
+	conf := fs.String("config", configDir(), "config directory (admin-token, relay-token, brand.json)")
 	admin := fs.String("admin", envOr("ASK_FORM_ADMIN_ADDR", "127.0.0.1:7461"), "admin API listen address (loopback)")
 	listen := fs.String("listen", envOr("ASK_FORM_LISTEN", "127.0.0.1:7462"), "public pages listen address (\"\" = none; the relay needs none)")
 	publicURL := fs.String("public-url", os.Getenv("ASK_FORM_PUBLIC_URL"), "origin respondents reach (default: the relay's public origin, else http://<listen>)")
@@ -254,6 +262,8 @@ func cmdServe(args []string) int {
 		}
 	}
 	srv.Restart = restart
+	// The machine's look (`ask-form brand set`), read again when it changes.
+	srv.Brand = brand.Open(filepath.Join(*conf, "brand.json")).Get
 	// Form events for another program (the ai-agent hub…): one POST each,
 	// best effort — internal/webhook.
 	if u := strings.TrimSpace(*eventsURL); u != "" {

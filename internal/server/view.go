@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/form"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
@@ -52,6 +53,18 @@ type pageGroup struct {
 	Fields []pageField
 }
 
+// pageBrand is the machine's brand as a page draws it: its stylesheet in the
+// page's <style nonce>, its logo and name above the title.
+type pageBrand struct {
+	CSS  template.CSS
+	Logo template.URL // a data: URI (brand.Check)
+	Name string
+}
+
+func pageLook(b brand.Brand) pageBrand {
+	return pageBrand{CSS: template.CSS(b.PageCSS()), Logo: template.URL(b.Logo), Name: b.Name}
+}
+
 type formPage struct {
 	ID, Title   string
 	Base        string // URL prefix of this form: /f/<id>, or /examples/<name> for a demo
@@ -68,10 +81,15 @@ type formPage struct {
 	Multi       bool      // open to everyone with the link
 	Count       int       // a multi form's answers so far
 	ShowCount   bool      // …shown to the respondent
+	Brand       pageBrand
 }
 
-// demoInfo is what an example page shows on top of the form.
-type demoInfo struct{ Index, Spec string }
+// demoInfo is what an example page shows on top of the form. Preview: the
+// page is `ask-form brand preview`'s.
+type demoInfo struct {
+	Index, Spec string
+	Preview     bool
+}
 
 type pageError struct{ DOMID, Label, Msg string }
 

@@ -6,12 +6,12 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
-<title>{{.Title}}</title>
+<title>{{.Title}}{{with .Brand.Name}} · {{.}}{{end}}</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/f/_static/theme.css">
 <link rel="stylesheet" href="/f/_static/app.css">
 <link rel="stylesheet" href="/f/_static/upload.css">
-{{if .PageCSS}}<style nonce="{{.Nonce}}">{{.PageCSS}}</style>{{end}}
+{{if or .Brand.CSS .PageCSS}}<style nonce="{{.Nonce}}">{{.Brand.CSS}}{{.PageCSS}}</style>{{end}}
 <script src="/f/_static/app.js" defer></script>
 <script src="/f/_static/widget.js" defer></script>
 <script src="/f/_static/upload.js" defer></script>
@@ -24,9 +24,12 @@
 </html>
 {{end}}
 
+{{define "brand"}}{{if or .Brand.Logo .Brand.Name}}<div class="brand">{{with .Brand.Logo}}<img class="brand-logo" src="{{.}}" alt="">{{end}}{{with .Brand.Name}}<span class="brand-name">{{.}}</span>{{end}}</div>{{end}}{{end}}
+
 {{define "demo-banner"}}<aside class="demo-banner">
   <div class="demo-banner-in">
-    <p><strong>Example form.</strong> What the person gets when an agent runs <code>ask-form create</code>; sending shows the JSON the agent reads back. Nothing is stored.</p>
+    {{if .Preview}}<p><strong>Brand preview.</strong> Your forms with this brand. Edit the CSS and reload to see the change; sending shows the JSON the agent reads back. Nothing is stored.</p>
+    {{else}}<p><strong>Example form.</strong> What the person gets when an agent runs <code>ask-form create</code>; sending shows the JSON the agent reads back. Nothing is stored.</p>{{end}}
     <p class="demo-links"><a href="{{.Index}}">← All examples</a> · <a href="{{.Spec}}">Field spec (JSON)</a></p>
   </div>
 </aside>{{end}}
@@ -35,6 +38,7 @@
 {{with .Demo}}{{template "demo-banner" .}}{{end}}
 <main class="wrap{{if .Paged}} has-toc{{end}}">
   <header class="top">
+    {{template "brand" .}}
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
     {{if and .ShowCount .Count}}<p class="count">{{.Count}} {{if eq .Count 1}}person has{{else}}people have{{end}} answered so far.</p>{{end}}
@@ -262,6 +266,7 @@
 {{define "closed"}}{{template "head" .}}
 <main class="wrap closed" data-closed="{{.ID}}">
   <header class="top">
+    {{template "brand" .}}
     <h1>{{.Title}}</h1>
   </header>
   {{if or .Mine (eq .Status "submitted")}}
@@ -286,7 +291,7 @@
 
 {{define "message"}}{{template "head" .}}
 <main class="wrap closed">
-  <header class="top"><h1>{{.Title}}</h1></header>
+  <header class="top">{{template "brand" .}}<h1>{{.Title}}</h1></header>
   <p class="lead">{{.Message}}</p>
 </main>
 {{template "foot" .}}{{end}}
@@ -318,6 +323,7 @@
 {{template "demo-banner" .Demo}}
 <main class="wrap closed">
   <header class="top">
+    {{template "brand" .}}
     <h1>{{.Title}}</h1>
   </header>
   <p class="lead ok">✓ This is what the agent's <code>ask-form wait</code> would print:</p>

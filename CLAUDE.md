@@ -20,7 +20,10 @@ agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-wo
   side, machine API, open registration in `registry.go`), `internal/update`
   (releases: latest tag, download, checksum, atomic swap), `internal/webhook`
   (`serve --events-url`: every form event POSTed to one URL — the ai-agent
-  hub's feed; `Server.Events`, `AnnounceExpiries`).
+  hub's feed; `Server.Events`, `AnnounceExpiries`), `internal/brand` (the
+  machine's look, `ask-form brand`: `<config>/brand.json`, re-read when it
+  changes; `Server.Brand`; `brand preview` serves the examples with it via
+  `server.PreviewHandler`).
 - `web/` (templates, CSS, JS, embedded), `landing/` (the relay's `/` and
   `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
   `install.sh`
@@ -39,6 +42,11 @@ agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-wo
 - The answer page must work with JavaScript off; `web/static/app.js` only
   adds. Strict CSP: no inline script or style (per-page CSS goes in the
   nonce'd `<style>`), no third-party assets. Never log a query string.
+- A brand reaches only the pages the machine renders (its CSS in the nonce'd
+  `<style>`, before `PageCSS`; its logo/name via the `brand` template; frames
+  get `Brand.FrameCSS()`, the tokens only). Its header layout travels in the
+  brand CSS, not app.css: the relay serves app.css and may be older. Every
+  page struct rendered with `head` needs a `Brand pageBrand` field.
 - html blocks and mockups stay script-free (frame CSP with one pinned hash). A
   `widget` field's frame is the single exception (`internal/server/widget.go`:
   `script-src 'unsafe-inline'`, still no network); don't widen it, and keep

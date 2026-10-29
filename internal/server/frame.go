@@ -68,12 +68,13 @@ func frameCSP() string {
 // frameDoc builds the document for one block or mockup. fit: scale content
 // wider than the frame down to it (mockup cards).
 func frameDoc(st store.State, prefix, markup string, fit bool, asset func(name string) (string, bool)) string {
-	return frameDocWith(st, prefix, markup, fit, "", asset)
+	return frameDocWith(st, prefix, markup, fit, "", "", asset)
 }
 
 // frameDocWith is frameDoc with extra markup (a widget's SDK) at the top of
-// the head.
-func frameDocWith(st store.State, prefix, markup string, fit bool, sdk string, asset func(name string) (string, bool)) string {
+// the head, and the machine's brand tokens (brand.Brand.FrameCSS) after the
+// theme's.
+func frameDocWith(st store.State, prefix, markup string, fit bool, sdk, brandCSS string, asset func(name string) (string, bool)) string {
 	// The form's assets, referenced by URL (prefix + name) in the spec, are
 	// inlined: an opaque origin can't send the cookie that guards them.
 	for _, a := range st.Assets {
@@ -85,7 +86,7 @@ func frameDocWith(st store.State, prefix, markup string, fit bool, sdk string, a
 		}
 	}
 	head := `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-		`<style>` + themeCSS + frameBaseCSS + `</style>` + sdk
+		`<style>` + themeCSS + frameBaseCSS + brandCSS + `</style>` + sdk
 	script := `<script>` + frameScript + `</script>`
 	attr := ""
 	if fit {
