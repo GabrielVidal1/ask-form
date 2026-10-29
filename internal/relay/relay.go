@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
@@ -62,7 +63,8 @@ type Config struct {
 	// served at /assets/<file> (content-hashed names, cached for good).
 	Landing       []byte
 	LandingAssets fs.FS
-	// Examples serves /examples (demo forms, nothing stored); nil = none.
+	// Examples serves /examples and each language's /<lang>/examples (demo
+	// forms, nothing stored: server.ExamplesHandler); nil = none.
 	Examples http.Handler
 	// Files are plain files served at fixed paths (/install.sh,
 	// /agent-install), path → body and content type.
@@ -371,8 +373,11 @@ func (r *Relay) Public() http.Handler {
 		})
 	}
 	if r.cfg.Examples != nil {
-		mux.Handle("/examples", r.cfg.Examples)
-		mux.Handle("/examples/", r.cfg.Examples)
+		for _, lang := range i18n.Langs {
+			p := server.ExamplesPrefix(lang) // /examples, /fr/examples
+			mux.Handle(p, r.cfg.Examples)
+			mux.Handle(p+"/", r.cfg.Examples)
+		}
 	}
 	mux.HandleFunc("/f/{id}", r.forward)
 	mux.HandleFunc("/f/{id}/", r.forward)
