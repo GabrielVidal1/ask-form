@@ -209,6 +209,7 @@ question required while its condition holds. A condition looks at questions
 | `ask-form close <id>` | a `--multi` form stops taking answers; the ones in stay |
 | `ask-form status` | is the local server up, connected to its relay, up to date? |
 | `ask-form upgrade` | install the latest release |
+| `ask-form brand show` | the look this machine's forms wear (the user sets it with `ask-form brand set`) |
 
 Every command prints JSON on stdout; an error is `{"error":"…"}` with exit 1.
 If a command says the server is unreachable, run `ask-form setup` (it starts

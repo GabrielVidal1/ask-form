@@ -55,6 +55,26 @@ to change that.
 `ask-form upgrade` upgrades by hand, and `ask-form uninstall` removes the
 service and the skill.
 
+## Branding
+
+Your forms can wear your look instead of ask-form's. Set it once per machine;
+every form that machine serves picks it up on its next page load, no restart:
+
+```bash
+ask-form brand set --name "Acme" --logo logo.svg --primary "#2563eb"   # the usual
+ask-form brand init > brand.css      # or a starter stylesheet with every theme token
+ask-form brand preview brand.css     # the example forms with it (reload after an edit)
+ask-form brand set brand.css         # apply it
+ask-form brand show | clear [logo…]
+```
+
+`--font FILE` sets the page in your font. In the stylesheet, overriding the
+theme tokens (`--primary`, `--background`…) recolours everything, and any
+other rule restyles what it selects; html blocks and mockups take the tokens
+too. Images and fonts next to the file work as `url(./logo.png)`: they are
+inlined when you set it, since the page loads nothing from other sites.
+`--primary` and `--font` win over the same thing in the file.
+
 ## Events
 
 `ask-form setup --events-url https://…` makes `serve` POST every form event

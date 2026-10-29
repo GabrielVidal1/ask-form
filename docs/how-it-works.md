@@ -111,6 +111,13 @@ Each release also carries a build provenance attestation:
   `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`, HSTS, and a
   strict CSP (same-origin script and styles plus a per-page nonce'd
   `<style>`). No third-party assets.
+- **Brands** (`ask-form brand set`) are the machine's own: its CSS goes in the
+  page's nonce'd `<style>`, its logo and name in the header, so another
+  machine's forms on the same relay never see them. The page policy stays
+  the same apart from `font-src data:`: a brand's images and fonts are
+  inlined as data: URIs when it is set, `@import` and remote `url()`s are
+  refused up front, and so is `</` (it could close the `<style>`). 512 KB at
+  most, all included.
 - **html blocks and mockups** are separate sandboxed documents with their own
   CSP. Inline styles are allowed; scripts are not, except our hash-pinned
   sizing beacon.
