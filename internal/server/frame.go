@@ -16,29 +16,55 @@ import (
 // access to the page, its cookie or the form. Its policy allows inline styles
 // and data: images (the form's assets are inlined), and exactly one script —
 // ours, pinned by hash — which reports the document's height to the page and
-// fits a fixed-width mockup to its card. Any <script> or on* handler the agent
+// fits a mockup to its frame. Any <script> or on* handler the agent
 // wrote is refused by that policy: html blocks and mockups are script-free.
 // A widget field's frame is the one exception (widget.go).
 
-// frameScript: dark-mode class, fit-to-width (mockups), height beacon. Fit
-// measures the mockup's own box (its top-level content, not what spills out
-// of it; a fluid one that fills the frame: its overflow). Wider than the
-// frame, it is scaled down to it; narrower, it is scaled up (at most 3×) only
-// inside its card (src ending in #card), so the full-size view keeps it at
-// its own size. The height is the body's, not the document's: the document
-// is never shorter than its frame, so measuring it could only ever grow the
-// frame.
-const frameScript = `(function(){var d=document.documentElement;` +
+// frameScript: dark-mode class, fit (mockups), height beacon (html blocks).
+//
+// Fit lays a mockup out at its own size and scales it to fill its frame,
+// whole and centred — a card, the fullscreen view, or a tab of its own. Its
+// own size is its width (what it draws: text, pictures and painted boxes, not
+// the empty full-width blocks around them — measured at a wide probe, then
+// shrunk until it stops changing) and the body's height at that width. A
+// mockup that fills any width (fluid) is laid out at the frame's width
+// instead, wider only when it has to shrink to fit the height. It reports its
+// size to the page, which shapes a card or the fullscreen view after it
+// (app.js). The beacon's height is the body's, not the document's: the
+// document is never shorter than its frame, so measuring it could only ever
+// grow the frame.
+const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribute("data-fit"),last="",nat=-1,` +
+	`LEAF=/^(SVG|IMG|CANVAS|VIDEO|IFRAME|SELECT|TEXTAREA)$/,SOLID=/^(SVG|IMG|CANVAS|VIDEO|IFRAME|SELECT|TEXTAREA|INPUT|BUTTON|HR|PROGRESS|METER)$/;` +
 	`try{if(matchMedia("(prefers-color-scheme: dark)").matches)d.classList.add("dark")}catch(e){}` +
-	`var fit=d.hasAttribute("data-fit"),up=fit&&location.hash==="#card",last=0;` +
-	`function size(){var b=document.body;if(!b)return;` +
-	`if(fit){b.style.zoom="";var v=d.clientWidth,r=document.createRange();r.selectNodeContents(b);var w=r.getBoundingClientRect().right;` +
-	`if(Math.abs(w-v)<=1)w=Math.max(d.scrollWidth,b.scrollWidth);` +
-	`if(w>v+1&&v>0)b.style.zoom=String(v/w);else if(up&&w>0&&w<v-1)b.style.zoom=String(Math.min(3,v/w))}` +
-	`var h=Math.ceil(Math.max(b.scrollHeight,b.getBoundingClientRect().height));` +
-	`if(h!==last){last=h;parent.postMessage({type:"ask-form:frame",h:h},"*")}}` +
-	`if(window.ResizeObserver){new ResizeObserver(size).observe(d)}` +
-	`addEventListener("load",size);addEventListener("resize",size);setInterval(size,1500);size()})();`
+	`function send(m){var k=JSON.stringify(m);if(k!==last){last=k;m.type="ask-form:frame";parent.postMessage(m,"*")}}` +
+	`function high(b){return Math.ceil(Math.max(b.scrollHeight,b.getBoundingClientRect().height))}` +
+	`function painted(s){return s.backgroundImage!=="none"||s.boxShadow!=="none"||!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(s.backgroundColor)||` +
+	`parseFloat(s.borderLeftWidth)+parseFloat(s.borderRightWidth)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth)>0}` +
+	`function ink(b){var o=b.getBoundingClientRect().left,L=1/0,R=-1/0,g=document.createRange();` +
+	`function add(r,c){var l=c?Math.max(r.left,c[0]):r.left,x=c?Math.min(r.right,c[1]):r.right;if(x>l&&r.height>0){L=Math.min(L,l);R=Math.max(R,x)}}` +
+	`(function walk(n,c){for(var k=n.firstChild;k;k=k.nextSibling){` +
+	`if(k.nodeType===3){if(/\S/.test(k.data)){g.selectNodeContents(k);add(g.getBoundingClientRect(),c)}}` +
+	`else if(k.nodeType===1){var s=getComputedStyle(k),t=k.tagName.toUpperCase(),r=k.getBoundingClientRect();if(s.display==="none")continue;` +
+	`if(s.visibility!=="hidden"&&(SOLID.test(t)||painted(s)))add(r,c);` +
+	`if(!LEAF.test(t))walk(k,s.overflowX==="visible"?c:[Math.max(r.left,c?c[0]:-1/0),Math.min(r.right,c?c[1]:1/0)])}}})(b,null);` +
+	`return R>L?[L-o,R-o]:null}` +
+	`function natural(b){var w=1600,e,f,n,i;b.style.width=w+"px";e=ink(b);if(!e)return 0;` +
+	`if(e[1]>w+1)return Math.ceil(e[1]+Math.max(0,e[0]));if(e[1]-e[0]>=w-2)return 0;` +
+	`for(i=0;i<6;i++){n=Math.ceil(e[1]-e[0]);if(n>=w-1)break;b.style.width=n+"px";f=ink(b);` +
+	`if(!f||f[0]<-1||f[1]>n+1){w=Math.min(w,Math.ceil(e[1]+Math.max(0,e[0])));break}w=n;e=f}return w}` +
+	`function place(){var b=document.body,vw=innerWidth,vh=innerHeight,W,H,h0,z,i;if(!b)return;` +
+	`if(!fit){send({h:high(b)});return}` +
+	`d.style.overflow="hidden";b.style.boxSizing="border-box";b.style.transform="";if(nat<0)nat=natural(b);` +
+	`W=nat||vw;b.style.width=W+"px";H=h0=high(b);` +
+	`if(!nat)for(i=0;i<2&&vh>0&&H>vh+1;i++){W=Math.ceil(vw*H/vh);b.style.width=W+"px";H=high(b)}` +
+	`z=W>0&&H>0?Math.min(vw/W,vh>0?vh/H:1/0):1;` +
+	`b.style.transformOrigin="0 0";b.style.transform="translate("+(vw-W*z)/2+"px,"+Math.max(0,(vh-H*z)/2)+"px) scale("+z+")";` +
+	`send(nat?{w:nat,h:H}:{w:vw,h:h0,fluid:1})}` +
+	`function again(){nat=-1;place()}` +
+	`if(!fit&&window.ResizeObserver)new ResizeObserver(function(){place()}).observe(d);` +
+	`addEventListener("load",again);addEventListener("resize",function(){place()});` +
+	`if(fit&&document.fonts&&document.fonts.ready)document.fonts.ready.then(again);` +
+	`if(!fit)setInterval(place,1500);place()})();`
 
 var (
 	frameScriptHash = func() string {
@@ -65,8 +91,8 @@ func frameCSP() string {
 		"sandbox allow-scripts"
 }
 
-// frameDoc builds the document for one block or mockup. fit: scale content
-// wider than the frame down to it (mockup cards).
+// frameDoc builds the document for one block or mockup. fit: scale the
+// content to fill the frame (mockups).
 func frameDoc(st store.State, prefix, markup string, fit bool, asset func(name string) (string, bool)) string {
 	return frameDocWith(st, prefix, markup, fit, "", "", asset)
 }
