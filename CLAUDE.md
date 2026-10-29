@@ -9,6 +9,9 @@ only, Go 1.22+.
 How an agent uses it: [`skill/SKILL.md`](skill/SKILL.md) (installed as the
 Claude Code skill by `ask-form setup`; `ask-form skill print --body` for other
 agents). How it works and why it's safe: [`docs/how-it-works.md`](docs/how-it-works.md).
+Running a relay of one's own: [`docs/self-hosting.md`](docs/self-hosting.md);
+its flag table and the proxy limits (poll hold, body sizes) must follow
+`cmd/ask-form-relay` and `internal/relay` when those change.
 
 ## Layout
 
