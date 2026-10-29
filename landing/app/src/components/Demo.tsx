@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { gsap } from 'gsap'
 import { ArrowRight, BookOpen } from 'lucide-react'
-import { CopyButton } from '@gabvdl/ui'
 
-import { examples, type Example } from '../examples/data'
+import { useCopy } from '../copy/context'
+import type { Example } from '../examples/data'
+import { CopyButton } from './CopyButton'
 import { DEVICE_H, Phone, type PhoneState } from './Phone'
 import { Terminal } from './Terminal'
 
@@ -37,6 +38,8 @@ interface Props {
  * typing; then the next example's prompt replaces it in place.
  */
 export function Demo({ host, installLine }: Props) {
+  const t = useCopy()
+  const examples = t.examples
   const [active, setActive] = useState(0)
   const [prompt, setPrompt] = useState('')
   const [phone, setPhone] = useState<PhoneState>(() => filled(examples[0]))
@@ -105,19 +108,19 @@ export function Demo({ host, installLine }: Props) {
   const next = useCallback(() => {
     setActive((a) => (a + 1) % examples.length)
     setRun((r) => r + 1)
-  }, [])
+  }, [examples])
 
   const onTyped = useCallback(() => {
     if (!live) return
     tlRef.current?.kill()
-    const tl = buildTimeline(examples[activeRef.current], stageRef.current!, rootRef.current!, {
+    const tl = buildTimeline(examples[activeRef.current], activeRef.current, stageRef.current!, rootRef.current!, {
       pick: (b, o) => setPhone((p) => ({ ...p, picked: { ...p.picked, [b]: o } })),
       type: (b, n) => setPhone((p) => ({ ...p, typed: { ...p.typed, [b]: n } })),
     })
     tl.eventCallback('onComplete', next)
     tlRef.current = tl
     if (!visibleRef.current || document.hidden) tl.pause()
-  }, [live, next])
+  }, [live, next, examples])
 
   const pickTab = (i: number) => {
     if (i === active && live) return
@@ -132,10 +135,10 @@ export function Demo({ host, installLine }: Props) {
   return (
     <section className="demo wrap" id="examples" ref={rootRef}>
       <div className="demo-head reveal">
-        <h2 className="h2">You ask once. It sends everything it needs to know.</h2>
-        <p className="sub">Your agent puts every question in one form. You answer where you are, it carries on.</p>
+        <h2 className="h2">{t.demo.title}</h2>
+        <p className="sub">{t.demo.sub}</p>
       </div>
-      <div className="tabs reveal" role="tablist" aria-label="Examples">
+      <div className="tabs reveal" role="tablist" aria-label={t.demo.tabs}>
         {examples.map((e, i) => (
           <button
             key={e.id}
@@ -160,12 +163,12 @@ export function Demo({ host, installLine }: Props) {
         </div>
       </div>
       <div className="stage-foot reveal">
-        <CopyButton value={() => installLine + ex.prompt} label="Copy this prompt, with the install line" className="btn btn-ghost btn-sm" />
+        <CopyButton value={() => installLine + ex.prompt} label={t.demo.copyPrompt} className="btn btn-ghost btn-sm" />
         <a href={ex.href}>
-          Answer this form yourself <ArrowRight size={15} />
+          {t.demo.answer} <ArrowRight size={15} />
         </a>
-        <a href="/examples">
-          <BookOpen size={15} /> All examples
+        <a href={t.examplesPath}>
+          <BookOpen size={15} /> {t.demo.all}
         </a>
       </div>
     </section>
@@ -178,7 +181,7 @@ interface Hooks {
 }
 
 /** The agent's reply line by line, and the phone receiving and answering the form. */
-function buildTimeline(ex: Example, stage: HTMLElement, root: HTMLElement, h: Hooks) {
+function buildTimeline(ex: Example, index: number, stage: HTMLElement, root: HTMLElement, h: Hooks) {
   const q = (s: string) => stage.querySelector<HTMLElement>(`[data-ph="${s}"]`)!
   // On screen px per device px: the phone's own scale times any CSS one.
   const scale = stage.getBoundingClientRect().width / 390
@@ -262,7 +265,7 @@ function buildTimeline(ex: Example, stage: HTMLElement, root: HTMLElement, h: Ho
   show('+=0.5')
   tl.to({}, { duration: HOLD })
 
-  const bar = root.querySelector(`[data-tab="${examples.indexOf(ex)}"] .tab-bar`)
+  const bar = root.querySelector(`[data-tab="${index}"] .tab-bar`)
   if (bar) tl.fromTo(bar, { scaleX: 0 }, { scaleX: 1, ease: 'none', duration: tl.duration() }, 0)
   return tl
 }

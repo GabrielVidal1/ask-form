@@ -79,6 +79,11 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `dist/` with it. The build prerenders the page (it reads without JS) and the
   relay serves `dist/assets/*` at `/assets/` under a `script-src 'self'` CSP.
   The demo's examples (`app/src/examples/data.tsx`) mirror `examples/`.
+  It exists in English (`/`) and French (`/fr`, `landing.PageFR`): every word
+  is in `app/src/copy/{en,fr}.tsx` and `examples/data{,.fr}.tsx` (the French
+  one mirrors `spec.fr.json`), so a copy change touches both. The build
+  prerenders `dist/index.html` and `dist/fr/index.html` (shared `/assets/`);
+  the relay gives each page the CSP of its own inline blocks.
 - `ASK_FORM_BENCH=1 go test -run TestTunnelLatency -v ./internal/relay`
   prints the tunnel latency CSV.
 - Testing upgrades without GitHub: `ASK_FORM_UPDATE_URL` points the updater

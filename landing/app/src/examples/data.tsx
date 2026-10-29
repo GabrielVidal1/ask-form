@@ -1,8 +1,9 @@
 // The examples the landing cycles through: what you type, what the agent says
 // back, and the form it sends. Each one mirrors a real demo form under
 // /examples/<name> (examples/<name>/spec.json), so "Answer it yourself" opens
-// the same questions.
-import type { ReactNode } from 'react'
+// the same questions. data.fr.tsx is the French page's copy of this list, in
+// the same order and shape, mirroring examples/<name>/spec.fr.json.
+import type { ComponentType } from 'react'
 import { Code, KeyRound, Sparkles, Users, type LucideIcon } from 'lucide-react'
 
 import {
@@ -29,13 +30,15 @@ export type Line =
 export interface Choice {
   label: string
   desc?: string
-  mock?: () => ReactNode
+  /** A mockup component (examples/mockups.tsx). */
+  mock?: ComponentType
 }
 
 /** What the phone shows, top to bottom. `tap` is the option the demo picks. */
 export type Block =
   | { kind: 'choice'; label: string; options: Choice[]; selected: number; tap?: number; cards?: boolean }
-  | { kind: 'finding'; title: string; where: string; code: string }
+  /** A code-review finding: `where` in code, then `text`, then the code. */
+  | { kind: 'finding'; title: string; where: string; text: string; code: string }
   | { kind: 'secret'; label: string; chars: number }
   /** A text field the demo types into; `optional` drops the red star. */
   | { kind: 'text'; label: string; value: string; optional?: boolean; help?: string }
@@ -135,6 +138,7 @@ export const examples: Example[] = [
           kind: 'finding',
           title: '1 · Anyone can read any invoice',
           where: 'api/invoices/[id].ts:18',
+          text: 'never checks the invoice belongs to the caller.',
           code: 'const invoice = await db.invoice\n  .findUnique({ where: { id } })',
         },
         {

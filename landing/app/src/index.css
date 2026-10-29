@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-/* @gabvdl/ui ships Tailwind class names in its compiled JS: scan only the
-   components this page uses (PhonePreview and ProgressiveText style inline). */
-@source "../node_modules/@gabvdl/ui/dist/components/copy-button";
+/* No @source for @gabvdl/ui: the components this page takes from it
+   (PhonePreview, ProgressiveText) style inline, and the copy button's
+   Tailwind classes live in src/components/CopyButton.tsx. */
 
 /* The answer page's palette (web/static/theme.css), as full colours. The
    design-system names (--background, --foreground, --muted…) point at them so
@@ -108,6 +108,9 @@
 .nav-links { display: flex; gap: 18px; align-items: center; font-size: 15px; }
 .nav-links a { color: var(--muted-fg); text-decoration: none; display: inline-flex; gap: 6px; align-items: center; }
 .nav-links a:hover { color: var(--fg); }
+/* EN · FR: plain links to / and /fr, the current one in the text colour. */
+.langs { font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--muted-fg); white-space: nowrap; }
+.langs a[aria-current] { color: var(--fg); }
 .hero { position: relative; padding-top: 48px; padding-bottom: 28px; text-align: center; }
 .hero h1 { font-size: clamp(38px, 7vw, 72px); line-height: 1.04; letter-spacing: -.04em; margin: 0 auto 20px; font-weight: 800; max-width: 1040px; }
 .hero h1 .w { display: inline-block; }

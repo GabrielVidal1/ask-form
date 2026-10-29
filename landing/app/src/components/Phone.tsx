@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import { IOSStatusBar, PhonePreview } from '@gabvdl/ui'
 import { Check, CircleCheck, Lock, MessageSquareText } from 'lucide-react'
 
+import { useCopy } from '../copy/context'
 import type { Block, Example } from '../examples/data'
 
 /** The logical size the screen is laid out at, then scaled into the frame. */
@@ -29,17 +30,18 @@ interface Props {
  * between them with GSAP; the refs it needs are `data-ph` attributes.
  */
 export const Phone = forwardRef<HTMLDivElement, Props>(function Phone({ ex, host, state, width }, ref) {
+  const t = useCopy().phone
   const scale = width / DEVICE_W
   const f = ex.form
   return (
-    <PhonePreview screenWidth={width} deviceWidth={DEVICE_W} deviceHeight={DEVICE_H} frameColor="#1d1916" title="An ask-form form on a phone">
+    <PhonePreview screenWidth={width} deviceWidth={DEVICE_W} deviceHeight={DEVICE_H} frameColor="#1d1916" title={t.title}>
       <div className="ph-stage" ref={ref} style={{ transform: `scale(${scale})` }} aria-hidden>
         <div className="ph-lock" data-ph="lock">
           <div className="ph-status on-dark">
             <IOSStatusBar />
           </div>
           <b>9:41</b>
-          <span>Tuesday 28 October</span>
+          <span>{t.date}</span>
         </div>
         <div className="ph-notif" data-ph="notif" data-tap="notif">
           <span className="ph-notif-icon">
@@ -48,10 +50,10 @@ export const Phone = forwardRef<HTMLDivElement, Props>(function Phone({ ex, host
           <span className="ph-notif-txt">
             <small>
               <span>ask-form</span>
-              <span>now</span>
+              <span>{t.now}</span>
             </small>
             <b>{f.title}</b>
-            <span>Your agent has questions for you</span>
+            <span>{t.notif}</span>
           </span>
         </div>
         <div className="ph-app" data-ph="app">
@@ -84,7 +86,7 @@ export const Phone = forwardRef<HTMLDivElement, Props>(function Phone({ ex, host
               </div>
               <div className="pf-actions">
                 <span className="pf-send" data-tap="send">
-                  Send answers
+                  {t.send}
                 </span>
               </div>
             </div>
@@ -94,7 +96,7 @@ export const Phone = forwardRef<HTMLDivElement, Props>(function Phone({ ex, host
           <span className="ph-sent-ic">
             <CircleCheck size={40} />
           </span>
-          <h4>Sent</h4>
+          <h4>{t.sent}</h4>
           <p>{f.sent}</p>
         </div>
         <span className="ph-tap" data-ph="tap" />
@@ -104,12 +106,13 @@ export const Phone = forwardRef<HTMLDivElement, Props>(function Phone({ ex, host
 })
 
 function FormBlock({ b, i, state }: { b: Block; i: number; state: PhoneState }) {
+  const t = useCopy().phone
   switch (b.kind) {
     case 'finding':
       return (
         <div className="pf-finding">
           <b>{b.title}</b>
-          <code>{b.where}</code> never checks the invoice belongs to the caller.
+          <code>{b.where}</code> {b.text}
           <pre>{b.code}</pre>
         </div>
       )
@@ -122,7 +125,7 @@ function FormBlock({ b, i, state }: { b: Block; i: number; state: PhoneState }) 
           </span>
           <span className="pf-input mono">{'•'.repeat(Math.min(b.chars, state.typed[i] ?? 0))}</span>
           <p className="pf-note">
-            <Lock size={12} /> Kept out of the answers your agent reads.
+            <Lock size={12} /> {t.secret}
           </p>
         </div>
       )
@@ -149,7 +152,7 @@ function FormBlock({ b, i, state }: { b: Block; i: number; state: PhoneState }) 
             <div className={'pf-cards n' + b.options.length}>
               {b.options.map((o, j) => (
                 <div key={j} className={'pf-card' + (picked === j ? ' on' : '')} data-tap={`${i}-${j}`}>
-                  <div className="pf-visual">{o.mock?.()}</div>
+                  <div className="pf-visual">{o.mock && <o.mock />}</div>
                   <span className="pf-cap">
                     <span className="pf-tick">{picked === j && <Check size={11} strokeWidth={3.5} />}</span>
                     {o.label}

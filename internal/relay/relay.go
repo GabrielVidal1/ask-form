@@ -1,10 +1,11 @@
 // Package relay is `ask-form-relay`: the public face of ask-form.xyz.
 //
-// It serves the landing page at / and forwards /f/<id>… to the machine
-// that created that form, over the long-poll tunnel those machines keep open
-// (internal/tunnel). Two listeners: the public one (landing + /f/*, the
-// only thing the edge routes) and the machine API (/_relay/*, tailnet or
-// loopback only). It stores nothing on disk but the machines' token hashes.
+// It serves the landing page at / (/fr in French) and forwards /f/<id>… to
+// the machine that created that form, over the long-poll tunnel those
+// machines keep open (internal/tunnel). Two listeners: the public one
+// (landing + /f/*, the only thing the edge routes) and the machine API
+// (/_relay/*, tailnet or loopback only). It stores nothing on disk but the
+// machines' token hashes.
 package relay
 
 import (
@@ -59,9 +60,11 @@ type Config struct {
 	// address found above is one of Cloudflare's edges (a domain proxied by
 	// Cloudflare in front of the relay's other proxies).
 	TrustCloudflare bool
-	// Landing is the page served at /; LandingAssets its scripts and styles,
-	// served at /assets/<file> (content-hashed names, cached for good).
+	// Landing is the page served at /, LandingFR its French version served
+	// at /fr (nil: none); LandingAssets their scripts and styles, served at
+	// /assets/<file> (content-hashed names, cached for good).
 	Landing       []byte
+	LandingFR     []byte
 	LandingAssets fs.FS
 	// Examples serves /examples and each language's /<lang>/examples (demo
 	// forms, nothing stored: server.ExamplesHandler); nil = none.
@@ -112,9 +115,17 @@ type Relay struct {
 	regLimit *ipLimiter
 	uploads  *ipLimiter    // upload chunks per visitor
 	upSlots  chan struct{} // upload chunks held in memory at once
-	landing  []byte
-	landCSP  string
+	landing  landingPage   // at /
+	landFR   landingPage   // at /fr
 }
+
+// landingPage is a landing page and the CSP computed from its own bytes.
+type landingPage struct {
+	body []byte
+	csp  string
+}
+
+func newLandingPage(b []byte) landingPage { return landingPage{body: b, csp: landingCSP(b)} }
 
 // New builds a relay.
 func New(cfg Config) (*Relay, error) {
@@ -122,10 +133,10 @@ func New(cfg Config) (*Relay, error) {
 	r := &Relay{
 		cfg: cfg, machines: map[string]*machine{}, claims: map[string]*claim{},
 		inflight: map[string]*pending{}, general: newIPLimiter(600, time.Minute),
-		landing: cfg.Landing, regLimit: newIPLimiter(cfg.Register.PerIP, 24*time.Hour),
-		uploads: newIPLimiter(120, time.Minute), upSlots: make(chan struct{}, maxUploadsInFlight),
+		landing: newLandingPage(cfg.Landing), landFR: newLandingPage(cfg.LandingFR),
+		regLimit: newIPLimiter(cfg.Register.PerIP, 24*time.Hour),
+		uploads:  newIPLimiter(120, time.Minute), upSlots: make(chan struct{}, maxUploadsInFlight),
 	}
-	r.landCSP = landingCSP(cfg.Landing)
 	if err := r.loadTokens(true); err != nil {
 		return nil, err
 	}
@@ -353,11 +364,15 @@ Disallow: /
 
 // ── public side ──────────────────────────────────────────────────────────────
 
-// Public is the internet-facing handler: /, /robots.txt, /f/* (and /forms/*),
-// /examples, and the plain files.
+// Public is the internet-facing handler: /, /fr, /robots.txt, /f/* (and
+// /forms/*), /examples, and the plain files.
 func (r *Relay) Public() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", r.serveLanding)
+	mux.HandleFunc("GET /{$}", r.serveLanding(r.landing))
+	if r.landFR.body != nil {
+		mux.HandleFunc("GET /fr", r.serveLanding(r.landFR))
+		mux.HandleFunc("GET /fr/{$}", r.serveLanding(r.landFR))
+	}
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(RobotsTxt))
@@ -431,16 +446,19 @@ func (r *Relay) peerIP(req *http.Request) string {
 	return host
 }
 
-func (r *Relay) serveLanding(w http.ResponseWriter, req *http.Request) {
-	h := w.Header()
-	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Content-Security-Policy", r.landCSP)
-	h.Set("Referrer-Policy", "no-referrer")
-	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("X-Frame-Options", "DENY")
-	h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-	h.Set("Cache-Control", "public, max-age=300")
-	w.Write(r.withOrigin(r.landing, req))
+// serveLanding serves a landing page under the CSP of its own inline blocks.
+func (r *Relay) serveLanding(p landingPage) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		h := w.Header()
+		h.Set("Content-Type", "text/html; charset=utf-8")
+		h.Set("Content-Security-Policy", p.csp)
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		h.Set("Cache-Control", "public, max-age=300")
+		w.Write(r.withOrigin(p.body, req))
+	}
 }
 
 var landingTypes = map[string]string{
