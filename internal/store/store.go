@@ -92,6 +92,8 @@ type Form struct {
 	MaxAnswers int  `json:"maxAnswers,omitempty"`
 	// HideCount keeps a multi form's answer count off its pages.
 	HideCount bool `json:"hideCount,omitempty"`
+	// Lang is the language of its pages (internal/i18n); "" = English.
+	Lang string `json:"lang,omitempty"`
 }
 
 // Limit is how many answers the form takes: 1, or a multi form's cap.
@@ -254,6 +256,7 @@ type CreateParams struct {
 	Multi       bool
 	MaxAnswers  int
 	HideCount   bool
+	Lang        string
 	// Claim, when set, reserves an id beyond this store (the relay, which
 	// routes a name to one machine); ErrTaken moves on to the next suffix.
 	Claim func(ctx context.Context, id string) error
@@ -318,7 +321,7 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 	f := Form{
 		Title: title, Description: strings.TrimSpace(p.Description), Fields: p.Fields,
 		Assets: assets, TokenHash: hash, CreatedAt: now, ExpiresAt: now.Add(p.TTL), Meta: p.Meta,
-		Multi: p.Multi, MaxAnswers: p.MaxAnswers, HideCount: p.HideCount,
+		Multi: p.Multi, MaxAnswers: p.MaxAnswers, HideCount: p.HideCount, Lang: p.Lang,
 	}
 	// `<kebab>_<hash>`: the random suffix keeps names unique across machines
 	// sharing one relay; a clash (local or claimed elsewhere) draws again.

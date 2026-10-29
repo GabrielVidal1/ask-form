@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 // Uploads, on the machine running `serve`:
@@ -57,12 +57,33 @@ const (
 type UploadError struct {
 	Kind UploadKind
 	Msg  string
+	// format and args make Msg again in another language (Text).
+	format string
+	args   []any
 }
 
 func (e *UploadError) Error() string { return e.Msg }
 
+// Text is the message in lang (internal/i18n). A size among the args is
+// written the way lang writes it.
+func (e *UploadError) Text(lang string) string {
+	args := make([]any, len(e.args))
+	for i, a := range e.args {
+		if n, ok := a.(byteSize); ok {
+			a = form.HumanSizeIn(lang, int64(n))
+		}
+		args[i] = a
+	}
+	return i18n.T(lang, e.format, args...)
+}
+
+// byteSize is a size argument of an UploadError, written per language.
+type byteSize int64
+
 func badUpload(k UploadKind, format string, a ...any) error {
-	return &UploadError{Kind: k, Msg: fmt.Sprintf(format, a...)}
+	e := &UploadError{Kind: k, format: format, args: a}
+	e.Msg = e.Text(i18n.EN)
+	return e
 }
 
 var (
@@ -481,7 +502,7 @@ func removeEmptyDirs(root string) {
 	}
 }
 
-func mb(n int64) string { return form.HumanSize(n) }
+func mb(n int64) byteSize { return byteSize(n) }
 
 func acceptHint(accept string) string {
 	if accept == "" {

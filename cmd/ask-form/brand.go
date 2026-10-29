@@ -19,6 +19,7 @@ import (
 
 	"github.com/GabrielVidal1/ask-form/examples"
 	"github.com/GabrielVidal1/ask-form/internal/brand"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/web"
 )
@@ -29,7 +30,7 @@ const brandUsage = `usage: ask-form brand set [FILE.css | -] [--name TEXT] [--lo
        ask-form brand show [--css]
        ask-form brand clear [css | name | logo | primary | font]…
        ask-form brand init                 a starter stylesheet with every theme token, on stdout
-       ask-form brand preview [FILE.css] [the flags of set] [--no-open]`
+       ask-form brand preview [FILE.css] [the flags of set] [--lang en|fr] [--no-open]`
 
 // brandPath is where the brand lives; serve reads <its --config>/brand.json.
 func brandPath() string { return filepath.Join(configDir(), "brand.json") }
@@ -290,6 +291,7 @@ func brandPreview(args []string) int {
 	fs, parts := brandFlags("brand preview")
 	listen := fs.String("listen", "127.0.0.1:0", "address to serve the preview on (loopback)")
 	noOpen := fs.Bool("no-open", false, "don't open a browser, only print the address")
+	langFlag := fs.String("lang", os.Getenv("ASK_FORM_LANG"), "language of the example forms: "+strings.Join(i18n.Langs, ", ")+" (default: the machine's, else en)")
 	cssPath, stdin, err := brandCSSArg(interleaved(fs, args))
 	if err != nil {
 		return fail(exitUsage, "%v", err)
@@ -297,6 +299,11 @@ func brandPreview(args []string) int {
 	if !isLoopback(*listen) {
 		return fail(exitUsage, "--listen %s: a loopback address", *listen)
 	}
+	lang, err := i18n.Parse(*langFlag)
+	if err != nil {
+		return fail(exitUsage, "--lang: %v", err)
+	}
+	lang = i18n.Of(lang)
 	stored, err := brand.Load(brandPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ask-form: the stored brand is unusable, previewing without it: %v\n", err)
@@ -325,7 +332,7 @@ func brandPreview(args []string) int {
 	if last, err = build(); err != nil {
 		return fail(exitErr, "%v", err)
 	}
-	exs, err := server.LoadExamples(examples.FS)
+	exs, err := server.LoadExamplesIn(examples.FS, lang)
 	if err != nil || len(exs) == 0 {
 		return fail(exitErr, "examples: %v", err)
 	}
@@ -333,11 +340,12 @@ func brandPreview(args []string) int {
 	if err != nil {
 		return fail(exitErr, "%v", err)
 	}
-	url := "http://" + ln.Addr().String() + "/examples/" + exs[0].Name
+	index := "http://" + ln.Addr().String() + server.ExamplesPrefix(lang)
+	url := index + "/" + exs[0].Name
 	opened := !*noOpen && openBrowser(url)
-	printJSON(map[string]any{"url": url, "examples": "http://" + ln.Addr().String() + "/examples", "opened": opened,
+	printJSON(map[string]any{"url": url, "examples": index, "opened": opened,
 		"stop": "Ctrl-C (nothing is saved: `ask-form brand set` applies it)"})
-	srv := server.HTTPServer("", server.PreviewHandler(exs, previewb), 30*time.Second)
+	srv := server.HTTPServer("", server.PreviewHandler(exs, lang, previewb), 30*time.Second)
 	go func() {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

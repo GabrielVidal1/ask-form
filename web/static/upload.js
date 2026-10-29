@@ -21,10 +21,21 @@
     if (text != null) e.textContent = text;
     return e;
   }
+  // The page's language, as app.js reads it (<html data-l10n>).
+  var l10n = {};
+  try { l10n = JSON.parse(document.documentElement.getAttribute("data-l10n") || "{}"); } catch (e) { /* English */ }
+  function tr(s, vars) {
+    s = l10n[s] || s;
+    for (var k in vars || {}) s = s.split("{" + k + "}").join(vars[k]);
+    return s;
+  }
+  // French keeps 0 singular ("0 fichier"), English doesn't.
+  function single(n) { return n === 1 || (n === 0 && /^fr\b/.test(document.documentElement.lang)); }
   function human(n) {
-    if (n < 1000) return n + " B";
-    if (n < 1e6) return Math.round(n / 1000) + " KB";
-    return (n / 1e6).toFixed(1) + " MB";
+    if (n < 1000) return n + " " + tr("B");
+    if (n < 1e6) return Math.round(n / 1000) + " " + tr("KB");
+    var mb = (n / 1e6).toFixed(1);
+    return (/^fr\b/.test(document.documentElement.lang) ? mb.replace(".", ",") : mb) + " " + tr("MB");
   }
   function rand() {
     var a = new Uint8Array(12);
@@ -83,7 +94,7 @@
     try { refs = JSON.parse(hidden.value || "[]") || []; } catch (e) { refs = []; }
     refs.forEach(function (ref) {
       var m = known[ref] || {};
-      items.push({ ref: ref, name: m.name || "Uploaded file", size: m.size || 0, state: "done" });
+      items.push({ ref: ref, name: m.name || tr("Uploaded file"), size: m.size || 0, state: "done" });
     });
     render();
 
@@ -105,7 +116,7 @@
         if (it.size) top.appendChild(make("span", "file-size", human(it.size)));
         var rm = make("button", "file-rm", "✕");
         rm.type = "button";
-        rm.setAttribute("aria-label", "Remove " + it.name);
+        rm.setAttribute("aria-label", tr("Remove {name}", { name: it.name }));
         rm.addEventListener("click", function () { remove(it); });
         top.appendChild(rm);
         li.appendChild(top);
@@ -113,14 +124,14 @@
           var p = make("progress");
           p.max = 100;
           p.value = it.pct || 0;
-          p.setAttribute("aria-label", "Uploading " + it.name);
+          p.setAttribute("aria-label", tr("Uploading {name}", { name: it.name }));
           li.appendChild(p);
         }
         if (it.state === "error") {
           var line = make("div", "file-err");
-          line.appendChild(make("span", null, it.error || "Upload failed."));
+          line.appendChild(make("span", null, it.error || tr("Upload failed.")));
           if (it.file) {
-            var retry = make("button", "file-retry", "Try again");
+            var retry = make("button", "file-retry", tr("Try again"));
             retry.type = "button";
             retry.addEventListener("click", function () { start(it); });
             line.appendChild(retry);
@@ -163,18 +174,18 @@
           if (res.ok && data) return data;
           // A refusal that retrying can't change.
           if (res.status >= 400 && res.status < 500 && res.status !== 429 && res.status !== 408) {
-            var e = new Error((data && data.error) || "That file was refused.");
+            var e = new Error((data && data.error) || tr("That file was refused."));
             e.final = true;
             throw e;
           }
-          last = new Error((data && data.error) || "The connection dropped.");
+          last = new Error((data && data.error) || tr("The connection dropped."));
         } catch (e) {
           if (e.final || it.aborted) throw e;
           last = e;
         }
         await sleep(500 * Math.pow(3, attempt));
       }
-      throw last || new Error("Upload failed.");
+      throw last || new Error(tr("Upload failed."));
     }
 
     async function start(it) {
@@ -194,7 +205,7 @@
           it.pct = Math.round(100 * (i + 1) / total);
           render();
         }
-        if (!data || !data.done) throw new Error("The upload didn't finish — try again.");
+        if (!data || !data.done) throw new Error(tr("The upload didn't finish — try again."));
         it.ref = data.ref;
         it.name = data.name || it.name;
         it.size = data.size || it.size;
@@ -205,7 +216,7 @@
       } catch (e) {
         if (!it.aborted) {
           it.state = "error";
-          it.error = e.message || "Upload failed.";
+          it.error = e.message || tr("Upload failed.");
           if (e.final) it.file = null; // refused for good: another try would get the same answer
           render();
         }
@@ -224,13 +235,13 @@
       files.forEach(function (file) {
         var it = { name: file.name, size: file.size, file: file, state: "error" };
         if (items.length >= maxFiles) {
-          it.error = "At most " + maxFiles + " file" + (maxFiles === 1 ? "" : "s") + ".";
+          it.error = tr(single(maxFiles) ? "At most {n} file." : "At most {n} files.", { n: maxFiles });
         } else if (!file.size) {
-          it.error = "That file is empty.";
+          it.error = tr("That file is empty.");
         } else if (maxBytes && file.size > maxBytes) {
-          it.error = "Over the " + human(maxBytes) + " limit.";
+          it.error = tr("Over the {size} limit.", { size: human(maxBytes) });
         } else if (!acceptable(file, accept)) {
-          it.error = "That kind of file isn't accepted here.";
+          it.error = tr("That kind of file isn't accepted here.");
         } else {
           items.push(it);
           start(it);

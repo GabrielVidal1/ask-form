@@ -1,7 +1,6 @@
 package form
 
 import (
-	"fmt"
 	"math"
 	"net/url"
 	"regexp"
@@ -9,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 var timeRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$`)
@@ -55,6 +56,7 @@ func Parse(fields []Field, v url.Values) Result { return ParseWith(fields, v, Ho
 // ParseWith is Parse with the hooks that reach beyond the spec (uploads).
 func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 	r := Result{Answers: map[string]any{}, Secrets: map[string]string{}, Errors: map[string]string{}}
+	t := func(s string, a ...any) string { return i18n.T(h.Lang, s, a...) }
 	// A hidden field (its showIf fails) is skipped whole — not required, not
 	// answered, whatever the browser sent — and a test on it fails in turn.
 	hidden := map[string]bool{}
@@ -72,7 +74,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 		}
 		vals := v[InputName(f.Key)]
 		if f.Type != Multiselect && f.Type != List && len(vals) > 1 {
-			r.Errors[f.Key] = "Give one value only."
+			r.Errors[f.Key] = t("Give one value only.")
 			continue
 		}
 		first := ""
@@ -83,7 +85,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 		switch f.Type {
 		case Checkbox:
 			if first != "" && first != "on" && first != "true" {
-				r.Errors[f.Key] = "Unexpected value."
+				r.Errors[f.Key] = t("Unexpected value.")
 				continue
 			}
 			r.Answers[f.Key] = first != ""
@@ -92,12 +94,12 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			if val == OtherValue {
 				if other == "" {
 					if f.Required {
-						r.Errors[f.Key] = "Type your answer next to “Other…”."
+						r.Errors[f.Key] = t("Type your answer next to “Other…”.")
 					}
 					continue
 				}
 				if utf8.RuneCountInString(other) > MaxTextChars {
-					r.Errors[f.Key] = fmt.Sprintf("Keep it under %d characters.", MaxTextChars)
+					r.Errors[f.Key] = t("Keep it under %d characters.", MaxTextChars)
 					continue
 				}
 				r.Answers[f.Key] = other
@@ -105,12 +107,12 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			}
 			if val == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			if !hasValue(f.Options, val) {
-				r.Errors[f.Key] = "Pick one of the choices."
+				r.Errors[f.Key] = t("Pick one of the choices.")
 				continue
 			}
 			r.Answers[f.Key] = val
@@ -136,12 +138,12 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 				}
 			}
 			if bad {
-				r.Errors[f.Key] = "Pick among the choices."
+				r.Errors[f.Key] = t("Pick among the choices.")
 				continue
 			}
 			if len(picked) == 0 {
 				if f.Required {
-					r.Errors[f.Key] = "Pick at least one."
+					r.Errors[f.Key] = t("Pick at least one.")
 				}
 				continue
 			}
@@ -150,21 +152,21 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			s := strings.TrimSpace(first)
 			if s == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			n, err := strconv.ParseFloat(strings.Replace(s, ",", ".", 1), 64)
 			if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-				r.Errors[f.Key] = "Enter a number."
+				r.Errors[f.Key] = t("Enter a number.")
 				continue
 			}
 			if f.Min != nil && n < *f.Min {
-				r.Errors[f.Key] = "At least " + FormatNumber(*f.Min) + "."
+				r.Errors[f.Key] = t("At least %s.", FormatNumber(*f.Min))
 				continue
 			}
 			if f.Max != nil && n > *f.Max {
-				r.Errors[f.Key] = "At most " + FormatNumber(*f.Max) + "."
+				r.Errors[f.Key] = t("At most %s.", FormatNumber(*f.Max))
 				continue
 			}
 			r.Answers[f.Key] = n
@@ -172,12 +174,12 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			s := strings.TrimSpace(first)
 			if s == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			if _, err := time.Parse("2006-01-02", s); err != nil {
-				r.Errors[f.Key] = "Enter a date (YYYY-MM-DD)."
+				r.Errors[f.Key] = t("Enter a date (YYYY-MM-DD).")
 				continue
 			}
 			r.Answers[f.Key] = s
@@ -185,12 +187,12 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			s := strings.ToLower(strings.TrimSpace(first))
 			if s == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			if !ValidEmail(s) {
-				r.Errors[f.Key] = "Enter an email address, like name@example.com."
+				r.Errors[f.Key] = t("Enter an email address, like name@example.com.")
 				continue
 			}
 			r.Answers[f.Key] = s
@@ -198,18 +200,18 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			s := strings.TrimSpace(first)
 			if s == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			if f.Type == Time && !timeRe.MatchString(s) {
-				r.Errors[f.Key] = "Enter a time (HH:MM)."
+				r.Errors[f.Key] = t("Enter a time (HH:MM).")
 				continue
 			}
 			if f.Type == Datetime {
 				if _, err := time.Parse("2006-01-02T15:04", s); err != nil {
 					if _, err := time.Parse("2006-01-02T15:04:05", s); err != nil {
-						r.Errors[f.Key] = "Enter a date and a time."
+						r.Errors[f.Key] = t("Enter a date and a time.")
 						continue
 					}
 				}
@@ -220,22 +222,22 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			end := strings.TrimSpace(v.Get(InputName(f.Key) + RangeEnd))
 			if start == "" && end == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			if start == "" || end == "" {
-				r.Errors[f.Key] = "Pick both dates."
+				r.Errors[f.Key] = t("Pick both dates.")
 				continue
 			}
 			ts, err1 := time.Parse("2006-01-02", start)
 			te, err2 := time.Parse("2006-01-02", end)
 			if err1 != nil || err2 != nil {
-				r.Errors[f.Key] = "Enter dates (YYYY-MM-DD)."
+				r.Errors[f.Key] = t("Enter dates (YYYY-MM-DD).")
 				continue
 			}
 			if te.Before(ts) {
-				r.Errors[f.Key] = "The end is before the start."
+				r.Errors[f.Key] = t("The end is before the start.")
 				continue
 			}
 			r.Answers[f.Key] = map[string]any{"start": start, "end": end}
@@ -243,65 +245,65 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			s := strings.TrimSpace(first)
 			if s == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			n, err := strconv.ParseFloat(s, 64)
 			if err != nil || n != math.Trunc(n) || n < *f.Min || n > *f.Max {
-				r.Errors[f.Key] = "Pick a rating."
+				r.Errors[f.Key] = t("Pick a rating.")
 				continue
 			}
 			r.Answers[f.Key] = n
 		case List:
-			rows, n, msg := listAnswer(f, v)
+			rows, n, msg := listAnswer(f, v, t)
 			if msg != "" {
 				r.Errors[f.Key] = msg
 				continue
 			}
 			if n == 0 {
 				if f.Required {
-					r.Errors[f.Key] = "Add at least one."
+					r.Errors[f.Key] = t("Add at least one.")
 				}
 				continue
 			}
 			if f.Min != nil && float64(n) < *f.Min {
-				r.Errors[f.Key] = "Add at least " + FormatNumber(*f.Min) + "."
+				r.Errors[f.Key] = t("Add at least %s.", FormatNumber(*f.Min))
 				continue
 			}
 			if float64(n) > *f.Max {
-				r.Errors[f.Key] = "At most " + FormatNumber(*f.Max) + "."
+				r.Errors[f.Key] = t("At most %s.", FormatNumber(*f.Max))
 				continue
 			}
 			r.Answers[f.Key] = rows
 		case Widget:
-			val, msg := parseWidget(f, first)
+			val, msg := parseWidget(f, first, t)
 			switch {
 			case msg != "":
 				r.Errors[f.Key] = msg
 			case val != nil:
 				r.Answers[f.Key] = val
 			case f.Required:
-				r.Errors[f.Key] = "Interact with this first."
+				r.Errors[f.Key] = t("Interact with this first.")
 			}
 		case File:
-			refs, msg := fileRefs(first)
+			refs, msg := fileRefs(first, t)
 			if msg != "" {
 				r.Errors[f.Key] = msg
 				continue
 			}
 			if len(refs) == 0 {
 				if f.Required {
-					r.Errors[f.Key] = "Add a file."
+					r.Errors[f.Key] = t("Add a file.")
 				}
 				continue
 			}
 			if len(refs) > f.FileLimit() {
-				r.Errors[f.Key] = fmt.Sprintf("At most %d file%s.", f.FileLimit(), plural(f.FileLimit()))
+				r.Errors[f.Key] = i18n.N(h.Lang, f.FileLimit(), "At most %d file.", "At most %d files.")
 				continue
 			}
 			if h.File == nil {
-				r.Errors[f.Key] = "Uploads aren't available here."
+				r.Errors[f.Key] = t("Uploads aren't available here.")
 				continue
 			}
 			var infos []FileInfo
@@ -309,7 +311,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 				info, ok := h.File(f.Key, ref)
 				if !ok {
 					infos = nil
-					r.Errors[f.Key] = "A file is gone — add it again."
+					r.Errors[f.Key] = t("A file is gone — add it again.")
 					break
 				}
 				infos = append(infos, info)
@@ -322,12 +324,12 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			s := strings.TrimSpace(first)
 			if s == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
 			if utf8.RuneCountInString(s) > MaxSecretChars {
-				r.Errors[f.Key] = "That value is too long."
+				r.Errors[f.Key] = t("That value is too long.")
 				continue
 			}
 			r.Secrets[f.Key] = s
@@ -341,7 +343,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			}
 			if strings.TrimSpace(s) == "" {
 				if f.Required {
-					r.Errors[f.Key] = "This question is required."
+					r.Errors[f.Key] = t("This question is required.")
 				}
 				continue
 			}
@@ -350,7 +352,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 				limit = MaxLongChars
 			}
 			if utf8.RuneCountInString(s) > limit {
-				r.Errors[f.Key] = fmt.Sprintf("Keep it under %d characters.", limit)
+				r.Errors[f.Key] = t("Keep it under %d characters.", limit)
 				continue
 			}
 			r.Answers[f.Key] = s
@@ -363,7 +365,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 // object per row built from the `<name>.<column>` inputs, which line up by
 // position. Blank cells and blank rows are left out. It returns a message when
 // the rows are malformed.
-func listAnswer(f Field, v url.Values) (rows any, n int, msg string) {
+func listAnswer(f Field, v url.Values, t func(string, ...any) string) (rows any, n int, msg string) {
 	if len(f.Cols) == 0 {
 		out := []string{}
 		for _, x := range v[InputName(f.Key)] {
@@ -372,7 +374,7 @@ func listAnswer(f Field, v url.Values) (rows any, n int, msg string) {
 				continue
 			}
 			if utf8.RuneCountInString(x) > MaxTextChars {
-				return nil, 0, fmt.Sprintf("Keep each entry under %d characters.", MaxTextChars)
+				return nil, 0, t("Keep each entry under %d characters.", MaxTextChars)
 			}
 			out = append(out, x)
 		}
@@ -382,12 +384,12 @@ func listAnswer(f Field, v url.Values) (rows any, n int, msg string) {
 	for _, c := range f.Cols {
 		l := len(v[InputName(f.Key)+"."+c.Key])
 		if n >= 0 && l != n {
-			return nil, 0, "The rows are malformed — reload and try again."
+			return nil, 0, t("The rows are malformed — reload and try again.")
 		}
 		n = l
 	}
 	if n > 4*MaxListRows {
-		return nil, 0, "Too many rows."
+		return nil, 0, t("Too many rows.")
 	}
 	out := []map[string]any{}
 	for i := 0; i < n; i++ {
@@ -401,17 +403,17 @@ func listAnswer(f Field, v url.Values) (rows any, n int, msg string) {
 			case ColNumber:
 				num, err := strconv.ParseFloat(strings.Replace(x, ",", ".", 1), 64)
 				if err != nil || math.IsNaN(num) || math.IsInf(num, 0) {
-					return nil, 0, "Row " + strconv.Itoa(i+1) + ": “" + c.Label + "” must be a number."
+					return nil, 0, t("Row %d: “%s” must be a number.", i+1, c.Label)
 				}
 				row[c.Key] = num
 			case ColSelect:
 				if !contains(c.Options, x) {
-					return nil, 0, "Row " + strconv.Itoa(i+1) + ": pick one of the choices for “" + c.Label + "”."
+					return nil, 0, t("Row %d: pick one of the choices for “%s”.", i+1, c.Label)
 				}
 				row[c.Key] = x
 			default:
 				if utf8.RuneCountInString(x) > MaxTextChars {
-					return nil, 0, fmt.Sprintf("Keep each entry under %d characters.", MaxTextChars)
+					return nil, 0, t("Keep each entry under %d characters.", MaxTextChars)
 				}
 				row[c.Key] = x
 			}
@@ -447,20 +449,16 @@ func ValidEmail(s string) bool {
 	return true
 }
 
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
 // FormatNumber prints a number without a trailing ".0".
 func FormatNumber(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
 // AnswerText renders one answer as plain text for a recap: option labels for
 // option values, yes/no for a checkbox, a lock line for a secret. Empty when
 // the field was left unanswered.
-func AnswerText(f Field, v any) string {
+func AnswerText(f Field, v any) string { return AnswerTextIn(i18n.EN, f, v) }
+
+// AnswerTextIn is AnswerText in lang (internal/i18n).
+func AnswerTextIn(lang string, f Field, v any) string {
 	if f.Type == Widget {
 		return widgetText(v)
 	}
@@ -472,9 +470,9 @@ func AnswerText(f Field, v any) string {
 		return ""
 	case bool:
 		if t {
-			return "Yes"
+			return i18n.T(lang, "Yes")
 		}
-		return "No"
+		return i18n.T(lang, "No")
 	case float64:
 		return FormatNumber(t)
 	case string:
@@ -506,7 +504,7 @@ func AnswerText(f Field, v any) string {
 		return strings.Join(parts, "; ")
 	case map[string]any:
 		if t["secret"] == true {
-			return fmt.Sprintf("🔒 secret given (%v chars) — not shown", t["chars"])
+			return i18n.T(lang, "🔒 secret given (%v chars) — not shown", t["chars"])
 		}
 		if f.Type == Daterange {
 			return str(t["start"]) + " → " + str(t["end"])

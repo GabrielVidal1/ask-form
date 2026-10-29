@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 // Picture and mockup cards: by default a card takes the ratio of what it
@@ -21,7 +23,7 @@ func TestChoiceCards(t *testing.T) {
 	if err != nil || len(list) != 1 {
 		t.Fatalf("load: %v %d", err, len(list))
 	}
-	srv := httptest.NewServer(ExamplesHandler(list, ""))
+	srv := httptest.NewServer(ExamplesHandler(map[string][]Example{i18n.EN: list}, ""))
 	defer srv.Close()
 	get := func(path string) string {
 		res, err := http.Get(srv.URL + path)

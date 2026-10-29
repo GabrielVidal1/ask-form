@@ -91,13 +91,13 @@ func DefaultJSON(f Field) string {
 // parseWidget reads a widget's posted value: nil with no message = not
 // answered. A string widget also takes plain text that isn't JSON, which is
 // what someone typing into the no-JS textarea gives.
-func parseWidget(f Field, raw string) (value any, msg string) {
+func parseWidget(f Field, raw string, t func(string, ...any) string) (value any, msg string) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, ""
 	}
 	if len(raw) > MaxWidgetValue {
-		return nil, fmt.Sprintf("That value is over %d KB.", MaxWidgetValue>>10)
+		return nil, t("That value is over %d KB.", MaxWidgetValue>>10)
 	}
 	var v any
 	err := json.Unmarshal([]byte(raw), &v)
@@ -108,13 +108,13 @@ func parseWidget(f Field, raw string) (value any, msg string) {
 			v = s
 		}
 	} else if err != nil {
-		return nil, "That value isn't valid JSON."
+		return nil, t("That value isn't valid JSON.")
 	}
 	if v == nil {
 		return nil, ""
 	}
 	if err := checkSchema(f.Schema, v); err != nil {
-		return nil, "The value " + err.Error() + "."
+		return nil, t("The value %s.", err.Error())
 	}
 	return v, ""
 }

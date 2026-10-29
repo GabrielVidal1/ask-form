@@ -35,6 +35,9 @@ type Config struct {
 	AdminToken string
 	// Key signs the per-form CSRF tokens; keep it across restarts.
 	Key []byte
+	// Lang is the language of a form created without one (internal/i18n;
+	// "" = English).
+	Lang string
 }
 
 // RelayLink is the machine's connection to a relay (internal/tunnel).

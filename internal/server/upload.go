@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -56,7 +57,7 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !macEqual(q.Get("c"), s.csrf(st)) {
-		uploadFail(w, http.StatusForbidden, "Reload the page and try again.")
+		uploadFail(w, http.StatusForbidden, i18n.T(st.Lang, "Reload the page and try again."))
 		return
 	}
 	var fld *form.Field
@@ -70,42 +71,42 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if st.Status != store.Pending {
-		uploadFail(w, http.StatusGone, "This form is closed.")
+		uploadFail(w, http.StatusGone, i18n.T(st.Lang, "This form is closed."))
 		return
 	}
 	if ref := q.Get("rm"); ref != "" {
 		if err := s.store.RemoveUpload(st.ID, fld.Key, ref); err != nil {
-			uploadError(w, err)
+			uploadError(w, st.Lang, err)
 			return
 		}
 		uploadJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
 	if ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); ct != "application/octet-stream" {
-		uploadFail(w, http.StatusUnsupportedMediaType, "That upload didn't make sense — try again.")
+		uploadFail(w, http.StatusUnsupportedMediaType, i18n.T(st.Lang, "That upload didn't make sense — try again."))
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxChunk))
 	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			uploadFail(w, http.StatusRequestEntityTooLarge, "That piece of the file is too large.")
+			uploadFail(w, http.StatusRequestEntityTooLarge, i18n.T(st.Lang, "That piece of the file is too large."))
 			return
 		}
-		uploadFail(w, http.StatusBadRequest, "The upload was interrupted — try again.")
+		uploadFail(w, http.StatusBadRequest, i18n.T(st.Lang, "The upload was interrupted — try again."))
 		return
 	}
 	idx, e1 := strconv.Atoi(q.Get("i"))
 	total, e2 := strconv.Atoi(q.Get("n"))
 	if e1 != nil || e2 != nil {
-		uploadFail(w, http.StatusBadRequest, "That upload didn't make sense — try again.")
+		uploadFail(w, http.StatusBadRequest, i18n.T(st.Lang, "That upload didn't make sense — try again."))
 		return
 	}
 	info, ref, err := s.store.PutChunk(store.Chunk{
 		Form: st.ID, Key: fld.Key, Session: q.Get("u"), Index: idx, Total: total, Name: q.Get("name"), Data: body,
 	})
 	if err != nil {
-		uploadError(w, err)
+		uploadError(w, st.Lang, err)
 		return
 	}
 	if info == nil {
@@ -117,17 +118,17 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func uploadError(w http.ResponseWriter, err error) {
+func uploadError(w http.ResponseWriter, lang string, err error) {
 	var ue *store.UploadError
 	if !errors.As(err, &ue) {
-		uploadFail(w, http.StatusInternalServerError, "Something went wrong saving that file — try again.")
+		uploadFail(w, http.StatusInternalServerError, i18n.T(lang, "Something went wrong saving that file — try again."))
 		return
 	}
 	code := map[store.UploadKind]int{
 		store.UploadBad: http.StatusBadRequest, store.UploadClosed: http.StatusGone,
 		store.UploadTooBig: http.StatusRequestEntityTooLarge, store.UploadType: http.StatusUnsupportedMediaType,
 	}[ue.Kind]
-	uploadFail(w, code, ue.Msg)
+	uploadFail(w, code, ue.Text(lang))
 }
 
 func uploadFail(w http.ResponseWriter, code int, msg string) {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/web"
 )
@@ -57,11 +58,23 @@ func tooMany(w http.ResponseWriter) {
 	w.Write([]byte("Too many attempts — try again in a few minutes.\n"))
 }
 
-var pageTemplates = template.Must(template.New("").Funcs(template.FuncMap{
-	"md":     form.MarkdownHTML,
-	"inline": form.InlineHTML,
-	"diff":   form.DiffHTML,
-}).ParseFS(web.FS, "templates/*.html"))
+// pageTemplates are the pages in each language: `t` and `tn` translate
+// (internal/i18n), `lang` names it, `l10n` is what the scripts need of it.
+var pageTemplates = func() map[string]*template.Template {
+	out := map[string]*template.Template{}
+	for _, lang := range i18n.Langs {
+		out[lang] = template.Must(template.New("").Funcs(template.FuncMap{
+			"md":     form.MarkdownHTML,
+			"inline": form.InlineHTML,
+			"diff":   form.DiffHTML,
+			"t":      func(s string, a ...any) string { return i18n.T(lang, s, a...) },
+			"tn":     func(n int, one, other string) string { return i18n.N(lang, n, one, other) },
+			"lang":   func() string { return lang },
+			"l10n":   func() string { return i18n.JS(lang) },
+		}).ParseFS(web.FS, "templates/*.html"))
+	}
+	return out
+}()
 
 // publicHandler serves everything under /f/ (and the legacy /forms/) — the
 // only paths a relay or tunnel forwards from the internet. Pages always link
@@ -197,7 +210,7 @@ func (s *Server) renderForm(w http.ResponseWriter, st store.State, values url.Va
 	nonce := newNonce()
 	page := buildPage(st, Prefix+st.ID, values, errs, s.csrf(st), nonce)
 	page.Brand = pageLook(s.look())
-	s.render(w, "form", page, pageCSP(nonce), code)
+	renderPage(w, st.Lang, "form", page, pageCSP(nonce), code)
 }
 
 type closedPage struct {
@@ -212,22 +225,23 @@ type closedPage struct {
 // renderClosed is the page of a form that takes no more answers from this
 // visitor: closed, or a multi form this browser answered (mine).
 func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store.Response) {
+	lang := i18n.Of(st.Lang)
 	p := closedPage{
 		ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce(),
 		Multi: st.Multi, Count: len(st.Responses), ShowCount: st.Multi && !st.HideCount,
 		Brand: pageLook(s.look()),
 	}
 	if st.ClosedAt != nil {
-		p.When = st.ClosedAt.UTC().Format("2 Jan 2006, 15:04 UTC")
+		p.When = i18n.Date(lang, *st.ClosedAt)
 	}
 	switch {
 	case mine != nil:
-		p.Mine, p.When = true, mine.At.UTC().Format("2 Jan 2006, 15:04 UTC")
-		p.Recap = recap(st.Fields, mine.Answers)
+		p.Mine, p.When = true, i18n.Date(lang, mine.At)
+		p.Recap = recap(lang, st.Fields, mine.Answers)
 	case st.Status == store.Submitted:
-		p.Recap = recap(st.Fields, st.Answers)
+		p.Recap = recap(lang, st.Fields, st.Answers)
 	}
-	s.render(w, "closed", p, pageCSP(p.Nonce), http.StatusOK)
+	renderPage(w, lang, "closed", p, pageCSP(p.Nonce), http.StatusOK)
 }
 
 type messagePage struct {
@@ -236,13 +250,10 @@ type messagePage struct {
 	Brand                 pageBrand
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, data any, csp string, code int) {
-	renderPage(w, name, data, csp, code)
-}
-
-func renderPage(w http.ResponseWriter, name string, data any, csp string, code int) {
+// renderPage renders a page in lang ("" or unknown: English).
+func renderPage(w http.ResponseWriter, lang, name string, data any, csp string, code int) {
 	var buf bytes.Buffer
-	if err := pageTemplates.ExecuteTemplate(&buf, name, data); err != nil {
+	if err := pageTemplates[i18n.Of(lang)].ExecuteTemplate(&buf, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -288,27 +299,27 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 	}
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if ct != "application/x-www-form-urlencoded" {
-		s.message(w, http.StatusUnsupportedMediaType, "Can't read that", "This form only accepts a plain form submission.")
+		s.message(w, st.Lang, http.StatusUnsupportedMediaType, "Can't read that", "This form only accepts a plain form submission.")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
 	if err := r.ParseForm(); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			s.message(w, http.StatusRequestEntityTooLarge, "Too long", "Those answers are over the size limit ("+strconv.Itoa(MaxBody>>10)+" KB). Shorten them and send again.")
+			s.message(w, st.Lang, http.StatusRequestEntityTooLarge, "Too long", "Those answers are over the size limit (%d KB). Shorten them and send again.", MaxBody>>10)
 			return
 		}
-		s.message(w, http.StatusBadRequest, "Can't read that", "The submission was malformed.")
+		s.message(w, st.Lang, http.StatusBadRequest, "Can't read that", "The submission was malformed.")
 		return
 	}
 	v := r.PostForm
 	if !macEqual(v.Get("csrf"), s.csrf(st)) {
-		s.message(w, http.StatusForbidden, "Page expired", "Reload the form and send it again.")
+		s.message(w, st.Lang, http.StatusForbidden, "Page expired", "Reload the form and send it again.")
 		return
 	}
 	if v.Get("website_url") != "" {
 		log.Printf("honeypot tripped on %s ip=%s", st.ID, ip)
-		s.message(w, http.StatusBadRequest, "Not sent", "That submission looked automated and was not recorded.")
+		s.message(w, st.Lang, http.StatusBadRequest, "Not sent", "That submission looked automated and was not recorded.")
 		return
 	}
 	if mine := s.answered(r, st); st.Status != store.Pending || mine != nil {
@@ -319,12 +330,12 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 	switch v.Get("action") {
 	case "decline":
 		if st.Multi {
-			s.message(w, http.StatusBadRequest, "Nothing to decline", "This form is open to several people: just leave it unanswered.")
+			s.message(w, st.Lang, http.StatusBadRequest, "Nothing to decline", "This form is open to several people: just leave it unanswered.")
 			return
 		}
 		st, err = s.store.Close(st.ID, store.Declined, nil, nil)
 	case "submit", "":
-		res := form.ParseWith(st.Fields, v, form.Hooks{File: func(key, ref string) (form.FileInfo, bool) {
+		res := form.ParseWith(st.Fields, v, form.Hooks{Lang: st.Lang, File: func(key, ref string) (form.FileInfo, bool) {
 			return s.store.Upload(st.ID, key, ref)
 		}})
 		if !res.OK() {
@@ -343,12 +354,12 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		}
 		st, err = s.store.Close(st.ID, store.Submitted, res.Answers, res.Secrets)
 	default:
-		s.message(w, http.StatusBadRequest, "Can't read that", "Unknown action.")
+		s.message(w, st.Lang, http.StatusBadRequest, "Can't read that", "Unknown action.")
 		return
 	}
 	if err != nil && !errors.Is(err, store.ErrClosed) {
 		log.Printf("close %s: %v", st.ID, err)
-		s.message(w, http.StatusInternalServerError, "Not saved", "Something went wrong saving your answers — try again.")
+		s.message(w, st.Lang, http.StatusInternalServerError, "Not saved", "Something went wrong saving your answers — try again.")
 		return
 	}
 	if err == nil {
@@ -374,9 +385,10 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusSeeOther)
 }
 
-func (s *Server) message(w http.ResponseWriter, code int, title, msg string) {
-	p := messagePage{Title: title, Message: msg, Nonce: newNonce(), Brand: pageLook(s.look())}
-	s.render(w, "message", p, pageCSP(p.Nonce), code)
+// message is a page of one line, title and msg in lang (both are i18n keys).
+func (s *Server) message(w http.ResponseWriter, lang string, code int, title, msg string, args ...any) {
+	p := messagePage{Title: i18n.T(lang, title), Message: i18n.T(lang, msg, args...), Nonce: newNonce(), Brand: pageLook(s.look())}
+	renderPage(w, lang, "message", p, pageCSP(p.Nonce), code)
 }
 
 func (s *Server) assetFile(w http.ResponseWriter, r *http.Request) {

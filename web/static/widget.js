@@ -38,11 +38,11 @@
       if (s === "null") s = "";
     }
     if (s && new TextEncoder().encode(s).length > MAX) {
-      page.flag(e.el, "The widget's answer is too large to send.");
+      page.flag(e.el, page.tr("The widget's answer is too large to send."));
       return;
     }
     if (s && e.schema && kind(v) !== e.schema) {
-      page.flag(e.el, "The widget gave a " + kind(v) + "; this question wants a " + e.schema + ".");
+      page.flag(e.el, page.tr("The widget gave a {kind}; this question wants a {schema}.", { kind: kind(v), schema: e.schema }));
       return;
     }
     e.input.value = s;

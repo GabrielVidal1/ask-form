@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 // Field types a form may hold.
@@ -213,7 +215,7 @@ func (f Field) OptionLabel(v string) string {
 var (
 	slugRe       = regexp.MustCompile(`[^a-z0-9_-]+`)
 	aspectRe     = regexp.MustCompile(`^(auto|\d+(\.\d+)?(/\d+(\.\d+)?)?)$`)
-	catchAllRe   = regexp.MustCompile(`(?i)\banything\s+else\b`)
+	catchAllRe   = regexp.MustCompile(`(?i)\banything\s+else\b|\bautre\s+chose\b|\bquelque\s+chose\s+à\s+ajouter\b`)
 	credentialRe = regexp.MustCompile(`(?i)\b(token|password|passwd|passphrase|pass phrase|api key|apikey|secret|` +
 		`client secret|private key|access key|credentials?|mot de passe|mdp|pat|otp|2fa code|totp)\b`)
 	// AssetRe matches a `{{asset:<file>}}` placeholder.
@@ -233,7 +235,11 @@ func LooksLikeCredential(key, label string) bool {
 
 // Normalize validates a raw spec (the agent's JSON array) and returns the
 // fields the form will hold, ending with the "Anything else?" catch-all.
-func Normalize(raw json.RawMessage) ([]Field, error) {
+func Normalize(raw json.RawMessage) ([]Field, error) { return NormalizeIn(raw, i18n.EN) }
+
+// NormalizeIn is Normalize for a form in lang (internal/i18n): what it adds
+// by itself (the catch-all, "Option 2", "Details") is in that language.
+func NormalizeIn(raw json.RawMessage, lang string) ([]Field, error) {
 	var items []map[string]any
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, errors.New("fields must be a JSON array of objects")
@@ -341,7 +347,7 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 			if ftype == Details {
 				f.Open = truthy(m["open"])
 				if f.Label == "" {
-					f.Label = "Details"
+					f.Label = i18n.T(lang, "Details")
 				}
 			}
 			out = append(out, f)
@@ -355,7 +361,7 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 				return nil, fmt.Errorf("field %q: at most %d options", key, MaxOptions)
 			}
 			for n, ro := range opts {
-				o, err := option(ro, key, n)
+				o, err := option(ro, key, n, lang)
 				if err != nil {
 					return nil, err
 				}
@@ -435,10 +441,10 @@ func Normalize(raw json.RawMessage) ([]Field, error) {
 		}
 		out = append(out, f)
 	}
-	return withCatchAll(out), nil
+	return withCatchAll(out, lang), nil
 }
 
-func option(o any, key string, n int) (*Option, error) {
+func option(o any, key string, n int, lang string) (*Option, error) {
 	m, isMap := o.(map[string]any)
 	if !isMap {
 		v := clip(strings.TrimSpace(str(o)), MaxLabelChars)
@@ -471,7 +477,7 @@ func option(o any, key string, n int) (*Option, error) {
 	switch {
 	case opt.Label != "":
 	case auto:
-		opt.Label = fmt.Sprintf("Option %d", n+1) // what its card's title bar shows
+		opt.Label = i18n.T(lang, "Option %d", n+1) // what its card's title bar shows
 	default:
 		opt.Label = val
 	}
@@ -488,7 +494,7 @@ func option(o any, key string, n int) (*Option, error) {
 
 // withCatchAll ends the spec with the optional "Anything else?" textarea — or
 // marks the agent's own trailing one as the catch-all instead of doubling it.
-func withCatchAll(fields []Field) []Field {
+func withCatchAll(fields []Field, lang string) []Field {
 	last := &fields[len(fields)-1]
 	if last.Type == Textarea && !last.Required && catchAllRe.MatchString(last.Label) {
 		last.CatchAll = true
@@ -500,8 +506,8 @@ func withCatchAll(fields []Field) []Field {
 		n++
 	}
 	return append(fields, Field{
-		Key: key, Label: "Anything else?", Type: Textarea, CatchAll: true,
-		Placeholder: "Optional — anything the questions above missed",
+		Key: key, Label: i18n.T(lang, "Anything else?"), Type: Textarea, CatchAll: true,
+		Placeholder: i18n.T(lang, "Optional — anything the questions above missed"),
 	})
 }
 

@@ -94,7 +94,7 @@ func serve(args []string, machines string) int {
 		log.Fatalf("--register %q: use open or closed", *register)
 	}
 
-	exs, err := server.LoadExamples(examples.FS)
+	exs, err := server.LoadAllExamples(examples.FS)
 	if err != nil {
 		log.Fatalf("examples: %v", err)
 	}
