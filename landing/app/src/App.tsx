@@ -254,7 +254,9 @@ export default function App({ origin }: { origin: Origin }) {
               {' '}
               More in <a href={GITHUB + '/blob/main/docs/how-it-works.md'}>how it works</a>.
             </>
-          )}
+          )}{' '}
+          The relay is open source too: <a href={GITHUB + '/blob/main/docs/self-hosting.md'}>run your own</a> on your
+          domain.
         </p>
       </section>
 
