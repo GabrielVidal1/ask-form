@@ -83,12 +83,29 @@ how another program follows the forms without polling. The
 [ai-agent](https://git.gabvdl.xyz/gabrielvidal/ai-agent) hub receives them on
 the lab. Details in [how it works](docs/how-it-works.md#events).
 
+## Your own relay
+
+ask-form.xyz is one relay; `ask-form-relay` is in this repo, so you can run
+your own on your domain, for a team or to keep any third party out. It keeps
+no forms or answers, only a hash of each machine's token. Every release ships
+its binaries, and the Dockerfile builds its image. In short, behind an HTTPS
+proxy:
+
+```bash
+ask-form-relay serve --machine-listen= --public-url https://forms.example.com
+ask-form-relay machine add laptop                                              # a token for one machine
+curl -fsSL https://forms.example.com/install.sh | sh -s -- --token '<token>'   # on that machine
+```
+
+[Running your own relay](docs/self-hosting.md) covers Docker Compose and
+systemd, Caddy, nginx and Traefik configs, closed or open registration,
+moving machines over, Cloudflare and upgrades.
+
 ## More
 
 - [How it works and security](docs/how-it-works.md): the relay, tokens,
   headers, open registration, upgrades.
-- Your own relay: `ask-form-relay serve --machine-listen "" --register open`
-  behind HTTPS, then `ask-form setup --relay https://your.host` on each machine.
+- [Running your own relay](docs/self-hosting.md).
 
 ## License
 

@@ -43,6 +43,7 @@ Cloudflare's edge ranges, so the per-IP limits count real visitors and a
 forged header on another route is ignored. `--public-url` is the origin the
 relay announces: machines set up without an explicit one use it for their
 links, and the landing page, `/install.sh` and `/agent-install` name it.
+Setting one up, with proxy configs: [running your own relay](self-hosting.md).
 
 ## Events
 
