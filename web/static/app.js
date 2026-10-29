@@ -15,6 +15,15 @@
     if (text != null) e.textContent = text;
     return e;
   }
+  // The page's language: <html data-l10n> is the machine's translation of the
+  // English strings below (internal/i18n), none on an English page.
+  var l10n = {};
+  try { l10n = JSON.parse(root.getAttribute("data-l10n") || "{}"); } catch (e) { /* English */ }
+  function tr(s, vars) {
+    s = l10n[s] || s;
+    for (var k in vars || {}) s = s.split("{" + k + "}").join(vars[k]);
+    return s;
+  }
   var store = {
     get: function (k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
     set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
@@ -103,37 +112,37 @@
   function problem(f) {
     var t = f.getAttribute("data-type");
     if (f.hidden) return "";
-    if (t === "file" && f.hasAttribute("data-uploading")) return "Wait for the upload to finish.";
+    if (t === "file" && f.hasAttribute("data-uploading")) return tr("Wait for the upload to finish.");
     if (t === "checkbox" || t === "slider") return "";
     var main = f.querySelector("input:not([type=hidden]):not([data-other-for]), textarea");
     // A half-typed number or date reads as "": the browser knows better.
-    if (main && main.validity && main.validity.badInput) return t === "date" ? "Enter a date (YYYY-MM-DD)." : "Enter a number.";
+    if (main && main.validity && main.validity.badInput) return tr(t === "date" ? "Enter a date (YYYY-MM-DD)." : "Enter a number.");
     if (isEmpty(f)) {
       if (!f.hasAttribute("data-required")) return "";
-      if (otherPicked(f)) return "Type your answer next to “Other…”.";
-      if (t === "widget") return "Interact with this first.";
-      return t === "multiselect" ? "Pick at least one." : "This question is required.";
+      if (otherPicked(f)) return tr("Type your answer next to “Other…”.");
+      if (t === "widget") return tr("Interact with this first.");
+      return tr(t === "multiselect" ? "Pick at least one." : "This question is required.");
     }
     if (t === "daterange") {
       var dr = inputs(f).map(function (i) { return i.value; });
-      if (!dr[0] || !dr[1]) return "Pick both dates.";
-      return dr[1] < dr[0] ? "The end is before the start." : "";
+      if (!dr[0] || !dr[1]) return tr("Pick both dates.");
+      return dr[1] < dr[0] ? tr("The end is before the start.") : "";
     }
     if (t === "list") {
       var need = Number(f.querySelector("[data-list]").getAttribute("data-min") || 0);
-      return need && filledRows(f) < need ? "Add at least " + need + "." : "";
+      return need && filledRows(f) < need ? tr("Add at least {n}.", { n: need }) : "";
     }
     var v = main ? main.value.trim() : "";
     if (t === "number") {
       var n = Number(v.replace(",", "."));
-      if (!isFinite(n)) return "Enter a number.";
+      if (!isFinite(n)) return tr("Enter a number.");
       var min = main.getAttribute("min"), max = main.getAttribute("max");
-      if (min && n < Number(min)) return "At least " + min + ".";
-      if (max && n > Number(max)) return "At most " + max + ".";
+      if (min && n < Number(min)) return tr("At least {n}.", { n: min });
+      if (max && n > Number(max)) return tr("At most {n}.", { n: max });
     }
-    if (t === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return "Enter a date (YYYY-MM-DD).";
-    if (t === "email" && !validEmail(v.toLowerCase())) return "Enter an email address, like name@example.com.";
-    if (t === "secret" && v.length > 8000) return "That value is too long.";
+    if (t === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return tr("Enter a date (YYYY-MM-DD).");
+    if (t === "email" && !validEmail(v.toLowerCase())) return tr("Enter an email address, like name@example.com.");
+    if (t === "secret" && v.length > 8000) return tr("That value is too long.");
     return "";
   }
   // form.ValidEmail: one @, something before it, a dotted domain of letters,
@@ -160,7 +169,7 @@
     $all(".row-remove", row).forEach(function (b) { b.remove(); });
     var rm = make("button", "row-remove", "✕");
     rm.type = "button";
-    rm.setAttribute("aria-label", "Remove this row");
+    rm.setAttribute("aria-label", tr("Remove this row"));
     rm.addEventListener("click", function () {
       if ($all(".list-row", list).length > 1) row.remove(); else clearRow(row);
       syncAdd(list);
@@ -278,12 +287,12 @@
     }
     if (t === "secret") {
       var p = f.querySelector("input[type=password]");
-      var b = make("button", "reveal", "Show");
+      var b = make("button", "reveal", tr("Show"));
       b.type = "button";
       b.addEventListener("click", function () {
         var show = p.type === "password";
         p.type = show ? "text" : "password";
-        b.textContent = show ? "Hide" : "Show";
+        b.textContent = tr(show ? "Hide" : "Show");
       });
       p.parentNode.appendChild(b);
     }
@@ -439,7 +448,8 @@
   // widget.js (widget fields) drives the page through these.
   window.askFormPage = {
     touch: function (f) { touched[f.getAttribute("data-key")] = true; clearErr(f); applyConditions(); refresh(); saveDraft(); },
-    flag: flag
+    flag: flag,
+    tr: tr
   };
 
   // ── pages ─────────────────────────────────────────────────────────────────
@@ -478,7 +488,8 @@
     groups.forEach(function (el, i) {
       var s = make("button", "pager-seg");
       s.type = "button";
-      s.setAttribute("aria-label", "Page " + (i + 1) + (el.getAttribute("data-title") ? ": " + el.getAttribute("data-title") : ""));
+      var title = el.getAttribute("data-title");
+      s.setAttribute("aria-label", title ? tr("Page {n}: {title}", { n: i + 1, title: title }) : tr("Page {n}", { n: i + 1 }));
       s.addEventListener("click", function () { show(i, true); });
       segs.appendChild(s);
     });
@@ -489,8 +500,8 @@
     form.insertBefore(pager, groups[0]);
 
     nav = make("div", "nav");
-    var back = make("button", "btn ghost", "← Back");
-    var next = make("button", "btn", "Next →");
+    var back = make("button", "btn ghost", tr("← Back"));
+    var next = make("button", "btn", tr("Next →"));
     back.type = next.type = "button";
     back.addEventListener("click", function () { show(stepGroup(current, -1), true); });
     next.addEventListener("click", function () { show(stepGroup(current, 1), "field"); });
@@ -541,7 +552,7 @@
       });
       var asked = fields.filter(function (f) { return !f.closest(".catchall") && !f.hidden; });
       var n = asked.filter(function (f) { return !unanswered(f); }).length;
-      tocProgress.textContent = n + " of " + asked.length + " answered";
+      tocProgress.textContent = tr("{n} of {m} answered", { n: n, m: asked.length });
       tocBar.style.width = (asked.length ? Math.round(100 * n / asked.length) : 0) + "%";
     }
     fields.forEach(function (f) {
@@ -643,10 +654,10 @@
     if (t === "file") return $all(".file-item.done .file-name", f).map(function (n) { return n.textContent; }).join(", ");
     var o = otherInput(f);
     var oText = o && otherPicked(f) ? o.value.trim() : "";
-    if (t === "checkbox") return f.querySelector("input").checked ? "Yes" : "No";
+    if (t === "checkbox") return tr(f.querySelector("input").checked ? "Yes" : "No");
     if (t === "secret") {
       var p = f.querySelector("input");
-      return p.value.trim() ? "🔒 " + p.value.trim().length + " characters — not shown" : "";
+      return p.value.trim() ? tr("🔒 {n} characters — not shown", { n: p.value.trim().length }) : "";
     }
     if (t === "select" && !f.classList.contains("visual-field")) {
       var s = f.querySelector("select");
@@ -682,8 +693,8 @@
     wrap.setAttribute("role", "dialog");
     wrap.setAttribute("aria-modal", "true");
     var box = make("div", "confirm-box");
-    box.appendChild(make("h2", null, "Send these answers?"));
-    box.appendChild(make("p", "help", "The form closes once sent — you can't change them afterwards."));
+    box.appendChild(make("h2", null, tr("Send these answers?")));
+    box.appendChild(make("p", "help", tr("The form closes once sent — you can't change them afterwards.")));
     var dl = make("dl", "recap");
     var n = 0;
     fields.forEach(function (f) {
@@ -694,11 +705,11 @@
       dl.appendChild(make("dd", null, a));
       n++;
     });
-    if (!n) dl.appendChild(make("dd", null, "No answers — the form will be sent empty."));
+    if (!n) dl.appendChild(make("dd", null, tr("No answers — the form will be sent empty.")));
     box.appendChild(dl);
     var acts = make("div", "actions");
-    var back = make("button", "btn ghost", "Back");
-    var send = make("button", "btn primary", "Confirm & send");
+    var back = make("button", "btn ghost", tr("Back"));
+    var send = make("button", "btn primary", tr("Confirm & send"));
     back.type = send.type = "button";
     back.addEventListener("click", function () { wrap.remove(); if (by) by.focus(); });
     send.addEventListener("click", function () {
@@ -763,7 +774,7 @@
     ov.setAttribute("aria-modal", "true");
     var close = make("button", "overlay-close", "✕");
     close.type = "button";
-    close.setAttribute("aria-label", "Close");
+    close.setAttribute("aria-label", tr("Close"));
     var label = make("div", "overlay-label");
     var holder = make("div");
     holder.style.display = "contents";

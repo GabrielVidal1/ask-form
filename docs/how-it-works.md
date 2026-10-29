@@ -45,6 +45,20 @@ relay announces: machines set up without an explicit one use it for their
 links, and the landing page, `/install.sh` and `/agent-install` name it.
 Setting one up, with proxy configs: [running your own relay](self-hosting.md).
 
+## Languages
+
+A form's pages are in English or French: the buttons, the errors, the confirm
+step, the thanks and closed pages, and what ask-form adds by itself ("Other…",
+"Anything else?"). The agent writes the questions; `ask-form create --lang fr`
+puts the rest in the same language. A form without `--lang` takes the
+machine's default: `ask-form serve --lang fr`, or `ASK_FORM_LANG` in
+`serve.env`, which `ask-form setup --lang fr` writes. With neither, it's
+English. The language is fixed when the form is created: it is the form's
+`lang` in `ask-form get`. The machine renders every string and hands the
+page's script its share in the page itself. A relay older than v0.9 serves
+scripts that ignore it, so the confirm step and the page counter stay in
+English there. The examples are at `/examples` and `/fr/examples`.
+
 ## Events
 
 `ask-form serve --events-url URL` (or `ASK_FORM_EVENTS_URL` in `serve.env`,

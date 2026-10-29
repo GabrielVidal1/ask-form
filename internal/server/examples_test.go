@@ -10,6 +10,7 @@ import (
 
 	"github.com/GabrielVidal1/ask-form/examples"
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 func TestExamples(t *testing.T) {
@@ -20,7 +21,7 @@ func TestExamples(t *testing.T) {
 	if len(list) < 9 {
 		t.Fatalf("want at least 9 examples, got %d", len(list))
 	}
-	srv := httptest.NewServer(ExamplesHandler(list, ""))
+	srv := httptest.NewServer(ExamplesHandler(map[string][]Example{i18n.EN: list}, ""))
 	defer srv.Close()
 	get := func(path string) (int, string) {
 		res, err := http.Get(srv.URL + path)

@@ -8,6 +8,11 @@
     <!-- The relay fills {{ORIGIN}}; the app reads it from here so the prerendered
          page and the hydrated one agree on the install line. -->
     <meta name="ask-form-origin" content="{{ORIGIN}}" />
+    <!-- The prerender writes this page once per language (dist/index.html,
+         dist/fr/index.html): lang, title and description come from src/copy/. -->
+    <link rel="alternate" hreflang="en" href="{{ORIGIN}}/" />
+    <link rel="alternate" hreflang="fr" href="{{ORIGIN}}/fr" />
+    <link rel="alternate" hreflang="x-default" href="{{ORIGIN}}/" />
     <title>ask-form: your coding agent asks, you answer from anywhere</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f97316'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
   </head>

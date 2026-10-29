@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -317,7 +318,7 @@ func TestFileHint(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := fileHint(fields[0]); got != want {
+		if got := fileHint(i18n.EN, fields[0]); got != want {
 			t.Errorf("%s: %q, want %q", spec, got, want)
 		}
 	}

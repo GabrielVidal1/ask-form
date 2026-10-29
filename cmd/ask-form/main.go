@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/brand"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
@@ -44,9 +45,9 @@ import (
 const usage = `ask-form — ask a human questions through a private web form
 
 Setup (once per machine):
-  ask-form setup [--relay URL | --local] [--no-service] [--no-skill]
+  ask-form setup [--relay URL | --local] [--no-service] [--no-skill] [--lang en|fr]
   ask-form serve [--relay URL] [--public-url URL] [--data DIR] [--auto-upgrade minor|all|notify|off]
-                 [--events-url URL]
+                 [--events-url URL] [--lang en|fr]
   ask-form upgrade [--check] [--version vX.Y.Z] [--force]
   ask-form skill install | print [--body] | refresh
   ask-form uninstall [--purge]
@@ -54,7 +55,7 @@ Setup (once per machine):
 Branding (once per machine; every form it serves):
   ask-form brand set [FILE.css | -] [--name TEXT] [--logo IMAGE] [--primary COLOR] [--font FONT]
   ask-form brand show [--css] | clear [css|name|logo|primary|font]… | init
-  ask-form brand preview [FILE.css] [the flags of set] [--no-open]
+  ask-form brand preview [FILE.css] [the flags of set] [--lang en|fr] [--no-open]
 
 Client (JSON on stdout):
   ask-form create --title T (--fields JSON | --fields-file F | stdin) [--description D]
@@ -62,6 +63,7 @@ Client (JSON on stdout):
                   [--public]           url = the relay link (default for one person: this machine's)
                   [--open]             also open the url in this desktop's browser
                   [--multi [--max N] [--hide-count]]   one link, any number of answers (a team vote…)
+                  [--lang en|fr]       the language of the page around your questions (default: the machine's, else en)
   ask-form wait <id> [--timeout 30m]   exit 0 submitted · 3 declined/revoked/expired · 4 timeout
                                        (a multi form: at its close, with every answer)
   ask-form get <id> [--fields]
@@ -73,7 +75,7 @@ Client (JSON on stdout):
 
 Environment: ASK_FORM_ADMIN_URL (default http://127.0.0.1:7461), ASK_FORM_ADMIN_TOKEN
 (default: the admin-token file 'serve' writes), ASK_FORM_NOTIFY_CMD, ASK_FORM_PUBLIC_URL, ASK_FORM_EVENTS_URL,
-ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE.
+ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE, ASK_FORM_LANG.
 `
 
 const (
@@ -214,9 +216,14 @@ func cmdServe(args []string) int {
 	ipHeader := fs.String("client-ip-header", os.Getenv("ASK_FORM_CLIENT_IP_HEADER"), "header a trusted proxy in front of --listen sets to the visitor IP")
 	autoMode := fs.String("auto-upgrade", envOr("ASK_FORM_AUTO_UPGRADE", defaultAutoUpgrade), "install new releases by itself: minor (minor+patch), all (majors too), notify (only report), off")
 	eventsURL := fs.String("events-url", os.Getenv("ASK_FORM_EVENTS_URL"), "POST every form event (created, submitted, …) to this URL (empty: off)")
+	langFlag := fs.String("lang", os.Getenv("ASK_FORM_LANG"), "language of the pages of a form created without --lang: "+strings.Join(i18n.Langs, ", ")+" (empty: en)")
 	fs.Parse(args)
 	if !validAutoMode(*autoMode) {
 		log.Fatalf("--auto-upgrade %q: use minor, all, notify or off", *autoMode)
+	}
+	lang, err := i18n.Parse(*langFlag)
+	if err != nil {
+		log.Fatalf("--lang: %v", err)
 	}
 
 	log.SetFlags(log.LstdFlags)
@@ -247,6 +254,7 @@ func cmdServe(args []string) int {
 	}
 	srv := server.New(server.Config{
 		PublicURL: *publicURL, DefaultURL: defaultURL, LocalURL: localURL, ClientIPHeader: *ipHeader, AdminToken: adminToken, Key: []byte(keyStr),
+		Lang: lang,
 	}, st)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -488,6 +496,7 @@ func cmdCreate(args []string) int {
 	hideCount := fs.Bool("hide-count", false, "with --multi: don't show respondents how many have answered")
 	public := fs.Bool("public", false, "make url the link that works from any device (default for one person: this machine's own)")
 	open := fs.Bool("open", false, "also open the url in this desktop's default browser (nothing over SSH or without a display)")
+	langFlag := fs.String("lang", "", "language of the page around the questions — write them in it: "+strings.Join(i18n.Langs, ", ")+" (default: the machine's, else en)")
 	var assets, meta multi
 	fs.Var(&assets, "asset", "image referenced as {{asset:<basename>}} (repeatable)")
 	fs.Var(&meta, "meta", "k=v label kept with the form (repeatable)")
@@ -526,6 +535,13 @@ func cmdCreate(args []string) int {
 	}
 	if *public {
 		body["public"] = true
+	}
+	lang, err := i18n.Parse(*langFlag)
+	if err != nil {
+		return fail(exitUsage, "--lang: %v", err)
+	}
+	if lang != "" {
+		body["lang"] = lang
 	}
 	m := map[string]string{}
 	for _, kv := range meta {
@@ -579,6 +595,9 @@ func cmdCreate(args []string) int {
 	printJSON(out)
 	if w, _ := out["warning"].(string); w != "" {
 		fmt.Fprintln(os.Stderr, "ask-form: warning: "+w)
+	}
+	if _, ok := out["lang"]; lang != "" && !ok {
+		fmt.Fprintln(os.Stderr, "ask-form: warning: the running `ask-form serve` predates --lang and made this form in English; `ask-form upgrade` fixes it for the next one")
 	}
 	if *multiAnswers {
 		fmt.Fprintf(os.Stderr, "ask-form: share the url with everyone who should answer, then wait in the background: ask-form wait %v --timeout 0 (returns at its close with every answer; `ask-form get` shows them meanwhile)\n", out["id"])

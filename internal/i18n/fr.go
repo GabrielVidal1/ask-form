@@ -1,0 +1,242 @@
+package i18n
+
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+const FR = "fr"
+
+func init() {
+	register(FR, &language{
+		name:       "Français",
+		names:      []string{"french", "français", "francais"},
+		strings:    fr,
+		one:        func(n int) bool { return n <= 1 }, // 0 and 1 are singular
+		date:       frDate,
+		typography: frSpacing.Replace,
+	})
+}
+
+// French puts a narrow no-break space before ? ! ; a no-break space before
+// : and inside « ».
+var frSpacing = strings.NewReplacer(" ?", " ?", " !", " !", " ;", " ;", " :", " :",
+	"« ", "« ", " »", " »")
+
+var frMonths = []string{"janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+	"août", "septembre", "octobre", "novembre", "décembre"}
+
+func frDate(t time.Time) string {
+	day := fmt.Sprint(t.Day())
+	if t.Day() == 1 {
+		day = "1er"
+	}
+	return fmt.Sprintf("%s %s %d à %s UTC", day, frMonths[t.Month()-1], t.Year(), t.Format("15:04"))
+}
+
+// fr is the French catalogue, by English key. Written with plain spaces:
+// frSpacing puts the French ones in.
+var fr = map[string]string{
+	// The answer page.
+	"%d person has answered so far.":     "%d personne a répondu pour l'instant.",
+	"%d people have answered so far.":    "%d personnes ont répondu pour l'instant.",
+	"Sections":                           "Sections",
+	"On this form":                       "Dans ce formulaire",
+	"Some answers need a look":           "Certaines réponses sont à revoir",
+	"Leave this field empty":             "Laissez ce champ vide",
+	"Send answers":                       "Envoyer les réponses",
+	"Can't or won't answer?":             "Vous ne pouvez pas ou ne voulez pas répondre ?",
+	"Decline this form":                  "Décliner ce formulaire",
+	"(required)":                         "(obligatoire)",
+	"Please specify…":                    "Précisez…",
+	"Other — please specify":             "Autre — précisez",
+	"Other…":                             "Autre…",
+	"Pick one…":                          "Choisissez…",
+	"Illustration":                       "Illustration",
+	"Open full size ⤢":                   "Ouvrir en grand ⤢",
+	"Open full size":                     "Ouvrir en grand",
+	"Diff":                               "Diff",
+	"From":                               "Du",
+	"To":                                 "Au",
+	"Interactive control":                "Contrôle interactif",
+	"Choose a file":                      "Choisir un fichier",
+	"Choose files":                       "Choisir des fichiers",
+	" or drop it here":                   " ou déposez-le ici",
+	" or drop them here":                 " ou déposez-les ici",
+	"Please type it again:":              "Merci de la retaper :",
+	"it isn't kept after a failed send.": "elle n'est pas gardée après un envoi refusé.",
+	"Declining tells the asker you won't answer. The form closes for good.":                       "Décliner prévient la personne qui demande que vous ne répondrez pas. Le formulaire se ferme pour de bon.",
+	"This question needs JavaScript. Without it, type the answer as JSON.":                        "Cette question a besoin de JavaScript. Sans lui, tapez la réponse en JSON.",
+	"This question needs JavaScript. Without it, type the answer as JSON (a %s).":                 "Cette question a besoin de JavaScript. Sans lui, tapez la réponse en JSON (type %s).",
+	"Adding a file needs a browser with JavaScript turned on.":                                    "Pour ajouter un fichier, il faut un navigateur avec JavaScript activé.",
+	"Uploads are switched off in this demo — nothing you add is kept.":                            "Les envois de fichiers sont coupés dans cette démo : rien de ce que vous ajoutez n'est gardé.",
+	"🔒 Kept out of the answers the agent reads — it writes the value straight where it's needed.": "🔒 Tenu à l'écart des réponses que lit l'agent : il écrit la valeur directement là où elle sert.",
+
+	// The thanks and closed pages.
+	"✓ Thanks — your answers were sent.":                           "✓ Merci, vos réponses ont été envoyées.",
+	"✓ Thanks — your answers were sent on %s.":                     "✓ Merci, vos réponses ont été envoyées le %s.",
+	"You're the first to answer.":                                  "Vous êtes la première personne à répondre.",
+	"You declined this form — nothing else to do.":                 "Vous avez décliné ce formulaire : plus rien à faire.",
+	"This form is closed":                                          "Ce formulaire est fermé",
+	"This form is closed since %s":                                 "Ce formulaire est fermé depuis le %s",
+	": it took %d answer":                                          " : il a reçu %d réponse",
+	": it took %d answers":                                         " : il a reçu %d réponses",
+	". Thanks for stopping by.":                                    ". Merci de votre passage.",
+	"This form was withdrawn by whoever asked — no answer needed.": "Ce formulaire a été retiré par la personne qui l'a envoyé : plus besoin de répondre.",
+	"This form expired — no answer needed any more.":               "Ce formulaire a expiré : plus besoin de répondre.",
+	"This form expired on %s — no answer needed any more.":         "Ce formulaire a expiré le %s : plus besoin de répondre.",
+
+	// Messages after a send that went wrong.
+	"Can't read that":               "Illisible",
+	"Too long":                      "Trop long",
+	"Page expired":                  "Page expirée",
+	"Not sent":                      "Non envoyé",
+	"Nothing to decline":            "Rien à décliner",
+	"Not saved":                     "Non enregistré",
+	"Unknown action.":               "Action inconnue.",
+	"The submission was malformed.": "L'envoi était mal formé.",
+	"This form only accepts a plain form submission.":                             "Ce formulaire n'accepte qu'un envoi de formulaire ordinaire.",
+	"Those answers are over the size limit (%d KB). Shorten them and send again.": "Ces réponses dépassent la taille maximale (%d Ko). Raccourcissez-les et renvoyez-les.",
+	"Those answers are over the size limit (%d KB).":                              "Ces réponses dépassent la taille maximale (%d Ko).",
+	"Reload the form and send it again.":                                          "Rechargez le formulaire et renvoyez-le.",
+	"That submission looked automated and was not recorded.":                      "Cet envoi semblait automatisé et n'a pas été enregistré.",
+	"That submission looked automated.":                                           "Cet envoi semblait automatisé.",
+	"This form is open to several people: just leave it unanswered.":              "Ce formulaire est ouvert à plusieurs personnes : laissez-le simplement sans réponse.",
+	"Something went wrong saving your answers — try again.":                       "L'enregistrement de vos réponses a échoué. Réessayez.",
+
+	// Uploads (internal/server/upload.go, internal/store/uploads.go).
+	"Reload the page and try again.":                     "Rechargez la page et réessayez.",
+	"This form is closed.":                               "Ce formulaire est fermé.",
+	"That upload didn't make sense — try again.":         "Cet envoi est incompréhensible : réessayez.",
+	"That piece of the file is too large.":               "Ce morceau du fichier est trop gros.",
+	"The upload was interrupted — try again.":            "L'envoi a été interrompu : réessayez.",
+	"Something went wrong saving that file — try again.": "L'enregistrement de ce fichier a échoué. Réessayez.",
+	"This form takes at most %s of files.":               "Ce formulaire accepte au plus %s de fichiers.",
+	"This form takes at most %d files.":                  "Ce formulaire accepte au plus %d fichiers.",
+	"That file is over the %s limit.":                    "Ce fichier dépasse la limite de %s.",
+	"That kind of file isn't accepted here%s.":           "Ce type de fichier n'est pas accepté ici%s.",
+	"images":           "images",
+	"videos":           "vidéos",
+	"audio":            "audio",
+	"text files":       "fichiers texte",
+	"PDF":              "PDF",
+	"up to %s MB":      "jusqu'à %s Mo",
+	"at most %d files": "%d fichiers au maximum",
+
+	// What a form gets without the agent writing it (internal/form).
+	"Anything else?": "Autre chose ?",
+	"Optional — anything the questions above missed": "Facultatif : ce que les questions ci-dessus ont oublié",
+	"Details":    "Détails",
+	"Option %d":  "Option %d",
+	"Section %d": "Section %d",
+	"Yes":        "Oui",
+	"No":         "Non",
+	"🔒 secret given (%v chars) — not shown": "🔒 secret donné (%v caractères), masqué",
+
+	// Validation (internal/form, and app.js's mirror of it).
+	"Give one value only.":                           "Une seule valeur, s'il vous plaît.",
+	"Unexpected value.":                              "Valeur inattendue.",
+	"Type your answer next to “Other…”.":             "Tapez votre réponse à côté de « Autre… ».",
+	"Keep it under %d characters.":                   "Restez sous les %d caractères.",
+	"Keep each entry under %d characters.":           "Gardez chaque entrée sous les %d caractères.",
+	"This question is required.":                     "Cette question est obligatoire.",
+	"Pick one of the choices.":                       "Choisissez une des propositions.",
+	"Pick among the choices.":                        "Choisissez parmi les propositions.",
+	"Pick at least one.":                             "Choisissez au moins une réponse.",
+	"Enter a number.":                                "Saisissez un nombre.",
+	"At least %s.":                                   "Au moins %s.",
+	"At most %s.":                                    "Au plus %s.",
+	"Enter a date (YYYY-MM-DD).":                     "Saisissez une date (AAAA-MM-JJ).",
+	"Enter dates (YYYY-MM-DD).":                      "Saisissez des dates (AAAA-MM-JJ).",
+	"Enter an email address, like name@example.com.": "Saisissez une adresse e-mail, comme nom@exemple.fr.",
+	"Enter a time (HH:MM).":                          "Saisissez une heure (HH:MM).",
+	"Enter a date and a time.":                       "Saisissez une date et une heure.",
+	"Pick both dates.":                               "Choisissez les deux dates.",
+	"The end is before the start.":                   "La fin est avant le début.",
+	"Pick a rating.":                                 "Choisissez une note.",
+	"Add at least one.":                              "Ajoutez au moins une entrée.",
+	"Add at least %s.":                               "Il en faut au moins %s.",
+	"Row %d: “%s” must be a number.":                 "Ligne %d : « %s » doit être un nombre.",
+	"Row %d: pick one of the choices for “%s”.":      "Ligne %d : choisissez une des propositions pour « %s ».",
+	"The rows are malformed — reload and try again.": "Les lignes sont mal formées : rechargez et réessayez.",
+	"Too many rows.":                                 "Trop de lignes.",
+	"Interact with this first.":                      "Utilisez d'abord ce contrôle.",
+	"That value is over %d KB.":                      "Cette valeur dépasse %d Ko.",
+	"That value isn't valid JSON.":                   "Cette valeur n'est pas du JSON valide.",
+	"The value %s.":                                  "La valeur est invalide (%s).",
+	"Add a file.":                                    "Ajoutez un fichier.",
+	"Add the file again.":                            "Ajoutez le fichier à nouveau.",
+	"A file is gone — add it again.":                 "Un fichier a disparu : ajoutez-le à nouveau.",
+	"At most %d file.":                               "%d fichier au maximum.",
+	"At most %d files.":                              "%d fichiers au maximum.",
+	"Uploads aren't available here.":                 "Les envois de fichiers ne sont pas disponibles ici.",
+	"That value is too long.":                        "Cette valeur est trop longue.",
+
+	// The page scripts (jsKeys).
+	"Wait for the upload to finish.": "Attendez la fin de l'envoi.",
+	"Add at least {n}.":              "Il en faut au moins {n}.",
+	"At least {n}.":                  "Au moins {n}.",
+	"At most {n}.":                   "Au plus {n}.",
+	"Remove this row":                "Supprimer cette ligne",
+	"Show":                           "Afficher",
+	"Hide":                           "Masquer",
+	"Page {n}":                       "Page {n}",
+	"Page {n}: {title}":              "Page {n} : {title}",
+	"← Back":                         "← Retour",
+	"Next →":                         "Suivant →",
+	"{n} of {m} answered":            "Réponses : {n} sur {m}",
+	"🔒 {n} characters — not shown":   "🔒 {n} caractères, masqués",
+	"Send these answers?":            "Envoyer ces réponses ?",
+	"The form closes once sent — you can't change them afterwards.": "Le formulaire se ferme une fois envoyé : vous ne pourrez plus les modifier.",
+	"No answers — the form will be sent empty.":                     "Aucune réponse : le formulaire partira vide.",
+	"Back":                    "Retour",
+	"Confirm & send":          "Confirmer et envoyer",
+	"Close":                   "Fermer",
+	"Uploaded file":           "Fichier envoyé",
+	"Remove {name}":           "Retirer {name}",
+	"Uploading {name}":        "Envoi de {name}",
+	"Upload failed.":          "L'envoi a échoué.",
+	"Try again":               "Réessayer",
+	"That file was refused.":  "Ce fichier a été refusé.",
+	"The connection dropped.": "La connexion a été coupée.",
+	"The upload didn't finish — try again.":  "L'envoi n'a pas abouti : réessayez.",
+	"At most {n} file.":                      "{n} fichier au maximum.",
+	"At most {n} files.":                     "{n} fichiers au maximum.",
+	"That file is empty.":                    "Ce fichier est vide.",
+	"Over the {size} limit.":                 "Dépasse la limite de {size}.",
+	"That kind of file isn't accepted here.": "Ce type de fichier n'est pas accepté ici.",
+	"B":                                      "o",
+	"KB":                                     "Ko",
+	"MB":                                     "Mo",
+	"The widget's answer is too large to send.":                 "La réponse du contrôle est trop grosse pour être envoyée.",
+	"The widget gave a {kind}; this question wants a {schema}.": "Le contrôle a donné un {kind} ; cette question attend un {schema}.",
+
+	// The examples and `brand preview` (internal/server/examples.go).
+	"Brand preview.": "Aperçu de la marque.",
+	"Your forms with this brand. Edit the CSS and reload to see the change; sending shows the JSON the agent reads back. Nothing is stored.": "Vos formulaires avec cette marque. Modifiez le CSS et rechargez pour voir le changement ; l'envoi montre le JSON que l'agent reçoit. Rien n'est gardé.",
+	"Example form.": "Formulaire d'exemple.",
+	"What the person gets when an agent runs":                           "Ce que reçoit la personne quand un agent lance",
+	"; sending shows the JSON the agent reads back. Nothing is stored.": " ; l'envoi montre le JSON que l'agent reçoit. Rien n'est gardé.",
+	"← All examples":            "← Tous les exemples",
+	"Field spec (JSON)":         "Spécification des champs (JSON)",
+	"ask-form · examples":       "ask-form · exemples",
+	"Forms an agent might send": "Des formulaires qu'un agent pourrait envoyer",
+	"Each one is a real field spec, the JSON an agent passes to":                                    "Chacun est une vraie spécification de champs, le JSON qu'un agent passe à",
+	". Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored.": ". Ouvrez-en un, répondez, et voyez le JSON que l'agent reçoit en retour. Rien de ce que vous envoyez ici n'est gardé.",
+	"%d question":                "%d question",
+	"%d questions":               "%d questions",
+	"%d page":                    "%d page",
+	"%d pages":                   "%d pages",
+	"What is ask-form?":          "C'est quoi, ask-form ?",
+	"✓ This is what the agent's": "✓ Voici ce qu'afficherait le",
+	"would print:":               "de l'agent :",
+	"Pretty-printed here; the CLI prints it on one line. A": "Mis en forme ici ; la CLI l'affiche sur une ligne. Une réponse",
+	"answer comes back as":                    "revient sous la forme",
+	": the value itself only ever goes where": " : la valeur elle-même ne va jamais qu'à l'endroit où",
+	"writes it.":            "l'écrit.",
+	"As the person sees it": "Comme la personne le voit",
+	"All examples":          "Tous les exemples",
+	"Try it again":          "Recommencer",
+	"ask-form examples":     "Exemples ask-form",
+}

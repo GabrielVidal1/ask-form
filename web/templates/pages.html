@@ -1,5 +1,5 @@
 {{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="{{lang}}"{{with l10n}} data-l10n="{{.}}"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -28,9 +28,9 @@
 
 {{define "demo-banner"}}<aside class="demo-banner">
   <div class="demo-banner-in">
-    {{if .Preview}}<p><strong>Brand preview.</strong> Your forms with this brand. Edit the CSS and reload to see the change; sending shows the JSON the agent reads back. Nothing is stored.</p>
-    {{else}}<p><strong>Example form.</strong> What the person gets when an agent runs <code>ask-form create</code>; sending shows the JSON the agent reads back. Nothing is stored.</p>{{end}}
-    <p class="demo-links"><a href="{{.Index}}">← All examples</a> · <a href="{{.Spec}}">Field spec (JSON)</a></p>
+    {{if .Preview}}<p><strong>{{t "Brand preview."}}</strong> {{t "Your forms with this brand. Edit the CSS and reload to see the change; sending shows the JSON the agent reads back. Nothing is stored."}}</p>
+    {{else}}<p><strong>{{t "Example form."}}</strong> {{t "What the person gets when an agent runs"}} <code>ask-form create</code>{{t "; sending shows the JSON the agent reads back. Nothing is stored."}}</p>{{end}}
+    <p class="demo-links"><a href="{{.Index}}">{{t "← All examples"}}</a> · <a href="{{.Spec}}">{{t "Field spec (JSON)"}}</a></p>
   </div>
 </aside>{{end}}
 
@@ -41,17 +41,17 @@
     {{template "brand" .}}
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
-    {{if and .ShowCount .Count}}<p class="count">{{.Count}} {{if eq .Count 1}}person has{{else}}people have{{end}} answered so far.</p>{{end}}
+    {{if and .ShowCount .Count}}<p class="count">{{tn .Count "%d person has answered so far." "%d people have answered so far."}}</p>{{end}}
   </header>
-  {{if .Paged}}<nav class="toc" aria-label="Sections">
-    <p class="toc-h">On this form</p>
+  {{if .Paged}}<nav class="toc" aria-label="{{t "Sections"}}">
+    <p class="toc-h">{{t "On this form"}}</p>
     <ol>{{range .Groups}}<li><a href="#{{.ID}}" data-toc="{{.ID}}"><span class="toc-text">{{.Nav}}</span><span class="toc-state" aria-hidden="true"></span></a></li>{{end}}</ol>
   </nav>{{end}}
   <div class="page">
 
   {{if .Errors}}
   <div class="errors" role="alert" id="errors">
-    <p><strong>Some answers need a look</strong></p>
+    <p><strong>{{t "Some answers need a look"}}</strong></p>
     <ul>{{range .Errors}}<li><a href="#{{.DOMID}}">{{.Label}}</a> — {{.Msg}}</li>{{end}}</ul>
   </div>
   {{end}}
@@ -59,7 +59,7 @@
   <form method="post" action="{{.Base}}" id="form" class="form" accept-charset="utf-8" data-form="{{.ID}}"{{if .Errors}} data-errors{{end}}>
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="hp" aria-hidden="true">
-      <label>Leave this field empty <input type="text" name="website_url" value="" tabindex="-1" autocomplete="off"></label>
+      <label>{{t "Leave this field empty"}} <input type="text" name="website_url" value="" tabindex="-1" autocomplete="off"></label>
     </div>
 
     {{range $gi, $g := .Groups}}
@@ -72,25 +72,25 @@
     {{with .CatchAll}}<div class="catchall">{{template "field" .}}</div>{{end}}
 
     <div class="actions">
-      <button type="submit" name="action" value="submit" class="btn primary">Send answers</button>
+      <button type="submit" name="action" value="submit" class="btn primary">{{t "Send answers"}}</button>
     </div>
 
     {{if not (or .Demo .Multi)}}<details class="decline">
-      <summary>Can't or won't answer?</summary>
-      <p>Declining tells the asker you won't answer. The form closes for good.</p>
-      <button type="submit" name="action" value="decline" class="btn ghost" formnovalidate>Decline this form</button>
+      <summary>{{t "Can't or won't answer?"}}</summary>
+      <p>{{t "Declining tells the asker you won't answer. The form closes for good."}}</p>
+      <button type="submit" name="action" value="decline" class="btn ghost" formnovalidate>{{t "Decline this form"}}</button>
     </details>{{end}}
   </form>
   </div>
 </main>
 {{template "foot" .}}{{end}}
 
-{{define "label"}}<span class="label-text">{{inline .Label}}</span>{{if .Required}}<span class="req" aria-hidden="true">*</span><span class="sr">(required)</span>{{else if .RequiredIfJSON}}<span class="req if-req" aria-hidden="true" hidden>*</span>{{end}}{{end}}
+{{define "label"}}<span class="label-text">{{inline .Label}}</span>{{if .Required}}<span class="req" aria-hidden="true">*</span><span class="sr">{{t "(required)"}}</span>{{else if .RequiredIfJSON}}<span class="req if-req" aria-hidden="true" hidden>*</span>{{end}}{{end}}
 
 {{define "zoom-icon"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>{{end}}
 
 {{define "other"}}<div class="other">
-  <input type="text" name="{{.OtherName}}" value="{{.OtherText}}" maxlength="2000" placeholder="Please specify…" aria-label="Other — please specify" data-other-for="{{.Name}}">
+  <input type="text" name="{{.OtherName}}" value="{{.OtherText}}" maxlength="2000" placeholder="{{t "Please specify…"}}" aria-label="{{t "Other — please specify"}}" data-other-for="{{.Name}}">
 </div>{{end}}
 
 {{define "field"}}
@@ -100,11 +100,11 @@
   <div class="md">{{md .Text}}</div>
 {{else if eq .Type "html"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
-  <iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label "Illustration"}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
-  <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">Open full size ⤢</a>
+  <iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+  <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">{{t "Open full size ⤢"}}</a>
 {{else if eq .Type "diff"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
-  <div class="diff" tabindex="0" role="region" aria-label="{{or .Label "Diff"}}"><pre>{{diff .Text}}</pre></div>
+  <div class="diff" tabindex="0" role="region" aria-label="{{or .Label (t "Diff")}}"><pre>{{diff .Text}}</pre></div>
 {{else if eq .Type "details"}}
   <details class="block-details"{{if .Open}} open{{end}}>
     <summary>{{inline .Label}}</summary>
@@ -143,17 +143,17 @@
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
     <div class="daterange">
-      <label><span>From</span><input id="{{.DOMID}}-in" type="date" name="{{.Name}}.start" value="{{.RangeStart}}"></label>
-      <label><span>To</span><input type="date" name="{{.Name}}.end" value="{{.RangeEnd}}"></label>
+      <label><span>{{t "From"}}</span><input id="{{.DOMID}}-in" type="date" name="{{.Name}}.start" value="{{.RangeStart}}"></label>
+      <label><span>{{t "To"}}</span><input type="date" name="{{.Name}}.end" value="{{.RangeEnd}}"></label>
     </div>
     {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
 {{else if eq .Type "widget"}}
   <div class="label" id="{{.DOMID}}-lab">{{template "label" .}}</div>
   <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-widget data-schema="{{.Schema}}" disabled>
-  <iframe class="frame widget-frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label "Interactive control"}}" aria-labelledby="{{.DOMID}}-lab" referrerpolicy="no-referrer"></iframe>
+  <iframe class="frame widget-frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label (t "Interactive control")}}" aria-labelledby="{{.DOMID}}-lab" referrerpolicy="no-referrer"></iframe>
   <noscript>
-    <p class="help">This question needs JavaScript. Without it, type the answer as JSON{{if .Schema}} (a {{.Schema}}){{end}}.</p>
+    <p class="help">{{if .Schema}}{{t "This question needs JavaScript. Without it, type the answer as JSON (a %s)." .Schema}}{{else}}{{t "This question needs JavaScript. Without it, type the answer as JSON."}}{{end}}</p>
     <textarea name="{{.Name}}" rows="3" maxlength="16384" aria-labelledby="{{.DOMID}}-lab"{{if .Required}} required{{end}}>{{.Value}}</textarea>
   </noscript>
   {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
@@ -170,13 +170,13 @@
   <div class="uploader" data-url="{{.UploadURL}}" data-max-bytes="{{.MaxBytes}}" data-max-files="{{.FileLimit}}" data-accept="{{.Accept}}"{{if .Multiple}} data-multiple{{end}}>
     <label class="drop">
       <input class="file-input" type="file"{{if .Accept}} accept="{{.Accept}}"{{end}}{{if .Multiple}} multiple{{end}} aria-labelledby="{{.DOMID}}-label">
-      <span class="drop-main">Choose {{if .Multiple}}files{{else}}a file{{end}}<span class="drop-or"> or drop {{if .Multiple}}them{{else}}it{{end}} here</span></span>
+      <span class="drop-main">{{if .Multiple}}{{t "Choose files"}}<span class="drop-or">{{t " or drop them here"}}</span>{{else}}{{t "Choose a file"}}<span class="drop-or">{{t " or drop it here"}}</span>{{end}}</span>
       <small>{{.FileHint}}</small>
     </label>
     <ul class="files" aria-live="polite"></ul>
   </div>
-  <noscript><p class="help">Adding a file needs a browser with JavaScript turned on.</p></noscript>
-  {{else}}<p class="help">Uploads are switched off in this demo — nothing you add is kept.</p>{{end}}
+  <noscript><p class="help">{{t "Adding a file needs a browser with JavaScript turned on."}}</p></noscript>
+  {{else}}<p class="help">{{t "Uploads are switched off in this demo — nothing you add is kept."}}</p>{{end}}
   {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
 {{else if .Choice}}
   <fieldset>
@@ -186,9 +186,9 @@
       {{range $i, $o := .Options}}
         <label class="card{{if not $o.Visual}} plain{{end}}">
           {{if $o.Image}}
-            <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"><a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size">{{template "zoom-icon"}}</a></span>
+            <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"><a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="{{t "Open full size"}}" title="{{t "Open full size"}}">{{template "zoom-icon"}}</a></span>
           {{else if $o.HTML}}
-            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="Open full size" title="Open full size" data-zoom-frame data-zoom-label="{{$o.Label}}">{{template "zoom-icon"}}</a></span>
+            <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="{{t "Open full size"}}" title="{{t "Open full size"}}" data-zoom-frame data-zoom-label="{{$o.Label}}">{{template "zoom-icon"}}</a></span>
           {{end}}
           <span class="bar">
             <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}{{if and $.Required (ne $.Type "multiselect")}} required{{end}}>
@@ -200,15 +200,15 @@
       <div class="choices other-row">
         <label class="choice">
           <input type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
-          <span class="choice-text"><span>Other…</span></span>
+          <span class="choice-text"><span>{{t "Other…"}}</span></span>
         </label>
       </div>
       {{template "other" .}}
     {{else if eq .Type "select"}}
       <select id="{{.DOMID}}-in" name="{{.Name}}"{{if .Required}} required{{end}}>
-        <option value="">{{or .Placeholder "Pick one…"}}</option>
+        <option value="">{{or .Placeholder (t "Pick one…")}}</option>
         {{range .Options}}<option value="{{.Value}}"{{if index $.Picked .Value}} selected{{end}}>{{.Label}}</option>{{end}}
-        <option value="__other__"{{if .OtherPicked}} selected{{end}}>Other…</option>
+        <option value="__other__"{{if .OtherPicked}} selected{{end}}>{{t "Other…"}}</option>
       </select>
       {{template "other" .}}
     {{else}}
@@ -221,7 +221,7 @@
       {{end}}
         <label class="choice">
           <input type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
-          <span class="choice-text"><span>Other…</span></span>
+          <span class="choice-text"><span>{{t "Other…"}}</span></span>
         </label>
       </div>
       {{template "other" .}}
@@ -252,7 +252,7 @@
     <div class="secret">
       <input id="{{.DOMID}}-in" type="password" name="{{.Name}}" value="" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"{{if .Required}} required{{end}}>
     </div>
-    <p class="secret-note">🔒 Kept out of the answers the agent reads — it writes the value straight where it's needed.{{if .Reenter}} <strong>Please type it again:</strong> it isn't kept after a failed send.{{end}}</p>
+    <p class="secret-note">{{t "🔒 Kept out of the answers the agent reads — it writes the value straight where it's needed."}}{{if .Reenter}} <strong>{{t "Please type it again:"}}</strong> {{t "it isn't kept after a failed send."}}{{end}}</p>
   {{else}}
     <input id="{{.DOMID}}-in" type="text" name="{{.Name}}" value="{{.Value}}" maxlength="2000"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
   {{end}}
@@ -269,21 +269,21 @@
     <h1>{{.Title}}</h1>
   </header>
   {{if or .Mine (eq .Status "submitted")}}
-    <p class="lead ok">✓ Thanks — your answers were sent{{if .When}} on {{.When}}{{end}}.</p>
-    {{if .ShowCount}}<p class="count">{{if eq .Count 1}}You're the first to answer.{{else}}{{.Count}} people have answered so far.{{end}}</p>{{end}}
+    <p class="lead ok">{{if .When}}{{t "✓ Thanks — your answers were sent on %s." .When}}{{else}}{{t "✓ Thanks — your answers were sent."}}{{end}}</p>
+    {{if .ShowCount}}<p class="count">{{if eq .Count 1}}{{t "You're the first to answer."}}{{else}}{{tn .Count "%d person has answered so far." "%d people have answered so far."}}{{end}}</p>{{end}}
     {{if .Recap}}
     <dl class="recap">
       {{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}
     </dl>
     {{end}}
   {{else if eq .Status "declined"}}
-    <p class="lead">You declined this form — nothing else to do.</p>
+    <p class="lead">{{t "You declined this form — nothing else to do."}}</p>
   {{else if eq .Status "closed"}}
-    <p class="lead">This form is closed{{if .When}} since {{.When}}{{end}}{{if .ShowCount}}: it took {{.Count}} {{if eq .Count 1}}answer{{else}}answers{{end}}{{end}}. Thanks for stopping by.</p>
+    <p class="lead">{{if .When}}{{t "This form is closed since %s" .When}}{{else}}{{t "This form is closed"}}{{end}}{{if .ShowCount}}{{tn .Count ": it took %d answer" ": it took %d answers"}}{{end}}{{t ". Thanks for stopping by."}}</p>
   {{else if eq .Status "revoked"}}
-    <p class="lead">This form was withdrawn by whoever asked — no answer needed.</p>
+    <p class="lead">{{t "This form was withdrawn by whoever asked — no answer needed."}}</p>
   {{else}}
-    <p class="lead">This form expired{{if .When}} on {{.When}}{{end}} — no answer needed any more.</p>
+    <p class="lead">{{if .When}}{{t "This form expired on %s — no answer needed any more." .When}}{{else}}{{t "This form expired — no answer needed any more."}}{{end}}</p>
   {{end}}
 </main>
 {{template "foot" .}}{{end}}
@@ -298,23 +298,23 @@
 {{define "examples"}}{{template "head" .}}
 <main class="wrap">
   <header class="top">
-    <p class="eyebrow">ask-form · examples</p>
-    <h1>Forms an agent might send</h1>
-    <div class="md desc"><p>Each one is a real field spec, the JSON an agent passes to <code>ask-form create</code>. Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored.</p></div>
+    <p class="eyebrow">{{t "ask-form · examples"}}</p>
+    <h1>{{t "Forms an agent might send"}}</h1>
+    <div class="md desc"><p>{{t "Each one is a real field spec, the JSON an agent passes to"}} <code>ask-form create</code>{{t ". Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored."}}</p></div>
   </header>
   <ul class="examples">
   {{range .Examples}}
     <li class="example-card">
-      <a class="example-main" href="/examples/{{.Name}}">
+      <a class="example-main" href="{{$.Prefix}}/{{.Name}}">
         <span class="example-title">{{.Title}}</span>
         <span class="example-summary">{{.Summary}}</span>
-        <span class="example-meta">{{.Questions}} questions{{if .Groups}} · {{.Groups}} pages{{end}}</span>
+        <span class="example-meta">{{tn .Questions "%d question" "%d questions"}}{{if .Groups}} · {{tn .Groups "%d page" "%d pages"}}{{end}}</span>
       </a>
-      <a class="example-spec" href="/examples/{{.Name}}/spec.json">spec.json</a>
+      <a class="example-spec" href="{{$.Prefix}}/{{.Name}}/spec.json">spec.json</a>
     </li>
   {{end}}
   </ul>
-  <p class="help"><a href="/">What is ask-form?</a></p>
+  <p class="help"><a href="{{.Home}}">{{t "What is ask-form?"}}</a>{{range .Others}} · <a href="{{.Href}}" hreflang="{{.Lang}}" lang="{{.Lang}}">{{.Name}}</a>{{end}}</p>
 </main>
 {{template "foot" .}}{{end}}
 
@@ -325,15 +325,15 @@
     {{template "brand" .}}
     <h1>{{.Title}}</h1>
   </header>
-  <p class="lead ok">✓ This is what the agent's <code>ask-form wait</code> would print:</p>
+  <p class="lead ok">{{t "✓ This is what the agent's"}} <code>ask-form wait</code> {{t "would print:"}}</p>
   <pre class="json">{{.JSON}}</pre>
-  <p class="help">Pretty-printed here; the CLI prints it on one line. A <code>secret</code> answer comes back as <code>{"secret": true, "chars": N}</code>: the value itself only ever goes where <code>ask-form secret … --env</code> writes it.</p>
+  <p class="help">{{t "Pretty-printed here; the CLI prints it on one line. A"}} <code>secret</code> {{t "answer comes back as"}} <code>{"secret": true, "chars": N}</code>{{t ": the value itself only ever goes where"}} <code>ask-form secret … --env</code> {{t "writes it."}}</p>
   {{if .Recap}}
-  <h2 class="group-title">As the person sees it</h2>
+  <h2 class="group-title">{{t "As the person sees it"}}</h2>
   <dl class="recap">
     {{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}
   </dl>
   {{end}}
-  <p class="actions"><a class="btn" href="/examples">All examples</a><a class="btn primary" href="{{.Back}}">Try it again</a></p>
+  <p class="actions"><a class="btn" href="{{.Demo.Index}}">{{t "All examples"}}</a><a class="btn primary" href="{{.Back}}">{{t "Try it again"}}</a></p>
 </main>
 {{template "foot" .}}{{end}}

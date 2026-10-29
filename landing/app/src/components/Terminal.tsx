@@ -29,7 +29,9 @@ export function Terminal({ ex, host, prompt, onTyped }: Props) {
           </span>
           <span className="t-text">
             <span className="sr-only">{ex.prompt}</span>
-            <noscript>{ex.prompt}</noscript>
+            {/* With scripting on, the browser keeps <noscript> as raw text, so
+                the prerender's escaped ' or & never match on hydration. */}
+            <noscript suppressHydrationWarning>{ex.prompt}</noscript>
             <span aria-hidden>
               <ProgressiveText text={prompt} speed={60} deleteSpeed={360} onDone={onTyped}>
                 {(visible) => (

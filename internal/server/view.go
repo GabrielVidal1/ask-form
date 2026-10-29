@@ -10,6 +10,7 @@ import (
 
 	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -98,6 +99,7 @@ type pageError struct{ DOMID, Label, Msg string }
 // (the defaults on first load, what was sent after an invalid submit),
 // grouped into pages the way the ai-agent pages them.
 func buildPage(st store.State, base string, values url.Values, errs map[string]string, csrf, nonce string) formPage {
+	lang := i18n.Of(st.Lang)
 	p := formPage{
 		ID: st.ID, Title: st.Title, Base: base, Description: form.MarkdownHTML(st.Description),
 		CSRF: csrf, Nonce: nonce, Expires: st.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
@@ -145,7 +147,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 			if strings.HasPrefix(base, Prefix) {
 				pf.UploadURL = fmt.Sprintf("%s/upload/%s", base, f.Key)
 			}
-			pf.FileHint = fileHint(f)
+			pf.FileHint = fileHint(lang, f)
 		}
 		if f.Visual() {
 			pf.OptionFrames = make([]string, len(f.Options))
@@ -188,7 +190,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 		g := &p.Groups[i]
 		g.ID, g.Nav = fmt.Sprintf("g%d", i+1), g.Title
 		if g.Nav == "" {
-			g.Nav = fmt.Sprintf("Section %d", i+1)
+			g.Nav = i18n.T(lang, "Section %d", i+1)
 		}
 	}
 	return p
@@ -395,7 +397,7 @@ func groupFields(fields []pageField) ([]pageGroup, *pageField) {
 // recapItem is one answered question on the closed page.
 type recapItem struct{ Label, Text string }
 
-func recap(fields []form.Field, answers map[string]any) []recapItem {
+func recap(lang string, fields []form.Field, answers map[string]any) []recapItem {
 	var out []recapItem
 	for _, f := range fields {
 		if f.Display() {
@@ -405,7 +407,7 @@ func recap(fields []form.Field, answers map[string]any) []recapItem {
 		if !ok {
 			continue
 		}
-		if t := form.AnswerText(f, v); t != "" {
+		if t := form.AnswerTextIn(lang, f, v); t != "" {
 			out = append(out, recapItem{Label: f.Label, Text: t})
 		}
 	}
@@ -413,7 +415,7 @@ func recap(fields []form.Field, answers map[string]any) []recapItem {
 }
 
 // fileHint is the line under a file field's drop area: what it takes.
-func fileHint(f form.Field) string {
+func fileHint(lang string, f form.Field) string {
 	var parts []string
 	if f.Accept != "" {
 		names := map[string]string{"image/*": "images", "video/*": "videos", "audio/*": "audio", "text/*": "text files",
@@ -421,7 +423,7 @@ func fileHint(f form.Field) string {
 		var kinds []string
 		for _, t := range strings.Split(f.Accept, ",") {
 			if n, ok := names[t]; ok {
-				t = n
+				t = i18n.T(lang, n)
 			}
 			if !slices.Contains(kinds, t) {
 				kinds = append(kinds, t)
@@ -429,9 +431,9 @@ func fileHint(f form.Field) string {
 		}
 		parts = append(parts, strings.Join(kinds, ", "))
 	}
-	parts = append(parts, "up to "+form.FormatNumber(f.MaxMB)+" MB")
+	parts = append(parts, i18n.T(lang, "up to %s MB", form.FormatNumber(f.MaxMB)))
 	if f.Multiple {
-		parts = append(parts, fmt.Sprintf("at most %d files", f.FileLimit()))
+		parts = append(parts, i18n.T(lang, "at most %d files", f.FileLimit()))
 	}
 	return strings.Join(parts, " · ")
 }

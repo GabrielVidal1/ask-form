@@ -3,6 +3,8 @@ package relay
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -265,6 +267,68 @@ func TestLandingAssets(t *testing.T) {
 		if res, _ := http.Get(pub.URL + p); res.StatusCode != 404 {
 			t.Errorf("%s: %d", p, res.StatusCode)
 		}
+	}
+}
+
+// The French landing is served at /fr and /fr/ with the same placeholders
+// filled in, under a CSP made from its own inline blocks, not the English
+// page's.
+func TestLandingFrench(t *testing.T) {
+	hash := func(s string) string {
+		sum := sha256.Sum256([]byte(s))
+		return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	}
+	r, err := New(Config{
+		MachinesFile: filepath.Join(t.TempDir(), "machines.json"), PublicURL: "https://ask.example",
+		Landing:   []byte(`<!doctype html><html lang="en"><style>.en{}</style><p>{{HOST}}</p>`),
+		LandingFR: []byte(`<!doctype html><html lang="fr"><style>.fr{}</style><script>fr()</script><meta name="o" content="{{ORIGIN}}"><p>Bonjour {{HOST}}</p>`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := httptest.NewServer(r.Public())
+	defer pub.Close()
+	get := func(p string) (*http.Response, string) {
+		t.Helper()
+		res, err := http.Get(pub.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res, string(b)
+	}
+	for _, p := range []string{"/fr", "/fr/"} {
+		res, page := get(p)
+		if res.StatusCode != 200 || !strings.Contains(page, `<html lang="fr">`) ||
+			!strings.Contains(page, `content="https://ask.example"`) || !strings.Contains(page, "<p>Bonjour ask.example</p>") {
+			t.Fatalf("%s: %d %s", p, res.StatusCode, page)
+		}
+		csp := res.Header.Get("Content-Security-Policy")
+		if !strings.Contains(csp, "style-src "+hash(".fr{}")+" 'self'") || !strings.Contains(csp, "script-src "+hash("fr()")+" 'self'") ||
+			strings.Contains(csp, hash(".en{}")) {
+			t.Fatalf("%s CSP: %s", p, csp)
+		}
+	}
+	res, page := get("/")
+	if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(page, `<html lang="en">`) ||
+		!strings.Contains(csp, "style-src "+hash(".en{}")+" 'self'") || strings.Contains(csp, hash(".fr{}")) {
+		t.Fatalf("/: %s\nCSP: %s", page, csp)
+	}
+	for _, p := range []string{"/fr/x", "/fra", "/FR"} {
+		if res, _ := get(p); res.StatusCode != 404 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
+	// Without a French page, /fr is just another unknown path.
+	r2, err := New(Config{MachinesFile: filepath.Join(t.TempDir(), "machines.json"), Landing: []byte("<p>hi")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub2 := httptest.NewServer(r2.Public())
+	defer pub2.Close()
+	if res, err := http.Get(pub2.URL + "/fr"); err != nil || res.StatusCode != 404 {
+		t.Fatalf("/fr without LandingFR: %v %v", res, err)
 	}
 }
 

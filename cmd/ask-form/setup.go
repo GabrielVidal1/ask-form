@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/update"
 	"github.com/GabrielVidal1/ask-form/skill"
@@ -75,6 +76,7 @@ type setupReport struct {
 	PublicURL string   `json:"publicUrl"`
 	Service   string   `json:"service"`
 	Skill     string   `json:"skill"`
+	Lang      string   `json:"lang,omitempty"`
 	Status    any      `json:"status,omitempty"`
 	Warnings  []string `json:"warnings,omitempty"`
 }
@@ -83,6 +85,7 @@ func cmdSetup(args []string) int {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 	relayURL := fs.String("relay", envOr("ASK_FORM_SETUP_RELAY", defaultRelay), "relay to connect this machine to")
 	eventsURL := fs.String("events-url", "", "POST every form event to this URL (serve's --events-url; \"-\" clears it)")
+	langFlag := fs.String("lang", "", "language of this machine's forms by default: "+strings.Join(i18n.Langs, ", ")+" (serve's --lang; \"-\" clears it: en)")
 	local := fs.Bool("local", false, "no relay: forms are answered at http://"+localListen+" (this machine only)")
 	token := fs.String("token", "", "machine token for the relay (default: register this machine, or keep the saved one)")
 	name := fs.String("name", "", "machine name hint for the relay (default: the hostname)")
@@ -113,6 +116,20 @@ func cmdSetup(args []string) int {
 			return fail(exitErr, "%s: %v", envFile, err)
 		}
 	}
+	// The forms' default language: kept across setups unless given.
+	lang := os.Getenv("ASK_FORM_LANG") // serve.env's, loaded at start
+	if *langFlag != "" {
+		lang = ""
+		if *langFlag != "-" {
+			if lang, err = i18n.Parse(*langFlag); err != nil {
+				return fail(exitUsage, "--lang: %v", err)
+			}
+		}
+		if err := setEnv(envFile, "ASK_FORM_LANG", lang); err != nil {
+			return fail(exitErr, "%s: %v", envFile, err)
+		}
+	}
+	rep.Lang = i18n.Of(lang)
 	if *local {
 		rep.Mode, rep.PublicURL = "local", "http://"+localListen
 		for k, v := range map[string]string{"ASK_FORM_RELAY": "", "ASK_FORM_PUBLIC_URL": rep.PublicURL, "ASK_FORM_LISTEN": localListen} {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/GabrielVidal1/ask-form/examples"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 // The review-change example uses every field added with conditions: its page
@@ -19,7 +20,7 @@ func TestConditionalExamplePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(ExamplesHandler(list, ""))
+	srv := httptest.NewServer(ExamplesHandler(map[string][]Example{i18n.EN: list}, ""))
 	defer srv.Close()
 	get := func(path string) string {
 		res, err := http.Get(srv.URL + path)

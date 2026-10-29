@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { CopyButton } from '@gabvdl/ui'
 import {
   ArrowDown,
   ChevronRight,
@@ -19,6 +18,9 @@ import {
   Users,
 } from 'lucide-react'
 
+import { copies, type Lang } from './copy'
+import { CopyProvider } from './copy/context'
+import { CopyButton } from './components/CopyButton'
 import { Demo } from './components/Demo'
 import type { Origin } from './lib-origin'
 
@@ -26,30 +28,28 @@ const GITHUB = 'https://github.com/GabrielVidal1/ask-form'
 // The repo links stay off the page for now: flip this to bring them back.
 const SHOW_GITHUB = false
 
-const compare = [
-  { icon: MapPin, q: 'Where you answer', old: 'At the keyboard. Step away and the agent waits.', now: 'Any browser, phone included. The agent keeps working meanwhile.' },
-  {
-    icon: Users,
-    q: 'Who answers',
-    old: 'You, at that keyboard.',
-    now: 'Anyone with the link: a team vote, a client sign-off, beta testers. Every answer comes back, with an email field to know who said what.',
-  },
-  { icon: Image, q: 'What you see', old: 'Text.', now: 'Mockups to pick from, diagrams, tables and code.' },
+// The icons of the copy's compare rows and privacy facts, in their order.
+const compareIcons = [MapPin, Users, Image]
+const factIcons = [Server, Clock, ShieldCheck]
+
+// The language switch: plain links, English stays the default for everyone.
+const langs: { lang: Lang; href: string; short: string; name: string }[] = [
+  { lang: 'en', href: '/', short: 'EN', name: 'English' },
+  { lang: 'fr', href: '/fr', short: 'FR', name: 'Français' },
 ]
 
-const facts = [
-  { icon: Server, title: 'Forms stay on your machine', text: 'The relay only passes page requests through. It stores no form and no answer.' },
-  {
-    icon: Clock,
-    title: 'One private link per form',
-    text: 'A 256-bit token. Answered once then closed, or open to your whole team until you close it. Every form expires.',
-  },
-  { icon: ShieldCheck, title: 'Secrets go to .env', text: "A secret field's value never appears in the answers the agent reads." },
-]
+export default function App({ origin, lang }: { origin: Origin; lang: Lang }) {
+  return (
+    <CopyProvider value={copies[lang]}>
+      <Page origin={origin} lang={lang} />
+    </CopyProvider>
+  )
+}
 
-export default function App({ origin }: { origin: Origin }) {
-  const installLine = `Fetch ${origin.origin}/agent-install and follow it to install ask-form and set it up, then: `
-  const promptLine = `Fetch ${origin.origin}/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: `
+function Page({ origin, lang }: { origin: Origin; lang: Lang }) {
+  const t = copies[lang]
+  const installLine = t.demo.installLine(origin.origin)
+  const promptLine = t.install.prompt(origin.origin)
   const heroRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export default function App({ origin }: { origin: Origin }) {
     <>
       <div className="wrap">
         <nav className="nav">
-          <a className="brand" href="/">
+          <a className="brand" href={t.home}>
             <span className="logo">
               <ListChecks size={17} strokeWidth={2.6} />
             </span>
@@ -91,16 +91,33 @@ export default function App({ origin }: { origin: Origin }) {
           </a>
           <span className="nav-links">
             <a href="#examples" className="hide-sm">
-              Examples
+              {t.nav.examples}
             </a>
             <a href="#install" className="hide-sm">
-              Install
+              {t.nav.install}
             </a>
             {SHOW_GITHUB && (
               <a href={GITHUB}>
                 <Github size={16} /> GitHub
               </a>
             )}
+            <span className="langs" role="group" aria-label={t.nav.language}>
+              {langs.map((l, i) => (
+                <span key={l.lang}>
+                  {i > 0 && <span aria-hidden> · </span>}
+                  <a
+                    href={l.href}
+                    hrefLang={l.lang}
+                    lang={l.lang}
+                    title={l.name}
+                    aria-label={l.name}
+                    aria-current={l.lang === lang ? 'page' : undefined}
+                  >
+                    {l.short}
+                  </a>
+                </span>
+              ))}
+            </span>
           </span>
         </nav>
       </div>
@@ -108,30 +125,30 @@ export default function App({ origin }: { origin: Origin }) {
       <header className="hero wrap" ref={heroRef}>
         <span className="glow" aria-hidden />
         <h1>
-          {'Your coding agent asks.'.split(' ').map((w, i) => (
+          {t.hero.line1.split(' ').map((w, i) => (
             <span key={i} className="w">
               {w}&nbsp;
             </span>
           ))}
           <br />
-          {'You answer from anywhere.'.split(' ').map((w, i) => (
+          {t.hero.line2.split(' ').map((w, i, all) => (
             <span key={i} className="w">
               <em>{w}</em>
-              {i < 3 && ' '}
+              {i < all.length - 1 && ' '}
             </span>
           ))}
         </h1>
-        <p className="lede">Your agent asks detailed questions in rich forms. Anyone answers, from anywhere.</p>
+        <p className="lede">{t.hero.lede}</p>
         <p className="cta">
           <a className="btn btn-primary" href="#install">
-            <Rocket size={17} /> Try now
+            <Rocket size={17} /> {t.hero.tryNow}
           </a>
           <a className="btn btn-ghost" href="#examples">
-            See it in action <ArrowDown size={17} />
+            {t.hero.see} <ArrowDown size={17} />
           </a>
         </p>
         <p className="agents">
-          <TerminalIcon size={15} /> Works with any coding agent that can run a shell command.
+          <TerminalIcon size={15} /> {t.hero.agents}
         </p>
       </header>
 
@@ -139,92 +156,78 @@ export default function App({ origin }: { origin: Origin }) {
 
       <section className="section wrap">
         <div className="reveal">
-          <h2 className="h2">Why not just ask in the terminal?</h2>
-          <p className="sub">The same questions, answered somewhere better than a blinking prompt.</p>
+          <h2 className="h2">{t.compare.title}</h2>
+          <p className="sub">{t.compare.sub}</p>
         </div>
         <div className="vs panel" role="table">
           <div className="vs-row vs-head" role="row">
             <span role="columnheader" />
-            <span role="columnheader">In the terminal</span>
-            <span role="columnheader">With ask-form</span>
+            <span role="columnheader">{t.compare.old}</span>
+            <span role="columnheader">{t.compare.now}</span>
           </div>
-          {compare.map((c) => (
-            <div key={c.q} className="vs-row" role="row">
-              <span className="vs-q" role="rowheader">
-                <c.icon size={17} />
-                <span>
-                  {c.q}
+          {t.compare.rows.map((c, i) => {
+            const Icon = compareIcons[i]
+            return (
+              <div key={c.q} className="vs-row" role="row">
+                <span className="vs-q" role="rowheader">
+                  <Icon size={17} />
+                  <span>{c.q}</span>
                 </span>
-              </span>
-              <span className="vs-old" role="cell">
-                {c.old}
-              </span>
-              <span className="vs-new" role="cell">
-                {c.now}
-              </span>
-            </div>
-          ))}
+                <span className="vs-old" role="cell">
+                  {c.old}
+                </span>
+                <span className="vs-new" role="cell">
+                  {c.now}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </section>
 
       <section className="section wrap" id="install">
         <div className="reveal">
-          <h2 className="h2">Try now</h2>
-          <p className="sub">
-            Any coding agent running on your computer will do. It reads <a href="/agent-install">/agent-install</a>, installs
-            ask-form, sets itself up and sends you a first form.
-          </p>
+          <h2 className="h2">{t.install.title}</h2>
+          <p className="sub">{t.install.sub}</p>
         </div>
         <div className="install">
           <div className="panel use-now reveal">
             <h3>
-              <Smartphone size={20} /> Paste this into your coding agent
+              <Smartphone size={20} /> {t.install.paste}
             </h3>
-            <p>Finish the sentence with what you want to be asked. Not a chat app such as claude.ai or ChatGPT: its sandbox can’t keep ask-form running.</p>
+            <p>{t.install.pasteNote}</p>
             <div className="copy">
               <pre>
                 {promptLine}
                 <span className="ph" aria-hidden>
-                  what you want to be asked
+                  {t.install.placeholder}
                 </span>
               </pre>
-              <CopyButton value={promptLine} label="Copy" className="copy-btn" />
+              <CopyButton value={promptLine} label={t.copy.copy} className="copy-btn" />
             </div>
           </div>
           <details className="panel more reveal">
             <summary>
-              <ChevronRight size={16} className="chev" /> Manual install
+              <ChevronRight size={16} className="chev" /> {t.install.manual}
             </summary>
             <div className="body">
-              <p style={{ margin: '0 0 12px' }}>
-                Linux and macOS, x86-64 or arm64. One command installs the binary in <code>~/.local/bin</code>, connects your
-                machine to this relay, starts the background service and adds the Claude Code skill.
-              </p>
+              <p style={{ margin: '0 0 12px' }}>{t.install.manualIntro}</p>
               <div className="copy">
                 <pre className="mono">curl -fsSL {origin.origin}/install.sh | sh</pre>
-                <CopyButton value={`curl -fsSL ${origin.origin}/install.sh | sh`} label="Copy" className="copy-btn" />
+                <CopyButton value={`curl -fsSL ${origin.origin}/install.sh | sh`} label={t.copy.copy} className="copy-btn" />
               </div>
               <ul>
                 <li>
-                  Without the relay (forms answerable on this machine only): <code>curl -fsSL {origin.origin}/install.sh | sh -s -- --local</code>
+                  {t.install.local} <code>curl -fsSL {origin.origin}/install.sh | sh -s -- --local</code>
                 </li>
                 {SHOW_GITHUB && (
                   <>
-                    <li>
-                      With Go 1.22+: <code>go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest</code>, then{' '}
-                      <code>ask-form setup</code>
-                    </li>
-                    <li>
-                      Or take a binary from <a href={GITHUB + '/releases'}>GitHub Releases</a>, then run <code>ask-form setup</code>
-                    </li>
+                    <li>{t.install.goInstall}</li>
+                    <li>{t.install.releases(GITHUB)}</li>
                   </>
                 )}
               </ul>
-              <p className="small">
-                The service installs new releases by itself (<code>ASK_FORM_AUTO_UPGRADE=notify</code> or <code>off</code> stops
-                that). <code>ask-form uninstall</code> removes the service and the skill. Other agents than Claude Code:{' '}
-                <code>ask-form skill print --body &gt;&gt; AGENTS.md</code>.
-              </p>
+              <p className="small">{t.install.small}</p>
             </div>
           </details>
         </div>
@@ -232,48 +235,43 @@ export default function App({ origin }: { origin: Origin }) {
 
       <section className="section wrap">
         <div className="reveal">
-          <p className="eyebrow">Private by design</p>
-          <h2 className="h2">Your forms never leave your machine.</h2>
+          <p className="eyebrow">{t.privacy.eyebrow}</p>
+          <h2 className="h2">{t.privacy.title}</h2>
         </div>
         <ul className="facts">
-          {facts.map((f) => (
-            <li key={f.title} className="panel fact">
-              <span className="fact-ic">
-                <f.icon size={20} />
-              </span>
-              <b>{f.title}</b>
-              <span>{f.text}</span>
-            </li>
-          ))}
+          {t.privacy.facts.map((f, i) => {
+            const Icon = factIcons[i]
+            return (
+              <li key={f.title} className="panel fact">
+                <span className="fact-ic">
+                  <Icon size={20} />
+                </span>
+                <b>{f.title}</b>
+                <span>{f.text}</span>
+              </li>
+            )
+          })}
         </ul>
         <p className="how reveal">
-          Same 404 for an unknown form and a wrong token, no referrer, no cache, no indexing, a strict CSP, mockups in
-          sandboxed script-free frames.
-          {SHOW_GITHUB && (
-            <>
-              {' '}
-              More in <a href={GITHUB + '/blob/main/docs/how-it-works.md'}>how it works</a>.
-            </>
-          )}{' '}
-          The relay is open source too: <a href={GITHUB + '/blob/main/docs/self-hosting.md'}>run your own</a> on your
-          domain.
+          {t.privacy.how}
+          {SHOW_GITHUB && <> {t.privacy.more(GITHUB)}</>} {t.privacy.selfHost(GITHUB)}
         </p>
       </section>
 
       <footer className="wrap">
         <span className="by">
-          Made with ❤️ by <a href="https://gabvdl.xyz">Gabriel</a>
+          {t.footer.by} <a href="https://gabvdl.xyz">Gabriel</a>
         </span>
         {SHOW_GITHUB && (
           <>
             <span aria-hidden>·</span>
             <a href={GITHUB}>
-              <Code size={14} /> Source on GitHub
+              <Code size={14} /> {t.footer.source}
             </a>
           </>
         )}
         <span aria-hidden>·</span>
-        <span>MIT license</span>
+        <span>{t.footer.license}</span>
       </footer>
     </>
   )

@@ -1,0 +1,52 @@
+{
+ "title": "Onboarding\u00a0: lequel\u202f?",
+ "order": 4,
+ "multi": true,
+ "summary": "Un seul lien pour toute l'équipe\u00a0: chacun vote entre deux maquettes, l'agent compte les voix et construit la gagnante.",
+ "description": "Deux approches pour le premier écran que voit un nouvel utilisateur. Choisissez celle que vous livreriez. Le vote reste ouvert jusqu'à vendredi 18\u00a0h\u202f; je construirai celle qui l'emporte.",
+ "fields": [
+  {
+   "key": "name",
+   "label": "Votre nom",
+   "type": "text",
+   "required": true,
+   "group": "Votre vote"
+  },
+  {
+   "key": "email",
+   "label": "E-mail",
+   "type": "email",
+   "group": "Votre vote",
+   "help": "Facultatif\u00a0: pour savoir à qui m'adresser si j'ai une question sur votre vote."
+  },
+  {
+   "key": "onboarding",
+   "label": "Quel onboarding\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Votre vote",
+   "options": [
+    {
+     "value": "checklist",
+     "label": "Checklist",
+     "description": "Trois étapes, cochées au fur et à mesure",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Pour commencer</div><div style=\"height:7px;border-radius:4px;background:hsl(var(--muted));overflow:hidden\"><div style=\"width:33%;height:100%;background:hsl(var(--primary))\"></div></div><div style=\"display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px\"><span style=\"flex:none;width:18px;height:18px;border-radius:5px;border:2px solid hsl(var(--primary));background:hsl(var(--primary));display:grid;place-items:center;box-sizing:border-box\"><span style=\"color:#fff;font-size:10px;font-weight:800\">✓</span></span><b style=\"font-weight:600\">Créer un tableau</b></div><div style=\"display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px\"><span style=\"flex:none;width:18px;height:18px;border-radius:5px;border:2px solid hsl(var(--border));background:transparent;display:grid;place-items:center;box-sizing:border-box\"></span><b style=\"font-weight:600\">Inviter votre équipe</b></div><div style=\"display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px\"><span style=\"flex:none;width:18px;height:18px;border-radius:5px;border:2px solid hsl(var(--border));background:transparent;display:grid;place-items:center;box-sizing:border-box\"></span><b style=\"font-weight:600\">Ajouter une première tâche</b></div></div>"
+    },
+    {
+     "value": "tour",
+     "label": "Visite guidée",
+     "description": "Des infobulles vous guident dans l'application",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"position:relative;height:100%;display:flex;flex-direction:column;gap:9px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><div style=\"height:9px;width:30%;border-radius:5px;background:hsl(var(--muted))\"></div><span style=\"width:28px;height:28px;border-radius:50%;background:hsl(var(--primary));color:#fff;display:grid;place-items:center;font-weight:800;font-size:18px;box-shadow:0 0 0 6px hsl(var(--primary) / .18)\">+</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"position:absolute;right:0;top:46px;width:78%;border-radius:10px;background:hsl(var(--foreground));color:hsl(var(--card));padding:10px;display:grid;gap:5px;font-weight:600\">✨ Appuyez sur + pour ajouter votre première tâche<span style=\"font-size:10px;opacity:.7;font-weight:500\">1 sur 4 · Suivant</span></div></div></div>"
+    }
+   ],
+   "aspect": "3/4"
+  },
+  {
+   "key": "why",
+   "label": "Pourquoi celui-là\u202f?",
+   "type": "textarea",
+   "group": "Votre vote",
+   "placeholder": "Facultatif"
+  }
+ ]
+}

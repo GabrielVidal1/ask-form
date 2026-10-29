@@ -94,13 +94,13 @@ func serve(args []string, machines string) int {
 		log.Fatalf("--register %q: use open or closed", *register)
 	}
 
-	exs, err := server.LoadExamples(examples.FS)
+	exs, err := server.LoadAllExamples(examples.FS)
 	if err != nil {
 		log.Fatalf("examples: %v", err)
 	}
 	r, err := relay.New(relay.Config{
 		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
-		Landing: landing.Page, LandingAssets: landing.Assets,
+		Landing: landing.Page, LandingFR: landing.PageFR, LandingAssets: landing.Assets,
 		Examples: server.ExamplesHandler(exs, *ipHeader),
 		Register: relay.Registration{
 			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,

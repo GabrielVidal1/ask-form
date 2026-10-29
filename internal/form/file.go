@@ -10,6 +10,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 )
 
 // The `file` field: the browser uploads each file in chunks to the form's own
@@ -41,6 +43,8 @@ type FileInfo struct {
 // not available (a demo), so a file field can't be answered.
 type Hooks struct {
 	File func(key, ref string) (FileInfo, bool)
+	// Lang is the language of the messages (internal/i18n; "" = English).
+	Lang string
 }
 
 var (
@@ -239,20 +243,20 @@ func SafeFileName(raw string) string {
 
 // fileRefs reads the hidden value of a file field: a JSON array of refs. The
 // second result is the message for a value that isn't one.
-func fileRefs(s string) ([]string, string) {
+func fileRefs(s string, t func(string, ...any) string) ([]string, string) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, ""
 	}
 	var refs []string
 	if json.Unmarshal([]byte(s), &refs) != nil {
-		return nil, "Add the file again."
+		return nil, t("Add the file again.")
 	}
 	var out []string
 	seen := map[string]bool{}
 	for _, r := range refs {
 		if !ValidRef(r) {
-			return nil, "Add the file again."
+			return nil, t("Add the file again.")
 		}
 		if !seen[r] {
 			seen[r] = true
@@ -286,13 +290,19 @@ func FileText(v any) string {
 }
 
 // HumanSize prints a byte count as 800 B, 12 KB, 3.4 MB.
-func HumanSize(n int64) string {
+func HumanSize(n int64) string { return HumanSizeIn(i18n.EN, n) }
+
+// HumanSizeIn is HumanSize in lang (internal/i18n): "1,5 Mo" in French.
+func HumanSizeIn(lang string, n int64) string {
 	switch {
 	case n < 1000:
-		return fmt.Sprintf("%d B", n)
+		return fmt.Sprintf("%d %s", n, i18n.T(lang, "B"))
 	case n < 1_000_000:
-		return fmt.Sprintf("%d KB", (n+500)/1000)
-	default:
-		return fmt.Sprintf("%.1f MB", float64(n)/1e6)
+		return fmt.Sprintf("%d %s", (n+500)/1000, i18n.T(lang, "KB"))
 	}
+	s := fmt.Sprintf("%.1f", float64(n)/1e6)
+	if lang == i18n.FR {
+		s = strings.Replace(s, ".", ",", 1)
+	}
+	return s + " " + i18n.T(lang, "MB")
 }

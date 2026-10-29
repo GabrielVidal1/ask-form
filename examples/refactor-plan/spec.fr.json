@@ -1,0 +1,127 @@
+{
+ "title": "Découper server.ts\u00a0: le plan",
+ "order": 5,
+ "summary": "Valider un refactor avant de déplacer du code\u00a0: le plan dessiné, puis le périmètre, la stratégie de PR et le niveau d'exigence sur le comportement.",
+ "description": "`api/server.ts` a grossi jusqu'à 2\u202f412 lignes\u00a0: routes, validation, requêtes et e-mails dans un seul fichier. Voici comment je le découperais. Rien ne bouge avant votre réponse\u202f; mes préférences sont pré-sélectionnées.",
+ "fields": [
+  {
+   "type": "html",
+   "group": "Le plan",
+   "label": "Avant → après",
+   "html": "<svg viewBox=\"0 0 400 300\" xmlns=\"http://www.w3.org/2000/svg\" style=\"display:block;width:100%;max-width:520px;height:auto;margin:0 auto;font:14px system-ui,sans-serif\">\n<text x=\"8\" y=\"16\" fill=\"hsl(var(--muted-foreground))\" font-size=\"12\" letter-spacing=\".06em\">AUJOURD'HUI</text>\n<rect x=\"8\" y=\"26\" width=\"384\" height=\"52\" rx=\"12\" fill=\"hsl(var(--destructive) / .08)\" stroke=\"hsl(var(--destructive) / .5)\"/>\n<text x=\"24\" y=\"57\" fill=\"hsl(var(--foreground))\" font-weight=\"700\" font-size=\"16\">server.ts</text>\n<text x=\"376\" y=\"57\" text-anchor=\"end\" fill=\"hsl(var(--muted-foreground))\">2\u202f412 lignes · 38 routes · 0 test</text>\n<path d=\"M200 86V104\" stroke=\"hsl(var(--muted-foreground))\" stroke-width=\"1.5\"/><path d=\"M194 104l6 10 6-10z\" fill=\"hsl(var(--muted-foreground))\"/>\n<text x=\"8\" y=\"134\" fill=\"hsl(var(--muted-foreground))\" font-size=\"12\" letter-spacing=\".06em\">APRÈS</text>\n<rect x=\"8\" y=\"144\" width=\"384\" height=\"34\" rx=\"10\" fill=\"hsl(var(--card))\" stroke=\"hsl(var(--border))\"/>\n<text x=\"200\" y=\"166\" text-anchor=\"middle\" fill=\"hsl(var(--foreground))\">server.ts · app + middleware · 60 lignes</text>\n<g fill=\"hsl(var(--primary) / .1)\" stroke=\"hsl(var(--primary))\">\n<rect x=\"8\" y=\"188\" width=\"122\" height=\"54\" rx=\"10\"/><rect x=\"139\" y=\"188\" width=\"122\" height=\"54\" rx=\"10\"/><rect x=\"270\" y=\"188\" width=\"122\" height=\"54\" rx=\"10\"/></g>\n<g text-anchor=\"middle\" fill=\"hsl(var(--foreground))\" font-weight=\"600\">\n<text x=\"69\" y=\"211\">users/</text><text x=\"200\" y=\"211\">billing/</text><text x=\"331\" y=\"211\">projects/</text></g>\n<g text-anchor=\"middle\" fill=\"hsl(var(--muted-foreground))\" font-size=\"12\">\n<text x=\"69\" y=\"230\">9 routes</text><text x=\"200\" y=\"230\">14 routes</text><text x=\"331\" y=\"230\">15 routes</text></g>\n<rect x=\"8\" y=\"252\" width=\"384\" height=\"34\" rx=\"10\" fill=\"hsl(var(--muted))\" stroke=\"hsl(var(--border))\"/>\n<text x=\"200\" y=\"274\" text-anchor=\"middle\" fill=\"hsl(var(--foreground))\">shared/ · db · errors · validate · mail</text>\n</svg>"
+  },
+  {
+   "type": "markdown",
+   "group": "Le plan",
+   "label": "Ce qui change",
+   "text": "| | Avant | Après |\n|---|---|---|\n| Plus gros fichier | 2\u202f412 lignes | ~300 lignes |\n| Routes avec un test | 0 sur 38 | 38 sur 38 (snapshot) |\n| Imports circulaires | 4 | 0 |\n\nChaque route garde son chemin, son entrée et sa réponse. J'enregistre les réponses des 38 routes avant le déplacement et je les compare après."
+  },
+  {
+   "key": "layout",
+   "label": "Comment regrouper le code\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Le plan",
+   "default": "domain",
+   "options": [
+    {
+     "value": "domain",
+     "label": "Par domaine",
+     "description": "users/, billing/, projects/\u00a0: une modification de la facturation reste dans billing/"
+    },
+    {
+     "value": "layer",
+     "label": "Par couche",
+     "description": "routes/, services/, repos/\u00a0: plus proche des habitudes actuelles"
+    }
+   ]
+  },
+  {
+   "key": "delivery",
+   "label": "Comment voulez-vous le relire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Livraison",
+   "default": "stacked",
+   "options": [
+    {
+     "value": "one-pr",
+     "label": "Une seule PR",
+     "description": "~3\u202f000 lignes déplacées, difficile à relire"
+    },
+    {
+     "value": "stacked",
+     "label": "Quatre PR empilées",
+     "description": "shared/ d'abord, puis une par domaine, chacune au vert indépendamment"
+    },
+    {
+     "value": "main",
+     "label": "Directement sur main",
+     "description": "Un commit par étape, sans PR"
+    }
+   ]
+  },
+  {
+   "key": "behaviour",
+   "label": "Quel niveau d'exigence sur le comportement\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Livraison",
+   "default": "identical",
+   "options": [
+    {
+     "value": "identical",
+     "label": "Réponses identiques à l'octet près",
+     "description": "Un simple déplacement\u202f; les bugs que je trouve vont dans une liste"
+    },
+    {
+     "value": "fixes",
+     "label": "Petits correctifs autorisés",
+     "description": "Codes de statut et formats d'erreur, chacun listé dans la PR"
+    }
+   ]
+  },
+  {
+   "key": "extras",
+   "label": "Tant que j'y suis",
+   "type": "multiselect",
+   "group": "Livraison",
+   "default": [
+    "snapshot-tests"
+   ],
+   "options": [
+    {
+     "value": "snapshot-tests",
+     "label": "Garder les 38 tests snapshot",
+     "description": "Ils ne coûtent rien une fois enregistrés"
+    },
+    {
+     "value": "zod",
+     "label": "Remplacer la validation écrite à la main par zod"
+    },
+    {
+     "value": "kysely",
+     "label": "Requêtes typées (Kysely) dans les repos"
+    }
+   ]
+  },
+  {
+   "key": "freeze",
+   "label": "Autres branches qui touchent server.ts",
+   "type": "radio",
+   "group": "Livraison",
+   "default": "rebase",
+   "help": "`feat/teams` et `fix/login-redirect` modifient toutes deux server.ts.",
+   "options": [
+    {
+     "value": "rebase",
+     "label": "Je les rebase sur le découpage une fois celui-ci intégré"
+    },
+    {
+     "value": "wait",
+     "label": "Attendre qu'elles soient fusionnées, puis découper"
+    }
+   ]
+  }
+ ]
+}

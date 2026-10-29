@@ -12,6 +12,7 @@ import (
 
 	"github.com/GabrielVidal1/ask-form/examples"
 	"github.com/GabrielVidal1/ask-form/internal/brand"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -111,9 +112,9 @@ func TestBrandPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview := httptest.NewServer(PreviewHandler(list, func() brand.Brand { return testBrand }))
+	preview := httptest.NewServer(PreviewHandler(list, i18n.EN, func() brand.Brand { return testBrand }))
 	defer preview.Close()
-	plain := httptest.NewServer(ExamplesHandler(list, ""))
+	plain := httptest.NewServer(ExamplesHandler(map[string][]Example{i18n.EN: list}, ""))
 	defer plain.Close()
 	get := func(base, path string) string {
 		res, err := http.Get(base + path)

@@ -43,6 +43,11 @@ device, your phone included. For a team vote or anyone else's feedback,
 `--multi` makes one public link that takes any number of answers until it
 expires or `ask-form close <id>`; `wait` then returns them all.
 
+Forms speak English or French. `create --lang fr` sets the language of the page
+around the questions (buttons, errors, the thanks page), and
+`ask-form setup --lang fr` makes French the machine's default. The agent writes
+the questions themselves in the same language.
+
 The agent's reference (field types, answers, exit codes) is
 [`skill/SKILL.md`](skill/SKILL.md). `ask-form skill print --body` prints it
 for agents other than Claude Code.

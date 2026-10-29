@@ -1,0 +1,186 @@
+{
+ "title": "Revue de feat/invoices\u00a0: 6 constats",
+ "order": 2,
+ "summary": "Tri d'une revue de code\u00a0: ce que l'agent a trouvé dans une branche, du plus grave au moins grave, avec une décision corriger / laisser / plus tard pour chacun.",
+ "description": "J'ai relu les 14 fichiers que `feat/invoices` modifie par rapport à `main` (+612 −88). Six constats, du plus grave au moins grave, chacun avec le code. Choisissez ce que je corrige\u202f; mon avis est pré-sélectionné. Je les corrigerai sur la branche, un commit chacun, puis je relancerai les tests.",
+ "fields": [
+  {
+   "type": "markdown",
+   "group": "À corriger absolument",
+   "label": "1 · N'importe qui peut lire n'importe quelle facture",
+   "text": "`api/invoices/[id].ts:18` charge la facture par id sans jamais vérifier qu'elle appartient au compte de l'appelant. N'importe quel utilisateur connecté peut lire toutes les factures en incrémentant les ids.\n\n```ts\nconst invoice = await db.invoice.findUnique({ where: { id } })\nreturn json(invoice)\n```\n\nLe correctif restreint la requête à `session.accountId` et renvoie 404 sinon, plus un test."
+  },
+  {
+   "key": "f1_idor",
+   "label": "Que dois-je faire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "À corriger absolument",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Le corriger",
+     "description": "Restreindre la requête au compte de l'appelant, ajouter un test"
+    },
+    {
+     "value": "skip",
+     "label": "Laisser tel quel"
+    },
+    {
+     "value": "issue",
+     "label": "Ouvrir une issue pour plus tard"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "À corriger absolument",
+   "label": "2 · Les totaux dérivent d'un centime",
+   "text": "`lib/totals.ts:41` arrondit chaque ligne avant de sommer, donc une facture de 3 lignes peut s'écarter de 0,01 du PDF que reçoit le comptable.\n\n```ts\nconst total = lines.reduce((s, l) => s + round(l.qty * l.price), 0)\n```"
+  },
+  {
+   "key": "f2_rounding",
+   "label": "Que dois-je faire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "À corriger absolument",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Le corriger",
+     "description": "Travailler en centimes entiers, arrondir une seule fois"
+    },
+    {
+     "value": "skip",
+     "label": "Laisser tel quel"
+    },
+    {
+     "value": "issue",
+     "label": "Ouvrir une issue pour plus tard"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Mérite d'être corrigé",
+   "label": "3 · 51 requêtes par liste de factures",
+   "text": "`listInvoices` charge le client de chaque facture dans sa propre requête\u00a0: une page de 50 lignes fait 51 allers-retours (380 ms sur les données de staging)."
+  },
+  {
+   "key": "f3_n_plus_one",
+   "label": "Que dois-je faire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Mérite d'être corrigé",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Le corriger",
+     "description": "Une seule requête avec jointure\u202f; environ 20 ms"
+    },
+    {
+     "value": "skip",
+     "label": "Laisser tel quel"
+    },
+    {
+     "value": "issue",
+     "label": "Ouvrir une issue pour plus tard"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Mérite d'être corrigé",
+   "label": "4 · Les PDF sont générés pendant la requête",
+   "text": "`POST /invoices/:id/send` génère le PDF avant de répondre\u00a0: 2 à 3 s pour une longue facture, et un timeout au-delà d'environ 200 lignes."
+  },
+  {
+   "key": "f4_pdf_sync",
+   "label": "Que dois-je faire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Mérite d'être corrigé",
+   "default": "issue",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Le corriger",
+     "description": "Générer dans un job en arrière-plan et envoyer un e-mail quand c'est prêt (une demi-journée de travail)"
+    },
+    {
+     "value": "skip",
+     "label": "Laisser tel quel"
+    },
+    {
+     "value": "issue",
+     "label": "Ouvrir une issue pour plus tard"
+    }
+   ]
+  },
+  {
+   "type": "markdown",
+   "group": "Mérite d'être corrigé",
+   "text": "**5 · Le tableau des factures sur téléphone**\n\n`InvoiceTable` garde ses cinq colonnes sous 640 px, donc sur téléphone il défile sur le côté et la colonne de statut sort de l'écran."
+  },
+  {
+   "key": "f5_mobile_table",
+   "label": "Quel rendu sur téléphone\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Mérite d'être corrigé",
+   "default": "cards",
+   "options": [
+    {
+     "value": "table",
+     "label": "Laisser tel quel\u00a0: défile sur le côté",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Factures</div><div style=\"width:150%;display:grid;gap:8px\"><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1042</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1041</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1040</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1039</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:8px;align-items:center;font-weight:600;border-bottom:1px solid hsl(var(--border));padding-bottom:7px\"><span>#1038</span><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div><div style=\"height:9px;width:100%;border-radius:5px;background:hsl(var(--muted))\"></div></div></div><div style=\"margin-top:auto;text-align:center;font-size:11px;color:hsl(var(--destructive))\">← défile sur le côté →</div></div>"
+    },
+    {
+     "value": "cards",
+     "label": "Empiler chaque facture en carte",
+     "html": "<div style=\"width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;\"><div style=\"font-weight:750;font-size:16px;margin-bottom:2px\">Factures</div><div style=\"border:1px solid hsl(var(--border));border-radius:10px;padding:9px;display:grid;gap:7px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><b>#1042</b><span style=\"font-size:10px;font-weight:700;border-radius:7px;padding:2px 7px;background:hsl(var(--primary) / .14);color:hsl(var(--primary))\">à payer</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"border:1px solid hsl(var(--border));border-radius:10px;padding:9px;display:grid;gap:7px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><b>#1041</b><span style=\"font-size:10px;font-weight:700;border-radius:7px;padding:2px 7px;background:hsl(140 50% 45% / .16);color:hsl(140 55% 36%)\">payée</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div></div><div style=\"border:1px solid hsl(var(--border));border-radius:10px;padding:9px;display:grid;gap:7px\"><div style=\"display:flex;justify-content:space-between;align-items:center\"><b>#1040</b><span style=\"font-size:10px;font-weight:700;border-radius:7px;padding:2px 7px;background:hsl(140 50% 45% / .16);color:hsl(140 55% 36%)\">payée</span></div><div style=\"height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))\"></div></div></div>"
+    }
+   ],
+   "aspect": "3/4"
+  },
+  {
+   "type": "markdown",
+   "group": "Nettoyage",
+   "label": "6 · Les avoirs ne sont pas testés",
+   "text": "Les totaux négatifs (avoirs) passent par une branche de `computeTotals` qu'aucun test n'atteint."
+  },
+  {
+   "key": "f6_test_gap",
+   "label": "Que dois-je faire\u202f?",
+   "type": "radio",
+   "required": true,
+   "group": "Nettoyage",
+   "default": "fix",
+   "options": [
+    {
+     "value": "fix",
+     "label": "Le corriger",
+     "description": "Ajouter trois cas\u00a0: avoir total, avoir partiel, avoir supérieur au solde"
+    },
+    {
+     "value": "skip",
+     "label": "Laisser tel quel"
+    },
+    {
+     "value": "issue",
+     "label": "Ouvrir une issue pour plus tard"
+    }
+   ]
+  },
+  {
+   "key": "push",
+   "label": "Pousser les correctifs sur la branche quand les tests passent",
+   "type": "checkbox",
+   "group": "Nettoyage",
+   "default": true
+  }
+ ]
+}

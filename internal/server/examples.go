@@ -17,6 +17,7 @@ import (
 
 	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -46,9 +47,37 @@ type exampleSpec struct {
 	Fields      json.RawMessage `json:"fields"`
 }
 
+// ExamplesPrefix is where the examples in lang live: /examples for English,
+// /<lang>/examples for the others.
+func ExamplesPrefix(lang string) string {
+	if lang = i18n.Of(lang); lang == i18n.EN {
+		return "/examples"
+	}
+	return "/" + lang + "/examples"
+}
+
 // LoadExamples reads every <name>/spec.json of fsys, with the images next to
 // it as the form's assets ({{asset:<file>}} in the spec).
-func LoadExamples(fsys fs.FS) ([]Example, error) {
+func LoadExamples(fsys fs.FS) ([]Example, error) { return LoadExamplesIn(fsys, i18n.EN) }
+
+// LoadAllExamples is LoadExamplesIn for every language, by language.
+func LoadAllExamples(fsys fs.FS) (map[string][]Example, error) {
+	out := map[string][]Example{}
+	for _, lang := range i18n.Langs {
+		list, err := LoadExamplesIn(fsys, lang)
+		if err != nil {
+			return nil, err
+		}
+		out[lang] = list
+	}
+	return out, nil
+}
+
+// LoadExamplesIn is LoadExamples for the examples in lang: <name>/spec.<lang>.json
+// where there is one (a translation), else spec.json, laid out under
+// ExamplesPrefix(lang).
+func LoadExamplesIn(fsys fs.FS, lang string) ([]Example, error) {
+	lang = i18n.Of(lang)
 	dirs, err := fs.ReadDir(fsys, ".")
 	if err != nil {
 		return nil, err
@@ -59,7 +88,10 @@ func LoadExamples(fsys fs.FS) ([]Example, error) {
 			continue
 		}
 		name := d.Name()
-		raw, err := fs.ReadFile(fsys, path.Join(name, "spec.json"))
+		raw, err := fs.ReadFile(fsys, path.Join(name, "spec."+lang+".json"))
+		if err != nil || lang == i18n.EN {
+			raw, err = fs.ReadFile(fsys, path.Join(name, "spec.json"))
+		}
 		if err != nil {
 			continue
 		}
@@ -82,7 +114,7 @@ func LoadExamples(fsys fs.FS) ([]Example, error) {
 			ex.assets[f.Name()] = exampleAsset{ct, b}
 			assets = append(assets, store.Asset{Name: f.Name(), ContentType: ct, Size: len(b)})
 		}
-		base := "/examples/" + name
+		base := ExamplesPrefix(lang) + "/" + name
 		sub := func(s string) string {
 			return form.AssetRe.ReplaceAllStringFunc(s, func(m string) string {
 				file := form.AssetRe.FindStringSubmatch(m)[1]
@@ -92,7 +124,7 @@ func LoadExamples(fsys fs.FS) ([]Example, error) {
 				return m
 			})
 		}
-		fields, err := form.Normalize(json.RawMessage(sub(string(sp.Fields))))
+		fields, err := form.NormalizeIn(json.RawMessage(sub(string(sp.Fields))), lang)
 		if err != nil {
 			return nil, fmt.Errorf("example %s: %w", name, err)
 		}
@@ -109,7 +141,7 @@ func LoadExamples(fsys fs.FS) ([]Example, error) {
 		now := time.Now().UTC()
 		ex.State = store.State{Status: store.Pending, Form: store.Form{
 			ID: name, Title: sp.Title, Description: sub(sp.Description), Fields: fields,
-			Assets: assets, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour), Multi: sp.Multi,
+			Assets: assets, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour), Multi: sp.Multi, Lang: lang,
 		}}
 		out = append(out, ex)
 	}
@@ -123,31 +155,54 @@ type examplesHandler struct {
 	ipHeader string
 	submits  *limiter
 	brand    func() brand.Brand // a brand preview's; nil = ask-form's own look
+	lang     string             // the pages' language (internal/i18n)
+	prefix   string             // ExamplesPrefix(lang)
+	others   []langLink         // the same examples in the other languages
 }
 
-// ExamplesHandler serves the examples under /examples. ipHeader names the
-// trusted proxy header holding the visitor's address (for the rate limit).
-func ExamplesHandler(list []Example, ipHeader string) http.Handler {
-	return examplesMux(newExamples(list, ipHeader))
+// langLink points at a page in another language, named in that language.
+type langLink struct{ Lang, Name, Href string }
+
+// ExamplesHandler serves the examples of every language in sets, each under
+// its ExamplesPrefix. ipHeader names the trusted proxy header holding the
+// visitor's address (for the rate limit).
+func ExamplesHandler(sets map[string][]Example, ipHeader string) http.Handler {
+	submits := newLimiter(30, 10*time.Minute)
+	var hs []*examplesHandler
+	for _, lang := range i18n.Langs {
+		if list, ok := sets[lang]; ok {
+			hs = append(hs, newExamples(list, ipHeader, lang, submits))
+		}
+	}
+	for _, h := range hs {
+		for _, o := range hs {
+			if o != h {
+				h.others = append(h.others, langLink{Lang: o.lang, Name: i18n.Name(o.lang), Href: o.prefix})
+			}
+		}
+	}
+	return examplesMux(hs...)
 }
 
 // PreviewHandler is `ask-form brand preview`: the examples drawn with a
-// brand (look, called on every page so an edit shows on reload), and the
-// static files their pages link to. For a loopback listener.
-func PreviewHandler(list []Example, look func() brand.Brand) http.Handler {
-	h := newExamples(list, "")
+// brand (look, called on every page so an edit shows on reload) in lang,
+// and the static files their pages link to. For a loopback listener.
+func PreviewHandler(list []Example, lang string, look func() brand.Brand) http.Handler {
+	h := newExamples(list, "", lang, newLimiter(30, 10*time.Minute))
 	h.brand = look
 	mux := http.NewServeMux()
 	mux.Handle("GET "+Prefix+"_static/{file}", StaticHandler())
-	mux.Handle("/examples", examplesMux(h))
-	mux.Handle("/examples/", examplesMux(h))
-	mux.Handle("GET /{$}", http.RedirectHandler("/examples", http.StatusFound))
+	mux.Handle(h.prefix, examplesMux(h))
+	mux.Handle(h.prefix+"/", examplesMux(h))
+	mux.Handle("GET /{$}", http.RedirectHandler(h.prefix, http.StatusFound))
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	return mux
 }
 
-func newExamples(list []Example, ipHeader string) *examplesHandler {
-	h := &examplesHandler{list: list, byName: map[string]*Example{}, ipHeader: ipHeader, submits: newLimiter(30, 10*time.Minute)}
+func newExamples(list []Example, ipHeader, lang string, submits *limiter) *examplesHandler {
+	lang = i18n.Of(lang)
+	h := &examplesHandler{list: list, byName: map[string]*Example{}, ipHeader: ipHeader, submits: submits,
+		lang: lang, prefix: ExamplesPrefix(lang)}
 	for i := range list {
 		h.byName[list[i].Name] = &list[i]
 	}
@@ -162,18 +217,21 @@ func (h *examplesHandler) look() brand.Brand {
 	return h.brand()
 }
 
-func examplesMux(h *examplesHandler) http.Handler {
+func examplesMux(hs ...*examplesHandler) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /examples", h.index)
-	mux.HandleFunc("GET /examples/{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/examples", http.StatusMovedPermanently)
-	})
-	mux.HandleFunc("GET /examples/{name}", h.page)
-	mux.HandleFunc("POST /examples/{name}", h.submit)
-	mux.HandleFunc("GET /examples/{name}/spec.json", h.spec)
-	mux.HandleFunc("GET /examples/{name}/assets/{file}", h.asset)
-	mux.HandleFunc("GET /examples/{name}/frame/{key}", h.frame)
-	mux.HandleFunc("GET /examples/{name}/frame/{key}/{n}", h.frame)
+	for _, h := range hs {
+		p := h.prefix
+		mux.HandleFunc("GET "+p, h.index)
+		mux.HandleFunc("GET "+p+"/{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, p, http.StatusMovedPermanently)
+		})
+		mux.HandleFunc("GET "+p+"/{name}", h.page)
+		mux.HandleFunc("POST "+p+"/{name}", h.submit)
+		mux.HandleFunc("GET "+p+"/{name}/spec.json", h.spec)
+		mux.HandleFunc("GET "+p+"/{name}/assets/{file}", h.asset)
+		mux.HandleFunc("GET "+p+"/{name}/frame/{key}", h.frame)
+		mux.HandleFunc("GET "+p+"/{name}/frame/{key}/{n}", h.frame)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	return mux
 }
@@ -185,11 +243,19 @@ type examplesPage struct {
 	PageCSS      template.CSS
 	Brand        pageBrand
 	Examples     []Example
+	Prefix       string     // where the examples' pages are
+	Home         string     // the landing page in this language
+	Others       []langLink // this page in the other languages
 }
 
 func (h *examplesHandler) index(w http.ResponseWriter, r *http.Request) {
-	p := examplesPage{Title: "ask-form examples", Nonce: newNonce(), Examples: h.list, Brand: pageLook(h.look())}
-	renderPage(w, "examples", p, pageCSP(p.Nonce), http.StatusOK)
+	home := "/"
+	if h.lang != i18n.EN {
+		home += h.lang
+	}
+	p := examplesPage{Title: i18n.T(h.lang, "ask-form examples"), Nonce: newNonce(), Examples: h.list, Brand: pageLook(h.look()),
+		Prefix: h.prefix, Home: home, Others: h.others}
+	renderPage(w, h.lang, "examples", p, pageCSP(p.Nonce), http.StatusOK)
 }
 
 func (h *examplesHandler) page(w http.ResponseWriter, r *http.Request) {
@@ -203,11 +269,11 @@ func (h *examplesHandler) page(w http.ResponseWriter, r *http.Request) {
 
 func (h *examplesHandler) renderForm(w http.ResponseWriter, ex *Example, values map[string][]string, errs map[string]string, code int) {
 	nonce := newNonce()
-	base := "/examples/" + ex.Name
+	base := h.prefix + "/" + ex.Name
 	page := buildPage(ex.State, base, values, errs, "", nonce)
-	page.Demo = &demoInfo{Index: "/examples", Spec: base + "/spec.json", Preview: h.brand != nil}
+	page.Demo = &demoInfo{Index: h.prefix, Spec: base + "/spec.json", Preview: h.brand != nil}
 	page.Brand = pageLook(h.look())
-	renderPage(w, "form", page, pageCSP(nonce), code)
+	renderPage(w, h.lang, "form", page, pageCSP(nonce), code)
 }
 
 type demoResultPage struct {
@@ -233,25 +299,25 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); ct != "application/x-www-form-urlencoded" {
-		renderMessage(w, http.StatusUnsupportedMediaType, "Can't read that", "This form only accepts a plain form submission.")
+		renderMessage(w, h.lang, http.StatusUnsupportedMediaType, "Can't read that", "This form only accepts a plain form submission.")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
 	if err := r.ParseForm(); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			renderMessage(w, http.StatusRequestEntityTooLarge, "Too long", "Those answers are over the size limit ("+strconv.Itoa(MaxBody>>10)+" KB).")
+			renderMessage(w, h.lang, http.StatusRequestEntityTooLarge, "Too long", "Those answers are over the size limit (%d KB).", MaxBody>>10)
 			return
 		}
-		renderMessage(w, http.StatusBadRequest, "Can't read that", "The submission was malformed.")
+		renderMessage(w, h.lang, http.StatusBadRequest, "Can't read that", "The submission was malformed.")
 		return
 	}
 	v := r.PostForm
 	if v.Get("website_url") != "" {
-		renderMessage(w, http.StatusBadRequest, "Not sent", "That submission looked automated.")
+		renderMessage(w, h.lang, http.StatusBadRequest, "Not sent", "That submission looked automated.")
 		return
 	}
-	res := form.Parse(ex.State.Fields, v)
+	res := form.ParseWith(ex.State.Fields, v, form.Hooks{Lang: h.lang})
 	if !res.OK() {
 		h.renderForm(w, ex, v, res.Errors, http.StatusUnprocessableEntity)
 		return
@@ -270,10 +336,11 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 	st.CreatedAt = now.Add(-3 * time.Minute).Truncate(time.Second)
 	st.ExpiresAt = st.CreatedAt.Add(24 * time.Hour)
 	b, _ := json.MarshalIndent(toJSON(st, false, true), "", "  ")
-	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: "/examples/" + ex.Name, Recap: recap(st.Fields, res.Answers),
-		Demo: &demoInfo{Index: "/examples", Spec: "/examples/" + ex.Name + "/spec.json", Preview: h.brand != nil}, Brand: pageLook(h.look())}
+	base := h.prefix + "/" + ex.Name
+	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: base, Recap: recap(h.lang, st.Fields, res.Answers),
+		Demo: &demoInfo{Index: h.prefix, Spec: base + "/spec.json", Preview: h.brand != nil}, Brand: pageLook(h.look())}
 	log.Printf("example %s answered (%d answers, not stored)", ex.Name, len(res.Answers))
-	renderPage(w, "demo-result", p, pageCSP(p.Nonce), http.StatusOK)
+	renderPage(w, h.lang, "demo-result", p, pageCSP(p.Nonce), http.StatusOK)
 }
 
 func demoSuffix() string {
@@ -331,7 +398,7 @@ func (h *examplesHandler) frame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sdk, csp := frameFor(ex.State.Fields, r.PathValue("key"), r.PathValue("n"))
-	doc := frameDocWith(ex.State, "/examples/"+ex.Name+"/assets/", markup, fit, sdk, h.look().FrameCSS(), func(name string) (string, bool) {
+	doc := frameDocWith(ex.State, h.prefix+"/"+ex.Name+"/assets/", markup, fit, sdk, h.look().FrameCSS(), func(name string) (string, bool) {
 		a, ok := ex.assets[name]
 		if !ok {
 			return "", false
@@ -363,7 +430,7 @@ func frameMarkup(fields []form.Field, key, n string) (string, bool) {
 }
 
 // renderMessage is (*Server).message without a server.
-func renderMessage(w http.ResponseWriter, code int, title, msg string) {
-	p := messagePage{Title: title, Message: msg, Nonce: newNonce()}
-	renderPage(w, "message", p, pageCSP(p.Nonce), code)
+func renderMessage(w http.ResponseWriter, lang string, code int, title, msg string, args ...any) {
+	p := messagePage{Title: i18n.T(lang, title), Message: i18n.T(lang, msg, args...), Nonce: newNonce()}
+	renderPage(w, lang, "message", p, pageCSP(p.Nonce), code)
 }

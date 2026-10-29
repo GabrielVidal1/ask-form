@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
+	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 )
 
@@ -50,6 +51,7 @@ type FormJSON struct {
 	MaxAnswers  int               `json:"maxAnswers,omitempty"`
 	HideCount   bool              `json:"hideCount,omitempty"`
 	AnswerCount *int              `json:"answerCount,omitempty"`
+	Lang        string            `json:"lang,omitempty"`
 	Responses   []store.Response  `json:"responses,omitempty"`
 	Fields      []form.Field      `json:"fields,omitempty"`
 	Meta        map[string]string `json:"meta,omitempty"`
@@ -59,7 +61,7 @@ type FormJSON struct {
 func toJSON(st store.State, withFields, withResponses bool) FormJSON {
 	j := FormJSON{
 		ID: st.ID, Title: st.Title, Description: st.Description, Status: st.Status, CreatedAt: st.CreatedAt,
-		ExpiresAt: st.ExpiresAt, ClosedAt: st.ClosedAt, Answers: st.Answers, Meta: st.Meta,
+		ExpiresAt: st.ExpiresAt, ClosedAt: st.ClosedAt, Answers: st.Answers, Meta: st.Meta, Lang: st.Lang,
 	}
 	if st.Multi {
 		n := len(st.Responses)
@@ -87,6 +89,8 @@ type createReq struct {
 	HideCount   bool              `json:"hideCount"`
 	// Public: link the relay even for a form for one person.
 	Public bool `json:"public"`
+	// Lang: the language of the form's pages; "" = the machine's (Config.Lang).
+	Lang string `json:"lang"`
 }
 
 type assetReq struct {
@@ -170,7 +174,15 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "body: "+err.Error())
 		return
 	}
-	fields, err := form.Normalize(req.Fields)
+	lang, err := i18n.Parse(req.Lang)
+	if err != nil {
+		apiError(w, http.StatusBadRequest, "lang: "+err.Error())
+		return
+	}
+	if lang == "" {
+		lang = i18n.Of(s.cfg.Lang)
+	}
+	fields, err := form.NormalizeIn(req.Fields, lang)
 	if err != nil {
 		apiError(w, http.StatusBadRequest, err.Error())
 		return
@@ -198,7 +210,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	params := store.CreateParams{
 		Name: req.Name, Title: req.Title, Description: req.Description,
 		Fields: fields, TTL: ttl, Assets: assets, Meta: req.Meta,
-		Multi: req.Multi, MaxAnswers: req.MaxAnswers, HideCount: req.HideCount,
+		Multi: req.Multi, MaxAnswers: req.MaxAnswers, HideCount: req.HideCount, Lang: lang,
 	}
 	if s.Relay != nil {
 		params.Claim = s.Relay.Claim
