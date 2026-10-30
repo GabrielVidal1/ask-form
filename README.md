@@ -48,6 +48,9 @@ around the questions (buttons, errors, the thanks page), and
 `ask-form setup --lang fr` makes French the machine's default. The agent writes
 the questions themselves in the same language.
 
+Any form prints, or saves as a PDF, from the browser as a blank questionnaire
+to fill by hand: every section, options to tick, scales to circle.
+
 The agent's reference (field types, answers, exit codes) is
 [`skill/SKILL.md`](skill/SKILL.md). `ask-form skill print --body` prints it
 for agents other than Claude Code.
