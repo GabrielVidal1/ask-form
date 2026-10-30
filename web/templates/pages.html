@@ -42,6 +42,7 @@
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
     {{if and .ShowCount .Count}}<p class="count">{{tn .Count "%d person has answered so far." "%d people have answered so far."}}</p>{{end}}
+    {{if .HasRequired}}<p class="print-legend" hidden><span class="req">*</span> {{t "required"}}</p>{{end}}
   </header>
   {{if .Paged}}<nav class="toc" aria-label="{{t "Sections"}}">
     <p class="toc-h">{{t "On this form"}}</p>
@@ -95,6 +96,7 @@
 
 {{define "field"}}
 <div class="field t-{{.Type}}{{if .Error}} has-error{{end}}{{if .Visual}} visual-field{{end}}{{if .Display}} is-display{{end}}" id="{{.DOMID}}" data-key="{{.Key}}" data-type="{{.Type}}"{{if .Required}} data-required{{end}}{{with .ShowIfJSON}} data-show-if="{{.}}"{{end}}{{with .RequiredIfJSON}} data-required-if="{{.}}"{{end}}>
+{{with .ShowIfText}}<p class="print-if" hidden>{{t "Only if %s" .}}</p>{{end}}
 {{if eq .Type "markdown"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
   <div class="md">{{md .Text}}</div>
@@ -210,6 +212,7 @@
         {{range .Options}}<option value="{{.Value}}"{{if index $.Picked .Value}} selected{{end}}>{{.Label}}</option>{{end}}
         <option value="__other__"{{if .OtherPicked}} selected{{end}}>{{t "Other…"}}</option>
       </select>
+      <ul class="print-options" hidden>{{range .Options}}<li>{{inline .Label}}</li>{{end}}<li>{{t "Other…"}}</li></ul>
       {{template "other" .}}
     {{else}}
       <div class="choices">
@@ -239,6 +242,7 @@
       <input id="{{.DOMID}}-in" type="range" name="{{.Name}}" value="{{.Value}}" min="{{.Num.Min}}" max="{{.Num.Max}}" step="{{.Num.Step}}">
       <output for="{{.DOMID}}-in">{{.Value}}</output>
     </div>
+    {{if .PrintScale}}<div class="print-scale" hidden>{{range .PrintScale}}<span>{{.}}</span>{{end}}</div>{{else}}<div class="print-line" hidden></div>{{end}}
     <div class="range-ends"><span>{{.Num.Min}}{{with .MinLabel}} · {{.}}{{end}}</span><span>{{with .MaxLabel}}{{.}} · {{end}}{{.Num.Max}}</span></div>
   {{else if eq .Type "email"}}
     <input id="{{.DOMID}}-in" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" name="{{.Name}}" value="{{.Value}}" maxlength="254"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>

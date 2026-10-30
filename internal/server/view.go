@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"math"
 	"net/url"
 	"slices"
 	"strings"
@@ -36,7 +37,9 @@ type pageField struct {
 	RequiredIfJSON  string
 	ListCols        []listCol // list: the inputs of a row
 	Rows            [][]string
-	Scale           []int // rating: the numbers on offer
+	Scale           []int    // rating: the numbers on offer
+	PrintScale      []string // slider: its values to circle on paper (none: too many, a line instead)
+	ShowIfText      string   // its showIf in words, noted above it on paper
 	RangeStart      string
 	RangeEnd        string
 }
@@ -83,6 +86,7 @@ type formPage struct {
 	Multi       bool      // open to everyone with the link
 	Count       int       // a multi form's answers so far
 	ShowCount   bool      // …shown to the respondent
+	HasRequired bool      // a question is required: paper says what * means
 	Brand       pageBrand
 }
 
@@ -118,6 +122,8 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 		}
 		pf.Reenter = values != nil && f.Type == form.Secret
 		pf.ShowIfJSON, pf.RequiredIfJSON = condJSON(f.ShowIf), condJSON(f.RequiredIf)
+		pf.ShowIfText = form.CondText(lang, f.ShowIf, st.Fields)
+		p.HasRequired = p.HasRequired || f.Required
 		switch f.Type {
 		case form.List:
 			pf.ListCols, pf.Rows = listRows(f, pf.Name, values)
@@ -125,6 +131,8 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 			for n := int(*f.Min); n <= int(*f.Max); n++ {
 				pf.Scale = append(pf.Scale, n)
 			}
+		case form.Slider:
+			pf.PrintScale = sliderScale(f)
 		case form.Daterange:
 			if values != nil {
 				pf.RangeStart, pf.RangeEnd = values.Get(pf.Name+form.RangeStart), values.Get(pf.Name+form.RangeEnd)
@@ -315,6 +323,32 @@ func listRows(f form.Field, name string, values url.Values) ([]listCol, [][]stri
 		rows = append(rows, make([]string, len(cols)))
 	}
 	return cols, rows
+}
+
+// maxPrintScale is how many values a slider prints as numbers to circle; one
+// with more prints as a line to mark.
+const maxPrintScale = 11
+
+// sliderScale is a slider's values, min to max by step, when there are few
+// enough to circle on paper.
+func sliderScale(f form.Field) []string {
+	if f.Min == nil || f.Max == nil {
+		return nil
+	}
+	step := 1.0
+	if f.Step != nil && *f.Step > 0 {
+		step = *f.Step
+	}
+	n := int(math.Floor((*f.Max-*f.Min)/step+1e-9)) + 1
+	if n < 2 || n > maxPrintScale {
+		return nil
+	}
+	out := make([]string, n)
+	for i := range out {
+		v := *f.Min + float64(i)*step
+		out[i] = form.FormatNumber(math.Round(v*1e9) / 1e9)
+	}
+	return out
 }
 
 func hasOption(f form.Field, v string) bool {

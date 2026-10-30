@@ -2,7 +2,7 @@
 // this adds group paging (on a phone; a desktop shows every group and tracks
 // them in the section list), "Other…" niceties, a local draft, the server's
 // checks then a confirm step, a fullscreen viewer for pictures and mockups,
-// and auto-sized html blocks.
+// auto-sized html blocks, and the touches a print needs (app.css draws it).
 (function () {
   "use strict";
   var root = document.documentElement;
@@ -35,14 +35,17 @@
   if (closed) store.del("ask-form:draft:" + closed.getAttribute("data-closed"));
 
   // Frame documents report their size. An html block without a fixed height
-  // follows its height; a mockup reports the size it is drawn at, which a
+  // follows its height (and keeps the one it takes on paper for printing); a
+  // mockup reports the size it is drawn at, which a
   // card that fits its content takes as its ratio and the fullscreen view
   // as its shape (the frame then scales the mockup to fill either).
   window.addEventListener("message", function (e) {
     var d = e.data;
     if (!d || d.type !== "ask-form:frame" || typeof d.h !== "number") return;
     $all("iframe.frame.autosize").forEach(function (f) {
-      if (f.contentWindow === e.source) f.style.height = Math.max(40, Math.min(4000, Math.ceil(d.h) + 2)) + "px";
+      if (f.contentWindow !== e.source) return;
+      f.style.height = frameHeight(d.h);
+      if (d.p > 0) f.setAttribute("data-print-h", frameHeight(d.p));
     });
     if (!(d.w > 0 && d.h > 0)) return;
     $all(".fit-content .mock iframe, .overlay iframe").forEach(function (f) {
@@ -53,6 +56,36 @@
       if (f.closest(".overlay")) fitOverlay(f);
       else f.parentNode.style.aspectRatio = d.w + " / " + d.h;
     });
+  });
+
+  // Printing: collapsed blocks open, and html blocks take the height they
+  // have on paper, for as long as the print lasts.
+  var opened = [];
+  window.addEventListener("beforeprint", function () {
+    $all("img[loading=lazy], iframe[loading=lazy]").forEach(function (el) { el.loading = "eager"; });
+    $all("details.block-details:not([open])").forEach(function (d) { d.open = true; opened.push(d); });
+    $all("iframe.frame.autosize[data-print-h]").forEach(function (f) {
+      f.setAttribute("data-screen-h", f.style.height);
+      f.style.height = f.getAttribute("data-print-h");
+    });
+  });
+  window.addEventListener("afterprint", function () {
+    opened.forEach(function (d) { d.open = false; });
+    opened = [];
+    $all("iframe.frame.autosize[data-screen-h]").forEach(function (f) {
+      f.style.height = f.getAttribute("data-screen-h");
+      f.removeAttribute("data-screen-h");
+    });
+  });
+
+  function frameHeight(h) { return Math.max(40, Math.min(4000, Math.ceil(h) + 2)) + "px"; }
+
+  // Pictures and mockups further down load once the page has settled: one
+  // still waiting for its turn would print blank.
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      $all("img[loading=lazy], iframe[loading=lazy]").forEach(function (el) { el.loading = "eager"; });
+    }, 1500);
   });
 
   var form = document.getElementById("form");
@@ -612,6 +645,31 @@
       });
     });
   } else refresh();
+
+  // ── print: the paper version of what's on screen ────────────────────────
+  // A list gets three rows at least (and the blank ones go again after), a
+  // slider that was moved prints as it stands instead of its values to
+  // circle, and a question shown only sometimes is printed whole, not greyed.
+  var printRows = [], printEnabled = [];
+  window.addEventListener("beforeprint", function () {
+    $all("[data-list]", form).forEach(function (list) {
+      var want = Math.max(3, Number(list.getAttribute("data-min") || 0)), row;
+      while ($all(".list-row", list).length < want && (row = addRow(list))) printRows.push(row);
+    });
+    fields.forEach(function (f) {
+      if (f.getAttribute("data-type") === "slider") f.classList.toggle("print-moved", !!touched[f.getAttribute("data-key")]);
+    });
+    $all(".field[hidden] :disabled", form).forEach(function (i) { i.disabled = false; printEnabled.push(i); });
+  });
+  window.addEventListener("afterprint", function () {
+    printRows.forEach(function (row) {
+      var list = row.parentNode;
+      if (list && listBlank(row)) { row.remove(); syncAdd(list); }
+    });
+    printEnabled.forEach(function (i) { if (i.closest(".field[hidden]")) i.disabled = true; });
+    printRows = [];
+    printEnabled = [];
+  });
 
   // ── submit: the whole form checked, then a confirm step ─────────────────
   var confirmed = false;
