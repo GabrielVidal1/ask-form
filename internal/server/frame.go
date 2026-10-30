@@ -32,12 +32,15 @@ import (
 // size to the page, which shapes a card or the fullscreen view after it
 // (app.js). The beacon's height is the body's, not the document's: the
 // document is never shorter than its frame, so measuring it could only ever
-// grow the frame.
+// grow the frame. It also sends the height the body takes at a printed page's
+// width (A4 and Letter, the larger), which the page gives the frame while it
+// prints.
 const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribute("data-fit"),last="",nat=-1,` +
 	`LEAF=/^(SVG|IMG|CANVAS|VIDEO|IFRAME|SELECT|TEXTAREA)$/,SOLID=/^(SVG|IMG|CANVAS|VIDEO|IFRAME|SELECT|TEXTAREA|INPUT|BUTTON|HR|PROGRESS|METER)$/;` +
 	`try{if(matchMedia("(prefers-color-scheme: dark)").matches)d.classList.add("dark")}catch(e){}` +
 	`function send(m){var k=JSON.stringify(m);if(k!==last){last=k;m.type="ask-form:frame";parent.postMessage(m,"*")}}` +
 	`function high(b){return Math.ceil(Math.max(b.scrollHeight,b.getBoundingClientRect().height))}` +
+	`function paper(b){var w=b.style.width,h=0;[700,724].forEach(function(x){b.style.width=x+"px";h=Math.max(h,high(b))});b.style.width=w;return h}` +
 	`function painted(s){return s.backgroundImage!=="none"||s.boxShadow!=="none"||!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(s.backgroundColor)||` +
 	`parseFloat(s.borderLeftWidth)+parseFloat(s.borderRightWidth)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth)>0}` +
 	`function ink(b){var o=b.getBoundingClientRect().left,L=1/0,R=-1/0,g=document.createRange();` +
@@ -53,7 +56,7 @@ const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribu
 	`for(i=0;i<6;i++){n=Math.ceil(e[1]-e[0]);if(n>=w-1)break;b.style.width=n+"px";f=ink(b);` +
 	`if(!f||f[0]<-1||f[1]>n+1){w=Math.min(w,Math.ceil(e[1]+Math.max(0,e[0])));break}w=n;e=f}return w}` +
 	`function place(){var b=document.body,vw=innerWidth,vh=innerHeight,W,H,h0,z,i;if(!b)return;` +
-	`if(!fit){send({h:high(b)});return}` +
+	`if(!fit){send({h:high(b),p:paper(b)});return}` +
 	`d.style.overflow="hidden";b.style.boxSizing="border-box";b.style.transform="";if(nat<0)nat=natural(b);` +
 	`W=nat||vw;b.style.width=W+"px";H=h0=high(b);` +
 	`if(!nat)for(i=0;i<2&&vh>0&&H>vh+1;i++){W=Math.ceil(vw*H/vh);b.style.width=W+"px";H=high(b)}` +
@@ -76,7 +79,7 @@ var (
 		return string(b)
 	}()
 	frameBaseCSS = `html,body{margin:0;padding:0;background:transparent;color:hsl(var(--foreground));` +
-		`}body{display:flow-root;` +
+		`}html{print-color-adjust:exact;-webkit-print-color-adjust:exact}body{display:flow-root;` +
 		`font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}` +
 		`img,video,svg,canvas{max-width:100%}a{color:hsl(var(--primary))}`
 	headRe = regexp.MustCompile(`(?i)<head[^>]*>`)

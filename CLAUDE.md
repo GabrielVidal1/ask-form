@@ -63,6 +63,16 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   look too (and `answerValues`, which turns an answer back into input
   values), or it shows empty there. The page inlines app.css as this binary
   has it and runs no app.js: it must read right without it.
+- Print (`@media print` at the end of app.css, `beforeprint`/`afterprint` in
+  app.js): what only paper shows (`.print-options`, `.print-scale`,
+  `.print-if`, …) is markup with the `hidden` attribute that the print CSS
+  reveals, so an older app.css never shows it; a print rule that hides a
+  screen control guards on that markup (`:has(.print-scale)`) so an older
+  machine's page keeps the control. The phone stepper keeps the other pages
+  laid out out of sight (not `display: none`): their frames measure at their
+  real width, and lazy pictures and mockups load once the page settles, so a
+  print has them. Check a change with Playwright's `page.pdf()` (it fires
+  `beforeprint`) from a 390 px and a 1280 px viewport.
 - Languages (`internal/i18n`): what a respondent reads is English (the
   catalogue keys) or French (`fr.go`); a form's `lang` is fixed at create
   (`create --lang`, else serve's `--lang`/`ASK_FORM_LANG`, else en) and the

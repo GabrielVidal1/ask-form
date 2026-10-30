@@ -222,8 +222,12 @@ html:not(.js) .widget-frame { display: none; }
 .pager-seg.current { background: hsl(var(--primary)); }
 .pager-seg.pending::after, .pending-dot { content: ""; position: absolute; top: -4px; right: -1px; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--primary)); animation: ping 1.6s infinite; }
 .pager-title { margin-top: 4px; font-size: 13px; font-weight: 600; }
+/* A phone shows one page at a time. The others stay laid out, out of sight,
+   so the mockups and html blocks on them measure at their real width (and
+   print whole). */
 @media (max-width: 1023.98px) {
-  .js .paged .group:not(.current) { display: none; }
+  .js .paged { position: relative; }
+  .js .paged .group:not(.current) { position: absolute; top: 0; left: 0; right: 0; height: 0; margin: 0; overflow: hidden; visibility: hidden; }
   .js .paged .group-title { display: none; }
 }
 .nav { display: flex; gap: 10px; justify-content: space-between; margin: 4px 0 8px; }
@@ -302,3 +306,124 @@ html:not(.js) .widget-frame { display: none; }
   .demo-banner ~ .wrap .field { scroll-margin-top: 128px; }
 }
 @media (prefers-reduced-motion: reduce) { .toc-bar i { transition: none; } }
+
+/* ── print: the whole form on paper, blank or answered ───────────────────── */
+/* What only paper shows carries the `hidden` attribute, so a page served with
+   an older copy of this file keeps it out of sight everywhere. */
+@media print {
+  @page { margin: 14mm 12mm; }
+  /* Paper is light whatever the screen is: a dark brand's tokens too. */
+  :root { color-scheme: light !important; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 0 0% 100% !important; --foreground: 24 10% 12% !important;
+      --card: 0 0% 100% !important; --card-foreground: 24 10% 12% !important;
+      --secondary: 30 20% 92% !important; --secondary-foreground: 24 10% 15% !important;
+      --muted: 30 20% 93% !important; --muted-foreground: 24 6% 40% !important;
+      --accent: 30 40% 90% !important; --accent-foreground: 24 10% 12% !important;
+      --border: 30 15% 80% !important; --destructive: 0 72% 50% !important;
+      --code-foreground: 24 10% 20% !important; --code-function: 210 70% 42% !important;
+    }
+  }
+  body { background: #fff; font-size: 14px; }
+  .wrap, .wrap.has-toc { display: block; max-width: none; padding: 0; }
+  .top { margin-bottom: 20px; }
+  h1 { font-size: 24px; }
+  .print-legend[hidden] { display: block !important; margin: 10px 0 0; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .print-legend .req { margin: 0; }
+
+  /* What's for the screen only. */
+  .demo-banner, .toc, .pager, .nav, .actions, .decline, .errors, .count, .hp,
+  .overlay, .confirm, .pending-dot, .list-add, .row-remove, .reveal, .frame-open,
+  .zoom, .file-rm, .file-retry, .file-item progress, .drop-main, .drop-or { display: none !important; }
+
+  /* Every section, one after the other, its title a heading: no card. */
+  .group, .js .paged .group:not(.current) {
+    position: static; height: auto; overflow: visible; visibility: visible;
+    border: 0; border-radius: 0; background: none; padding: 0; margin: 0 0 26px;
+  }
+  .group-title, .js .paged .group-title { display: block; margin: 0 0 14px; font-size: 19px; letter-spacing: 0; text-transform: none; color: hsl(var(--foreground)); }
+  /* Every question too, those shown only sometimes with when they apply. */
+  .form .field[hidden], .form .group.group-empty { display: block !important; }
+  .print-if[hidden] { display: block !important; margin: 0 0 4px; font-size: 12.5px; font-style: italic; color: hsl(var(--muted-foreground)); }
+
+  /* A question or a block stays on one page (unless it's taller than one). */
+  .field { margin-bottom: 20px; break-inside: avoid; }
+  .group-title, .block-label, .label, legend.label, .check, .print-if { break-after: avoid; }
+  .card, .list-row, .choice, .diff span { break-inside: avoid; }
+
+  /* Boxes to write in: drawn by their border (backgrounds don't print). */
+  input[type=text], input[type=email], input[type=number], input[type=date], input[type=time], input[type=datetime-local], input[type=password], select, textarea {
+    background: none; border-color: hsl(var(--foreground) / .35); min-height: 40px;
+  }
+  ::placeholder { color: hsl(var(--muted-foreground) / .7); }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  select { appearance: none; }
+  input::-webkit-inner-spin-button, input::-webkit-outer-spin-button, input::-webkit-calendar-picker-indicator { display: none; }
+  /* Long answers get room for a few handwritten lines, or all of a typed one. */
+  textarea, .catchall textarea { height: auto !important; min-height: 10em; field-sizing: content; resize: none; border-color: hsl(var(--foreground) / .35); background: none; }
+
+  /* Choices: the option and its tick, no box around each. */
+  .choices { gap: 2px; }
+  .choice { border: 0; padding: 4px 0; background: none !important; }
+  /* "Other…" gets its line while nothing is picked (or it is). */
+  @supports selector(:has(*)) {
+    .field:not(:has(select, input:checked)) .other, .field:has(select > option[value=""]:checked) .other { display: block !important; }
+  }
+  .other { margin: 4px 0 0 28px; }
+  .other-row { margin-top: 6px; }
+
+  /* A dropdown on paper is its options, a circle each, while nothing is
+     picked; picked, it shows what is. (A page from a machine older than the
+     list keeps its dropdown.) */
+  .print-options[hidden] { list-style: none; margin: 0; padding: 0; display: grid !important; gap: 2px; }
+  .print-options li { display: flex; gap: 10px; align-items: baseline; padding: 4px 0; }
+  .print-options li::before { content: ""; flex: none; width: 16px; height: 16px; border: 1.5px solid hsl(var(--foreground) / .55); border-radius: 50%; transform: translateY(3px); }
+  @supports selector(:has(*)) {
+    .field:has(.print-options):has(> fieldset > select > option[value=""]:checked) > fieldset > select { display: none !important; }
+    .field:has(> fieldset > select > option:not([value=""]):checked) .print-options { display: none !important; }
+  }
+
+  /* Sliders: its values to circle (a line to mark when there are too many),
+     until it has been moved (app.js: .print-moved). */
+  .t-slider:not(.print-moved):has(.print-scale, .print-line) .range { display: none; }
+  .t-slider:not(.print-moved) .print-scale[hidden] { display: flex !important; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .print-scale span { flex: 1 1 0; display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 6px; border: 1px solid hsl(var(--foreground) / .35); border-radius: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .t-slider:not(.print-moved) .print-line[hidden] { display: block !important; height: 16px; margin: 14px 0 4px; border: 1.5px solid hsl(var(--foreground) / .55); border-top: 0; }
+
+  /* Ratings: numbers to circle, stars outlined until one is picked. */
+  .rate-face { border-color: hsl(var(--foreground) / .35); background: none; }
+  .rating.stars .rate-face { color: transparent; -webkit-text-stroke: 1.2px hsl(var(--foreground) / .55); }
+  .rating.stars .rate:has(input:checked) .rate-face, .rating.stars .rate:has(~ .rate input:checked) .rate-face { color: hsl(var(--primary)); -webkit-text-stroke: 0; }
+
+  /* Pictures and mockups: whole, never cut across two pages. */
+  .card { background: none; box-shadow: none; }
+  .card:has(.card-input:checked) { border-width: 2px; }
+  .visual { max-height: 70mm; }
+  .card:has(.card-input:checked) .bar { background: none; }
+
+  /* Blocks: opened (app.js), wrapped, a diff keeps its colours. */
+  .diff { overflow: visible; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .diff pre { min-width: 0; }
+  .diff span { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .md pre, .json { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
+  .md .table { overflow: visible; }
+  .block-details summary { min-height: 0; }
+  .frame { resize: none; }
+
+  /* Lists: rows of boxes, three of them at least (app.js), no buttons. */
+  .js .list-row[data-cols]:not([data-cols="1"]) { border-color: hsl(var(--foreground) / .2); }
+  .list-row[data-cols="1"] { grid-template-columns: minmax(0, 1fr); }
+  .list-row[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .list-row[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .list-row[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .list-row[data-cols="5"], .list-row[data-cols="6"], .list-row[data-cols="7"], .list-row[data-cols="8"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .list-row select:has(option[value=""]:checked) { color: hsl(var(--muted-foreground) / .7); }
+
+  /* Files: the drop area is a box to staple to, with what it takes. */
+  .uploader .drop { min-height: 64px; border-color: hsl(var(--foreground) / .35); background: none; }
+
+  .secret input { padding-right: 12px; }
+  .recap { background: none; }
+  .closed .group-title { margin-top: 20px; }
+}

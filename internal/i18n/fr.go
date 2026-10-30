@@ -257,4 +257,23 @@ var fr = map[string]string{
 	"All examples":          "Tous les exemples",
 	"Try it again":          "Recommencer",
 	"ask-form examples":     "Exemples ask-form",
+
+	// What only a printed page shows (pages.html, internal/form/condtext.go).
+	"required":             "obligatoire",
+	"Only if %s":           "Seulement si %s",
+	" and ":                " et ",
+	" or ":                 " ou ",
+	"not %s":               "non %s",
+	"“%s” is answered":     "« %s » a une réponse",
+	"“%s” is left blank":   "« %s » est sans réponse",
+	"“%s” is ticked":       "« %s » est coché",
+	"“%s” is not ticked":   "« %s » n'est pas coché",
+	"“%s” is %s":           "« %s » vaut %s",
+	"“%s” is not %s":       "« %s » ne vaut pas %s",
+	"“%s” includes %s":     "« %s » comprend %s",
+	"“%s” contains “%s”":   "« %s » contient « %s »",
+	"“%s” is more than %s": "« %s » est supérieur à %s",
+	"“%s” is at least %s":  "« %s » vaut au moins %s",
+	"“%s” is less than %s": "« %s » est inférieur à %s",
+	"“%s” is at most %s":   "« %s » vaut au plus %s",
 }
