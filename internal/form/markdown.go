@@ -88,16 +88,19 @@ func MarkdownHTML(src string) template.HTML {
 			i--
 			b.WriteString("</" + tag + ">")
 		case strings.Contains(trim, "|") && i+1 < len(lines) && tableSep.MatchString(lines[i+1]):
+			// Each cell's content sits in a .cell box: app.css caps a column's
+			// width there (a td ignores max-width), so a wide table scrolls
+			// sideways instead of squeezing every column.
 			flush()
 			b.WriteString(`<div class="table"><table><thead><tr>`)
 			for _, c := range cells(trim) {
-				b.WriteString("<th>" + inline(c) + "</th>")
+				b.WriteString(`<th><div class="cell">` + inline(c) + "</div></th>")
 			}
 			b.WriteString("</tr></thead><tbody>")
 			for i += 2; i < len(lines) && strings.Contains(lines[i], "|") && strings.TrimSpace(lines[i]) != ""; i++ {
 				b.WriteString("<tr>")
 				for _, c := range cells(strings.TrimSpace(lines[i])) {
-					b.WriteString("<td>" + inline(c) + "</td>")
+					b.WriteString(`<td><div class="cell">` + inline(c) + "</div></td>")
 				}
 				b.WriteString("</tr>")
 			}

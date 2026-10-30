@@ -182,7 +182,7 @@ func TestMarkdownEscapes(t *testing.T) {
 		}
 	}
 	table := string(MarkdownHTML("| a | b |\n|---|---|\n| 1 | 2 |"))
-	if !strings.Contains(table, "<th>a</th>") || !strings.Contains(table, "<td>2</td>") {
+	if !strings.Contains(table, `<th><div class="cell">a</div></th>`) || !strings.Contains(table, `<td><div class="cell">2</div></td>`) {
 		t.Errorf("table: %s", table)
 	}
 }

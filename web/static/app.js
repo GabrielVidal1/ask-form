@@ -2,7 +2,8 @@
 // this adds group paging (on a phone; a desktop shows every group and tracks
 // them in the section list), "Other…" niceties, a local draft, the server's
 // checks then a confirm step, a fullscreen viewer for pictures and mockups,
-// auto-sized html blocks, and the touches a print needs (app.css draws it).
+// auto-sized html blocks, a fade on a wide table's edges, and the touches a
+// print needs (app.css draws it).
 (function () {
   "use strict";
   var root = document.documentElement;
@@ -86,6 +87,20 @@
     setTimeout(function () {
       $all("img[loading=lazy], iframe[loading=lazy]").forEach(function (el) { el.loading = "eager"; });
     }, 1500);
+  });
+
+  // A table wider than its column scrolls sideways; a fade on the side with
+  // more of it says so (a phone shows no scrollbar until you scroll).
+  $all(".md .table").forEach(function (box) {
+    function edges() {
+      var more = box.scrollWidth - box.clientWidth - box.scrollLeft;
+      box.classList.toggle("fade-l", box.scrollLeft > 1);
+      box.classList.toggle("fade-r", more > 1);
+    }
+    box.addEventListener("scroll", edges, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(edges).observe(box);
+    else window.addEventListener("resize", edges);
+    edges();
   });
 
   var form = document.getElementById("form");
