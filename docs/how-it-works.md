@@ -63,8 +63,9 @@ English there. The examples are at `/examples` and `/fr/examples`.
 
 Printing an answer page (or saving it as a PDF) gives the whole form on paper,
 blank or half answered: every section one after the other with its title as a
-heading, light whatever the screen's theme, without the buttons. A question
-never splits across two pages. What can't be clicked on paper is drawn to be
+heading, light whatever the screen's theme, without the buttons. No question
+or block (a diff, a mockup) splits across two pages unless it is taller than
+one. What can't be clicked on paper is drawn to be
 filled by hand: a dropdown lists its options with a circle each, a slider its
 values to circle (a line to mark past 11 of them), a list three empty rows,
 long answers a taller box, and "Other…" its line. A question shown only after

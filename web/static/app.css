@@ -347,9 +347,8 @@ html:not(.js) .widget-frame { display: none; }
   .form .field[hidden], .form .group.group-empty { display: block !important; }
   .print-if[hidden] { display: block !important; margin: 0 0 4px; font-size: 12.5px; font-style: italic; color: hsl(var(--muted-foreground)); }
 
-  /* A question stays on one page; a long block may run onto the next. */
+  /* A question or a block stays on one page (unless it's taller than one). */
   .field { margin-bottom: 20px; break-inside: avoid; }
-  .field.is-display { break-inside: auto; }
   .group-title, .block-label, .label, legend.label, .check, .print-if { break-after: avoid; }
   .card, .list-row, .choice, .diff span { break-inside: avoid; }
 
