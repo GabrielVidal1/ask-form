@@ -363,6 +363,7 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err == nil {
+		st = s.snapshot(st) // a no-op while the form is open (a multi form's answer)
 		switch {
 		case st.Multi:
 			// Each response is an event; the one that fills the form closes it.

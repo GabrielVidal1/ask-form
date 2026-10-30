@@ -38,6 +38,9 @@ type Config struct {
 	// Lang is the language of a form created without one (internal/i18n;
 	// "" = English).
 	Lang string
+	// NoSnapshots: keep no page of the forms that close (snapshot.go;
+	// `serve --no-snapshots`). The ones already taken stay readable.
+	NoSnapshots bool
 }
 
 // RelayLink is the machine's connection to a relay (internal/tunnel).

@@ -80,6 +80,19 @@ too. Images and fonts next to the file work as `url(./logo.png)`: they are
 inlined when you set it, since the page loads nothing from other sites.
 `--primary` and `--font` win over the same thing in the file.
 
+## Snapshots
+
+When a form closes (answered, declined, withdrawn, expired), `serve` keeps a
+snapshot of it: one self-contained HTML page of the form as it was asked, read-only,
+with the answers in it, its look, pictures and mockups inlined. It opens
+offline in any browser, years later, whatever ask-form has become since.
+Secrets stay out (only their length), uploaded pictures come as thumbnails.
+They live in `~/.local/share/ask-form/snapshots/` and are served on the
+loopback admin API (`GET /v1/forms/<id>/snapshot`), never on the form's link.
+
+`ask-form setup --no-snapshots` (or `ASK_FORM_SNAPSHOTS=off`) turns them off
+for the machine, and `create --no-snapshot` for one form.
+
 ## Events
 
 `ask-form setup --events-url https://…` makes `serve` POST every form event

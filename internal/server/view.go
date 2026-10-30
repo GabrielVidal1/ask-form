@@ -39,6 +39,13 @@ type pageField struct {
 	Scale           []int // rating: the numbers on offer
 	RangeStart      string
 	RangeEnd        string
+	// A snapshot's (snapshot.go): read-only, everything inlined.
+	Snap         bool
+	FrameDoc     string         // html block: its document, for srcdoc
+	OptionDocs   []string       // per option: its mockup document, "" when none
+	OptionImages []template.URL // per option: its picture as a data: URI
+	SecretChars  string         // a secret given: its length
+	Files        []snapFile     // file field: what was uploaded
 }
 
 // listCol is one input of a list row: the list's single text, or one column of
