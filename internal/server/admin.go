@@ -27,6 +27,7 @@ import (
 //	POST /v1/forms/{id}/revoke
 //	POST /v1/forms/{id}/close      a multi form stops taking answers
 //	POST /v1/forms/{id}/secret     {"key", "forget"} → the value
+//	GET  /v1/forms/{id}/snapshot   the form as it closed, one HTML page (snapshot.go)
 //	GET  /v1/health
 //	POST /v1/restart               re-exec `serve` (after an upgrade)
 
@@ -55,13 +56,16 @@ type FormJSON struct {
 	Responses   []store.Response  `json:"responses,omitempty"`
 	Fields      []form.Field      `json:"fields,omitempty"`
 	Meta        map[string]string `json:"meta,omitempty"`
-	Warning     string            `json:"warning,omitempty"`
+	// Snapshot: GET /v1/forms/{id}/snapshot has a page of it as it closed.
+	Snapshot bool   `json:"snapshot,omitempty"`
+	Warning  string `json:"warning,omitempty"`
 }
 
 func toJSON(st store.State, withFields, withResponses bool) FormJSON {
 	j := FormJSON{
 		ID: st.ID, Title: st.Title, Description: st.Description, Status: st.Status, CreatedAt: st.CreatedAt,
 		ExpiresAt: st.ExpiresAt, ClosedAt: st.ClosedAt, Answers: st.Answers, Meta: st.Meta, Lang: st.Lang,
+		Snapshot: st.Snapshot,
 	}
 	if st.Multi {
 		n := len(st.Responses)
@@ -91,6 +95,8 @@ type createReq struct {
 	Public bool `json:"public"`
 	// Lang: the language of the form's pages; "" = the machine's (Config.Lang).
 	Lang string `json:"lang"`
+	// NoSnapshot: keep no page of it once it closes.
+	NoSnapshot bool `json:"noSnapshot"`
 }
 
 type assetReq struct {
@@ -108,6 +114,7 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("POST /v1/forms/{id}/revoke", s.adminRevoke)
 	mux.HandleFunc("POST /v1/forms/{id}/close", s.adminClose)
 	mux.HandleFunc("POST /v1/forms/{id}/secret", s.adminSecret)
+	mux.HandleFunc("GET /v1/forms/{id}/snapshot", s.adminSnapshot)
 	mux.HandleFunc("POST /v1/restart", s.adminRestart)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Loopback only, and never a browser: a page could otherwise reach it
@@ -211,6 +218,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name, Title: req.Title, Description: req.Description,
 		Fields: fields, TTL: ttl, Assets: assets, Meta: req.Meta,
 		Multi: req.Multi, MaxAnswers: req.MaxAnswers, HideCount: req.HideCount, Lang: lang,
+		NoSnapshot: req.NoSnapshot,
 	}
 	if s.Relay != nil {
 		params.Claim = s.Relay.Claim
@@ -346,7 +354,7 @@ func (s *Server) closeWith(w http.ResponseWriter, id, typ string) {
 	case err != nil:
 		apiError(w, http.StatusInternalServerError, err.Error())
 	default:
-		j := toJSON(st, false, true)
+		j := toJSON(s.snapshot(st), false, true)
 		s.notify(st.Status, j)
 		apiJSON(w, http.StatusOK, j)
 	}

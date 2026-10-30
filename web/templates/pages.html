@@ -89,9 +89,9 @@
 
 {{define "zoom-icon"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>{{end}}
 
-{{define "other"}}<div class="other">
+{{define "other"}}{{if or (not .Snap) .OtherPicked}}<div class="other">
   <input type="text" name="{{.OtherName}}" value="{{.OtherText}}" maxlength="2000" placeholder="{{t "Please specify…"}}" aria-label="{{t "Other — please specify"}}" data-other-for="{{.Name}}">
-</div>{{end}}
+</div>{{end}}{{end}}
 
 {{define "field"}}
 <div class="field t-{{.Type}}{{if .Error}} has-error{{end}}{{if .Visual}} visual-field{{end}}{{if .Display}} is-display{{end}}" id="{{.DOMID}}" data-key="{{.Key}}" data-type="{{.Type}}"{{if .Required}} data-required{{end}}{{with .ShowIfJSON}} data-show-if="{{.}}"{{end}}{{with .RequiredIfJSON}} data-required-if="{{.}}"{{end}}>
@@ -100,8 +100,9 @@
   <div class="md">{{md .Text}}</div>
 {{else if eq .Type "html"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
-  <iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
-  <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">{{t "Open full size ⤢"}}</a>
+  {{if .Snap}}<iframe class="frame{{if not .Height}} autosize{{end}}" srcdoc="{{.FrameDoc}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" referrerpolicy="no-referrer"></iframe>
+  {{else}}<iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+  <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">{{t "Open full size ⤢"}}</a>{{end}}
 {{else if eq .Type "diff"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
   <div class="diff" tabindex="0" role="region" aria-label="{{or .Label (t "Diff")}}"><pre>{{diff .Text}}</pre></div>
@@ -113,6 +114,7 @@
 {{else if eq .Type "list"}}
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
+    {{if and .Snap (not .Rows)}}<p class="snap-empty">{{t "No answer"}}</p>{{else}}
     <div class="list" data-list{{if .Num.Max}} data-max="{{.Num.Max}}"{{end}}{{if .Num.Min}} data-min="{{.Num.Min}}"{{end}}>
     {{range $row := .Rows}}
       <div class="list-row" data-cols="{{len $.ListCols}}">
@@ -127,7 +129,7 @@
       {{end}}
       </div>
     {{end}}
-    </div>
+    </div>{{end}}
     {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
 {{else if eq .Type "rating"}}
@@ -148,6 +150,9 @@
     </div>
     {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
+{{else if and (eq .Type "widget") .Snap}}
+  <div class="label">{{template "label" .}}</div>
+  {{if .Value}}<pre class="snap-json">{{.Value}}</pre>{{else}}<p class="snap-empty">{{t "No answer"}}</p>{{end}}
 {{else if eq .Type "widget"}}
   <div class="label" id="{{.DOMID}}-lab">{{template "label" .}}</div>
   <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-widget data-schema="{{.Schema}}" disabled>
@@ -163,6 +168,9 @@
     <span>{{inline .Label}}</span>
   </label>
   {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
+{{else if and (eq .Type "file") .Snap}}
+  <div class="label">{{template "label" .}}</div>
+  {{if .Files}}<ul class="snap-files">{{range .Files}}<li>{{with .Thumb}}<img src="{{.}}" alt="">{{end}}<span>{{.Name}} <small>{{.Size}}</small></span></li>{{end}}</ul>{{else}}<p class="snap-empty">{{t "No files"}}</p>{{end}}
 {{else if eq .Type "file"}}
   <div class="label" id="{{.DOMID}}-label">{{template "label" .}}</div>
   <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-refs>
@@ -185,7 +193,10 @@
       <div class="cards{{if .FitContent}} fit-content{{end}}">
       {{range $i, $o := .Options}}
         <label class="card{{if not $o.Visual}} plain{{end}}">
-          {{if $o.Image}}
+          {{if $.Snap}}
+            {{if $o.Image}}<span class="visual">{{with index $.OptionImages $i}}<img src="{{.}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}">{{end}}</span>
+            {{else if $o.HTML}}<span class="visual mock"><iframe srcdoc="{{index $.OptionDocs $i}}" sandbox="allow-scripts" tabindex="-1" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span></span>{{end}}
+          {{else if $o.Image}}
             <span class="visual"><img src="{{$o.Image}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}" loading="lazy" data-zoom="{{$o.Image}}" data-zoom-label="{{$o.Label}}"><a class="zoom" href="{{$o.Image}}" target="_blank" rel="noopener noreferrer" aria-label="{{t "Open full size"}}" title="{{t "Open full size"}}">{{template "zoom-icon"}}</a></span>
           {{else if $o.HTML}}
             <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="{{t "Open full size"}}" title="{{t "Open full size"}}" data-zoom-frame data-zoom-label="{{$o.Label}}">{{template "zoom-icon"}}</a></span>
@@ -248,6 +259,8 @@
     <input id="{{.DOMID}}-in" type="time" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
   {{else if eq .Type "datetime"}}
     <input id="{{.DOMID}}-in" type="datetime-local" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>
+  {{else if and (eq .Type "secret") .Snap}}
+    <p class="snap-secret">{{if .SecretChars}}{{t "🔒 A secret was given (%s characters). Its value is never kept here." .SecretChars}}{{else}}{{t "No answer"}}{{end}}</p>
   {{else if eq .Type "secret"}}
     <div class="secret">
       <input id="{{.DOMID}}-in" type="password" name="{{.Name}}" value="" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"{{if .Required}} required{{end}}>
@@ -260,6 +273,61 @@
 {{end}}
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 </div>
+{{end}}
+
+{{define "snapshot"}}<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{.CSP}}">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="ask-form {{.Version}}">
+<title>{{.Title}}{{with .Brand.Name}} · {{.}}{{end}}</title>
+<link rel="icon" href="data:,">
+<style>{{.Styles}}</style>
+<script>{{.Script}}</script>
+</head>
+<body>
+<aside class="snap-banner"><div class="snap-banner-in">
+  <p><strong>{{t "Snapshot"}}</strong> · {{.Banner}}</p>
+  <p class="snap-id">{{.ID}}</p>
+</div></aside>
+<main class="wrap snapshot" data-snapshot="{{.ID}}">
+  <header class="top">
+    {{template "brand" .}}
+    <h1>{{.Title}}</h1>
+    {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
+  </header>
+  <div class="page">
+  <div class="form">
+    <fieldset class="snap-fields" disabled>
+    {{range .Groups}}
+    <section class="group">
+      {{if .Title}}<h2 class="group-title">{{.Title}}</h2>{{end}}
+      {{range .Fields}}{{template "field" .}}{{end}}
+    </section>
+    {{end}}
+    {{with .CatchAll}}<div class="catchall">{{template "field" .}}</div>{{end}}
+    </fieldset>
+  </div>
+  {{if .Multi}}
+  <section class="snap-responses">
+    <h2 class="group-title">{{if .Responses}}{{tn (len .Responses) "%d answer" "%d answers"}}{{else}}{{t "No answers"}}{{end}}</h2>
+    {{range .Responses}}
+    <article class="snap-response">
+      <h3>{{t "Answer %d" .N}} · <time>{{.When}}</time></h3>
+      {{if .Recap}}<dl class="recap">{{range .Recap}}<dt>{{.Label}}</dt><dd>{{.Text}}</dd>{{end}}</dl>{{else}}<p class="snap-empty">{{t "Nothing filled in"}}</p>{{end}}
+    </article>
+    {{end}}
+  </section>
+  {{end}}
+  </div>
+</main>
+</body>
+</html>
 {{end}}
 
 {{define "closed"}}{{template "head" .}}

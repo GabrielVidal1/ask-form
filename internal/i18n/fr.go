@@ -87,6 +87,24 @@ var fr = map[string]string{
 	"This form expired — no answer needed any more.":               "Ce formulaire a expiré : plus besoin de répondre.",
 	"This form expired on %s — no answer needed any more.":         "Ce formulaire a expiré le %s : plus besoin de répondre.",
 
+	// Snapshots (internal/server/snapshot.go): the page kept of a closed form.
+	"Snapshot":                        "Instantané",
+	"Answered on %s":                  "Répondu le %s",
+	"Declined on %s — no answers":     "Décliné le %s : aucune réponse",
+	"Withdrawn on %s — no answers":    "Retiré le %s : aucune réponse",
+	"Expired on %s without an answer": "Expiré le %s sans réponse",
+	"Closed on %s":                    "Fermé le %s",
+	"Expired on %s":                   "Expiré le %s",
+	"Withdrawn on %s":                 "Retiré le %s",
+	"No answer":                       "Pas de réponse",
+	"No answers":                      "Aucune réponse",
+	"No files":                        "Aucun fichier",
+	"%d answer":                       "%d réponse",
+	"%d answers":                      "%d réponses",
+	"Answer %d":                       "Réponse %d",
+	"Nothing filled in":               "Rien de rempli",
+	"🔒 A secret was given (%s characters). Its value is never kept here.": "🔒 Un secret a été donné (%s caractères). Sa valeur n'est jamais gardée ici.",
+
 	// Messages after a send that went wrong.
 	"Can't read that":               "Illisible",
 	"Too long":                      "Trop long",
