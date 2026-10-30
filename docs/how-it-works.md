@@ -9,7 +9,8 @@
 
 - **`ask-form serve`** runs once per machine. It keeps the forms on disk:
   `forms/<id>.json` is written once and never changed; `responses/<id>.jsonl`
-  is append-only. It serves the answer pages and a loopback admin API, which
+  is append-only; `snapshots/<id>.html` is the form as it closed
+  ([snapshots](#snapshots)). It serves the answer pages and a loopback admin API, which
   the client commands reach with their own admin secret (never a form token).
 - **`ask-form-relay`** is the public face. It serves a landing page at `/`
   and forwards `/f/*` to the machine that created each form. Machines dial
@@ -88,6 +89,44 @@ should treat the stream as a hint and reconcile with `ask-form list` /
 is the first receiver: it mirrors the forms, pushes the link to the phone
 and lists open forms.
 
+## Snapshots
+
+A form that stops taking answers (submitted, declined, revoked, expired, or a
+multi form closed) gets a snapshot: one HTML page written to
+`<data>/snapshots/<id>.html` once and kept forever, like the form itself.
+It is the answer page drawn read-only: every question as the respondent saw
+it (the ones a condition hid from them left out), with the answers filled
+in. A declined, withdrawn or expired form shows its questions empty. A multi
+form shows its questions once, then each answer as a numbered, dated recap.
+A line on top says how and when the form ended.
+
+The page needs nothing else to open, now or in ten years: the stylesheets of
+the version that wrote it, the machine's brand, the form's pictures and its
+mockups and html blocks (as `srcdoc` frames) are all inside. Its own CSP
+(in a `<meta>`, since the file travels without headers) loads nothing and
+runs only two hash-pinned scripts: the one that sizes the frames and the
+frames' own beacon. Secrets never go in it, only their length. A widget
+shows the JSON it returned. An uploaded picture comes as a thumbnail (480 px
+at most, scaled down when the file is a JPEG, PNG or GIF, inlined as it is
+under 256 KB for WebP, AVIF and SVG), any other file as its name and size.
+Uploads go 7 days after the submit, so the snapshot is where the pictures stay.
+
+`serve` writes the snapshot as the form closes, before the event goes out,
+so `submitted`, `declined`, `revoked` and `closed` events carry
+`"snapshot": true`. Once a minute (and at start, which backfills every form
+that closed before this version) it writes the missing ones: expiries,
+forms closed while snapshots were off. Each form is tried once per run.
+
+The admin API serves a snapshot at `GET /v1/forms/<id>/snapshot` (404 while
+the form is open or when there is none), with the page's CSP plus `sandbox
+allow-scripts` as a header. The form's link never shows it: the respondent
+still sees the thanks page.
+
+Turning them off: `serve --no-snapshots` or `ASK_FORM_SNAPSHOTS=off` (`ask-form
+setup --no-snapshots` writes it to `serve.env`; `--snapshots` turns them back
+on) for the machine, `create --no-snapshot` for one form. The snapshots
+already taken stay readable.
+
 ## Upgrades
 
 Releases are GitHub releases: one binary per platform and a
@@ -154,6 +193,9 @@ Each release also carries a build provenance attestation:
   - a honeypot field;
   - a CSRF MAC plus `Sec-Fetch-Site`/`Origin` checks.
   Everything is escaped by `html/template` or by the markdown renderer.
+- **Snapshots** live on the machine only (0600), in the admin API, never on
+  the relay or behind a form link. They hold no secret, only its length, and
+  load nothing: a strict CSP of their own, frames sandboxed, two pinned scripts.
 - **Secrets**: `secret` fields stay out of the answers. They're written with
   `ask-form secret … --env` and purged 24 h after the submit.
 - **Uploads** (`file` fields, see [uploads](uploads.md)): chunked through the

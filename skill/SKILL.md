@@ -17,7 +17,7 @@ link, they answer in a browser, you read the answers as JSON.
 #    It returns at once. Show the user the "url": it holds the form's token,
 #    so don't log it anywhere else.
 ask-form create --title "Project setup" --description "Two choices before I scaffold." \
-  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public] [--open] [--lang fr]
+  --fields-file /tmp/spec.json [--asset shot.png]… [--ttl 24h] [--public] [--open] [--lang fr] [--no-snapshot]
 
 # 2. Wait for the answer IN THE BACKGROUND (a background shell task, or under a
 #    monitor). You are re-invoked when it exits; keep working meanwhile.
@@ -44,6 +44,12 @@ page, the "Other…" choice and the "Anything else?" box. Keep the two the
 same: questions in French go with `--lang fr`. Without the flag, the form
 takes the machine's default (`ask-form setup --lang fr` sets it), else
 English. The answers JSON is the same in every language.
+
+Once a form closes, the machine keeps a **snapshot** of it: one read-only page
+of the form with its answers (`"snapshot": true` in `get`). Secrets never go
+in it, but every other answer does: pass `--no-snapshot` on a form whose
+answers shouldn't be kept as a page (personal data, a one-off you'd rather
+not archive).
 
 ## Many people, one form
 

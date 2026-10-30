@@ -26,7 +26,9 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   hub's feed; `Server.Events`, `AnnounceExpiries`), `internal/brand` (the
   machine's look, `ask-form brand`: `<config>/brand.json`, re-read when it
   changes; `Server.Brand`; `brand preview` serves the examples with it via
-  `server.PreviewHandler`).
+  `server.PreviewHandler`). `internal/server/snapshot.go`: the page kept of
+  each form that closes (`<data>/snapshots/<id>.html`, `store/snapshots.go`),
+  written at close and by `SnapshotSweep`, read at `GET /v1/forms/{id}/snapshot`.
 - `web/` (templates, CSS, JS, embedded), `landing/` (the relay's `/` and
   `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
   `install.sh`
@@ -55,6 +57,12 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `script-src 'unsafe-inline'`, still no network); don't widen it, and keep
   `widget.js` accepting messages only from the field's own iframe.
 - `/forms/` is the old prefix: it must keep answering (links already sent).
+- A snapshot is the `field` template again with `.Snap` set (the `snapshot`
+  page in `pages.html`): frames get `srcdoc` instead of `src`, pictures data:
+  URIs, secrets a length, files a list. A new field type needs its snapshot
+  look too (and `answerValues`, which turns an answer back into input
+  values), or it shows empty there. The page inlines app.css as this binary
+  has it and runs no app.js: it must read right without it.
 - Languages (`internal/i18n`): what a respondent reads is English (the
   catalogue keys) or French (`fr.go`); a form's `lang` is fixed at create
   (`create --lang`, else serve's `--lang`/`ASK_FORM_LANG`, else en) and the
