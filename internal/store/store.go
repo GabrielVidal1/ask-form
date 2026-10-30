@@ -6,6 +6,7 @@
 //	<dir>/secrets/<id>.json     a submitted form's secret values, purged after SecretTTL
 //	<dir>/assets/<id>/<file>    images the spec references as {{asset:<file>}}
 //	<dir>/uploads/<id>/…        files respondents upload (uploads.go)
+//	<dir>/snapshots/<id>.html   the form as it closed (snapshots.go)
 //
 // The first terminal event closes a form for good: a form takes one answer,
 // unless it was made `Multi`, which takes one `answered` event per respondent
@@ -94,6 +95,8 @@ type Form struct {
 	HideCount bool `json:"hideCount,omitempty"`
 	// Lang is the language of its pages (internal/i18n); "" = English.
 	Lang string `json:"lang,omitempty"`
+	// NoSnapshot: no page is kept of it once it closes (`create --no-snapshot`).
+	NoSnapshot bool `json:"noSnapshot,omitempty"`
 }
 
 // Limit is how many answers the form takes: 1, or a multi form's cap.
@@ -122,6 +125,8 @@ type State struct {
 	Answers  map[string]any `json:"answers,omitempty"`
 	// Responses: a multi form's answers so far, oldest first.
 	Responses []Response `json:"responses,omitempty"`
+	// Snapshot: a page of it as it closed is stored (snapshots.go).
+	Snapshot bool `json:"snapshot,omitempty"`
 }
 
 // Response is one respondent's answers to a multi form; N counts from 1.
@@ -136,6 +141,7 @@ type entry struct {
 	event     *Event        // the terminal event, nil while open
 	done      chan struct{} // closed with the terminal event
 	responses []Response    // a multi form's answers
+	snapshot  bool          // its snapshot is on disk
 }
 
 func newEntry(f Form) *entry {
@@ -143,7 +149,7 @@ func newEntry(f Form) *entry {
 }
 
 func (e *entry) state(now time.Time) State {
-	s := State{Form: e.form, Status: Pending, Responses: e.responses}
+	s := State{Form: e.form, Status: Pending, Responses: e.responses, Snapshot: e.snapshot}
 	switch {
 	case e.event != nil:
 		at := e.event.At
@@ -169,7 +175,7 @@ type Store struct {
 
 // Open loads (or creates) a store directory.
 func Open(dir string) (*Store, error) {
-	for _, sub := range []string{"forms", "responses", "secrets", "assets"} {
+	for _, sub := range []string{"forms", "responses", "secrets", "assets", "snapshots"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
 			return nil, err
 		}
@@ -188,6 +194,9 @@ func Open(dir string) (*Store, error) {
 		e := newEntry(f)
 		ev, responses := readEvents(filepath.Join(dir, "responses", f.ID+".jsonl"), f.Multi)
 		e.responses = responses
+		if _, err := os.Stat(filepath.Join(dir, "snapshots", f.ID+".html")); err == nil {
+			e.snapshot = true
+		}
 		if ev != nil {
 			e.event = ev
 			close(e.done)
@@ -257,6 +266,7 @@ type CreateParams struct {
 	MaxAnswers  int
 	HideCount   bool
 	Lang        string
+	NoSnapshot  bool
 	// Claim, when set, reserves an id beyond this store (the relay, which
 	// routes a name to one machine); ErrTaken moves on to the next suffix.
 	Claim func(ctx context.Context, id string) error
@@ -322,6 +332,7 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (State, string, erro
 		Title: title, Description: strings.TrimSpace(p.Description), Fields: p.Fields,
 		Assets: assets, TokenHash: hash, CreatedAt: now, ExpiresAt: now.Add(p.TTL), Meta: p.Meta,
 		Multi: p.Multi, MaxAnswers: p.MaxAnswers, HideCount: p.HideCount, Lang: p.Lang,
+		NoSnapshot: p.NoSnapshot,
 	}
 	// `<kebab>_<hash>`: the random suffix keeps names unique across machines
 	// sharing one relay; a clash (local or claimed elsewhere) draws again.
