@@ -46,8 +46,9 @@ const usage = `ask-form — ask a human questions through a private web form
 
 Setup (once per machine):
   ask-form setup [--relay URL | --local] [--no-service] [--no-skill] [--lang en|fr]
+                 [--no-snapshots | --snapshots]
   ask-form serve [--relay URL] [--public-url URL] [--data DIR] [--auto-upgrade minor|all|notify|off]
-                 [--events-url URL] [--lang en|fr]
+                 [--events-url URL] [--lang en|fr] [--no-snapshots]
   ask-form upgrade [--check] [--version vX.Y.Z] [--force]
   ask-form skill install | print [--body] | refresh
   ask-form uninstall [--purge]
@@ -64,6 +65,7 @@ Client (JSON on stdout):
                   [--open]             also open the url in this desktop's browser
                   [--multi [--max N] [--hide-count]]   one link, any number of answers (a team vote…)
                   [--lang en|fr]       the language of the page around your questions (default: the machine's, else en)
+                  [--no-snapshot]      keep no page of this form once it closes (a sensitive one)
   ask-form wait <id> [--timeout 30m]   exit 0 submitted · 3 declined/revoked/expired · 4 timeout
                                        (a multi form: at its close, with every answer)
   ask-form get <id> [--fields]
@@ -75,7 +77,7 @@ Client (JSON on stdout):
 
 Environment: ASK_FORM_ADMIN_URL (default http://127.0.0.1:7461), ASK_FORM_ADMIN_TOKEN
 (default: the admin-token file 'serve' writes), ASK_FORM_NOTIFY_CMD, ASK_FORM_PUBLIC_URL, ASK_FORM_EVENTS_URL,
-ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE, ASK_FORM_LANG.
+ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE, ASK_FORM_LANG, ASK_FORM_SNAPSHOTS (off: none).
 `
 
 const (
@@ -217,6 +219,7 @@ func cmdServe(args []string) int {
 	autoMode := fs.String("auto-upgrade", envOr("ASK_FORM_AUTO_UPGRADE", defaultAutoUpgrade), "install new releases by itself: minor (minor+patch), all (majors too), notify (only report), off")
 	eventsURL := fs.String("events-url", os.Getenv("ASK_FORM_EVENTS_URL"), "POST every form event (created, submitted, …) to this URL (empty: off)")
 	langFlag := fs.String("lang", os.Getenv("ASK_FORM_LANG"), "language of the pages of a form created without --lang: "+strings.Join(i18n.Langs, ", ")+" (empty: en)")
+	noSnapshots := fs.Bool("no-snapshots", snapshotsOff(os.Getenv("ASK_FORM_SNAPSHOTS")), "keep no page of the forms that close (default: one per form, in <data>/snapshots/)")
 	fs.Parse(args)
 	if !validAutoMode(*autoMode) {
 		log.Fatalf("--auto-upgrade %q: use minor, all, notify or off", *autoMode)
@@ -254,7 +257,7 @@ func cmdServe(args []string) int {
 	}
 	srv := server.New(server.Config{
 		PublicURL: *publicURL, DefaultURL: defaultURL, LocalURL: localURL, ClientIPHeader: *ipHeader, AdminToken: adminToken, Key: []byte(keyStr),
-		Lang: lang,
+		Lang: lang, NoSnapshots: *noSnapshots,
 	}, st)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -283,6 +286,9 @@ func cmdServe(args []string) int {
 		go events.Run(work)
 		go srv.AnnounceExpiries(work, time.Minute)
 	}
+	// A page of each form as it closed: the ones no close wrote (the backfill
+	// at start, the forms that expire), every minute.
+	go srv.SnapshotSweep(work, time.Minute)
 	auto := &autoUpgrader{mode: *autoMode, restart: restart}
 	srv.UpdateStatus = auto.status
 	go auto.run(work)
@@ -322,8 +328,8 @@ func cmdServe(args []string) int {
 			st.PurgeUploads()
 		}
 	}()
-	log.Printf("ask-form %s serving: admin http://%s, pages %s, public %s, data %s, auto-upgrade %s, events %s",
-		server.Version, *admin, orNone(*listen), orRelay(*publicURL, defaultURL), *data, *autoMode, orOff(*eventsURL))
+	log.Printf("ask-form %s serving: admin http://%s, pages %s, public %s, data %s, auto-upgrade %s, events %s, snapshots %s",
+		server.Version, *admin, orNone(*listen), orRelay(*publicURL, defaultURL), *data, *autoMode, orOff(*eventsURL), onOff(!*noSnapshots))
 	restarting := false
 	select {
 	case err := <-errc:
@@ -349,6 +355,22 @@ func cmdServe(args []string) int {
 		}
 	}
 	return exitOK
+}
+
+func onOff(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
+// snapshotsOff reads ASK_FORM_SNAPSHOTS: off, 0, false or no turn them off.
+func snapshotsOff(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "off", "0", "false", "no":
+		return true
+	}
+	return false
 }
 
 func orOff(s string) string {
@@ -497,6 +519,7 @@ func cmdCreate(args []string) int {
 	public := fs.Bool("public", false, "make url the link that works from any device (default for one person: this machine's own)")
 	open := fs.Bool("open", false, "also open the url in this desktop's default browser (nothing over SSH or without a display)")
 	langFlag := fs.String("lang", "", "language of the page around the questions — write them in it: "+strings.Join(i18n.Langs, ", ")+" (default: the machine's, else en)")
+	noSnapshot := fs.Bool("no-snapshot", false, "keep no page of this form once it closes (a sensitive one); its answers stay readable with get")
 	var assets, meta multi
 	fs.Var(&assets, "asset", "image referenced as {{asset:<basename>}} (repeatable)")
 	fs.Var(&meta, "meta", "k=v label kept with the form (repeatable)")
@@ -535,6 +558,9 @@ func cmdCreate(args []string) int {
 	}
 	if *public {
 		body["public"] = true
+	}
+	if *noSnapshot {
+		body["noSnapshot"] = true
 	}
 	lang, err := i18n.Parse(*langFlag)
 	if err != nil {

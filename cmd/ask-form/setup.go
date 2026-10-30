@@ -77,6 +77,7 @@ type setupReport struct {
 	Service   string   `json:"service"`
 	Skill     string   `json:"skill"`
 	Lang      string   `json:"lang,omitempty"`
+	Snapshots string   `json:"snapshots"` // on | off
 	Status    any      `json:"status,omitempty"`
 	Warnings  []string `json:"warnings,omitempty"`
 }
@@ -86,6 +87,8 @@ func cmdSetup(args []string) int {
 	relayURL := fs.String("relay", envOr("ASK_FORM_SETUP_RELAY", defaultRelay), "relay to connect this machine to")
 	eventsURL := fs.String("events-url", "", "POST every form event to this URL (serve's --events-url; \"-\" clears it)")
 	langFlag := fs.String("lang", "", "language of this machine's forms by default: "+strings.Join(i18n.Langs, ", ")+" (serve's --lang; \"-\" clears it: en)")
+	noSnapshots := fs.Bool("no-snapshots", false, "keep no page of the forms that close (serve's --no-snapshots)")
+	snapshots := fs.Bool("snapshots", false, "keep one again (undoes --no-snapshots)")
 	local := fs.Bool("local", false, "no relay: forms are answered at http://"+localListen+" (this machine only)")
 	token := fs.String("token", "", "machine token for the relay (default: register this machine, or keep the saved one)")
 	name := fs.String("name", "", "machine name hint for the relay (default: the hostname)")
@@ -130,6 +133,21 @@ func cmdSetup(args []string) int {
 		}
 	}
 	rep.Lang = i18n.Of(lang)
+	// Snapshots of the forms that close: kept across setups unless given.
+	switch {
+	case *noSnapshots && *snapshots:
+		return fail(exitUsage, "--snapshots or --no-snapshots, not both")
+	case *noSnapshots || *snapshots:
+		v := ""
+		if *noSnapshots {
+			v = "off"
+		}
+		if err := setEnv(envFile, "ASK_FORM_SNAPSHOTS", v); err != nil {
+			return fail(exitErr, "%s: %v", envFile, err)
+		}
+		os.Setenv("ASK_FORM_SNAPSHOTS", v)
+	}
+	rep.Snapshots = onOff(!snapshotsOff(os.Getenv("ASK_FORM_SNAPSHOTS")))
 	if *local {
 		rep.Mode, rep.PublicURL = "local", "http://"+localListen
 		for k, v := range map[string]string{"ASK_FORM_RELAY": "", "ASK_FORM_PUBLIC_URL": rep.PublicURL, "ASK_FORM_LISTEN": localListen} {
