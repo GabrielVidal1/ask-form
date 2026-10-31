@@ -759,11 +759,12 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// ipLimiter is a fixed window per address.
+// ipLimiter is a fixed window per address (an IPv6 one's /64: limitKey).
 type ipLimiter struct {
 	mu     sync.Mutex
 	max    int
 	window time.Duration
+	swept  time.Time
 	hits   map[string]*struct {
 		start time.Time
 		n     int
@@ -778,10 +779,14 @@ func newIPLimiter(max int, window time.Duration) *ipLimiter {
 }
 
 func (l *ipLimiter) hit(ip string) bool {
+	ip = limitKey(ip)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	if len(l.hits) > 50000 {
+	// A big map is swept at most once a second: while its entries are all
+	// still in their window, sweeping on every hit would walk it each time.
+	if len(l.hits) > 50000 && now.Sub(l.swept) > time.Second {
+		l.swept = now
 		for k, v := range l.hits {
 			if now.Sub(v.start) > l.window {
 				delete(l.hits, k)
@@ -798,4 +803,15 @@ func (l *ipLimiter) hit(ip string) bool {
 	}
 	w.n++
 	return w.n <= l.max
+}
+
+// limitKey is what a limit counts: an IPv4 address, or an IPv6 address's
+// /64 — one subscriber gets a whole /64, so counting each address would give
+// one visitor (or one registration spree) billions of budgets.
+func limitKey(ip string) string {
+	a := net.ParseIP(ip)
+	if a == nil || a.To4() != nil {
+		return ip
+	}
+	return a.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }

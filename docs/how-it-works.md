@@ -34,8 +34,9 @@ A relay runs with `--register closed` (the default) or `--register open`.
   - sees only itself in the relay's health,
   - is forgotten after `--forget-after` without a poll (90 days),
   - can delete itself (`ask-form uninstall --purge`).
-  Registrations are capped per address per day (`--register-per-ip`, 5) and
-  in total (`--max-machines`, 1000). The machine API must then be reachable
+  Registrations are capped per address per day (`--register-per-ip`, 5; an
+  IPv6 address counts by its /64, as in every relay limit) and in total
+  (`--max-machines`, 1000). The machine API must then be reachable
   from the internet; `--machine-listen ""` serves it on the public port.
 
 Behind a Cloudflare-proxied domain, `--trust-cloudflare` takes the visitor
