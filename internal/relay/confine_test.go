@@ -154,3 +154,28 @@ func TestConfinementKeepsRealPages(t *testing.T) {
 		t.Fatalf("token visit keeps its form cookie: %d %v", res.StatusCode, res.Cookies())
 	}
 }
+
+// The examples count their submits by the visitor the relay sees, read from
+// its proxy headers as everywhere else (a header list, Cloudflare).
+func TestExamplesSeeTheVisitor(t *testing.T) {
+	seen := make(chan string, 1)
+	r, err := New(Config{
+		MachinesFile: filepath.Join(t.TempDir(), "m.json"), ClientIPHeader: "Cf-Connecting-Ip,X-Real-Ip",
+		Examples: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { seen <- req.RemoteAddr }),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := httptest.NewServer(r.Public())
+	defer pub.Close()
+	req, _ := http.NewRequest("GET", pub.URL+"/examples", nil)
+	req.Header.Set("X-Real-Ip", "203.0.113.7")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if got := <-seen; got != "203.0.113.7:0" {
+		t.Fatalf("examples saw %q", got)
+	}
+}

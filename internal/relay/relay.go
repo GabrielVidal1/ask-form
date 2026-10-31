@@ -388,10 +388,11 @@ func (r *Relay) Public() http.Handler {
 		})
 	}
 	if r.cfg.Examples != nil {
+		ex := r.withVisitor(r.cfg.Examples)
 		for _, lang := range i18n.Langs {
 			p := server.ExamplesPrefix(lang) // /examples, /fr/examples
-			mux.Handle(p, r.cfg.Examples)
-			mux.Handle(p+"/", r.cfg.Examples)
+			mux.Handle(p, ex)
+			mux.Handle(p+"/", ex)
 		}
 	}
 	mux.HandleFunc("/f/{id}", r.forward)
@@ -423,6 +424,18 @@ func (r *Relay) clientIP(req *http.Request) string {
 		}
 	}
 	return ip
+}
+
+// withVisitor hands h the visitor's address (clientIP) as the request's
+// peer, the way a machine gets it through the tunnel: the examples count
+// their submits by it, and this is the one place that reads the proxy's
+// headers.
+func (r *Relay) withVisitor(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req = req.WithContext(req.Context())
+		req.RemoteAddr = net.JoinHostPort(r.clientIP(req), "0")
+		h.ServeHTTP(w, req)
+	})
 }
 
 // peerIP is the address the proxy in front reports (ClientIPHeader), else

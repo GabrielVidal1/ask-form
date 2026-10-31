@@ -101,7 +101,9 @@ func serve(args []string, machines string) int {
 	r, err := relay.New(relay.Config{
 		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
 		Landing: landing.Page, LandingFR: landing.PageFR, LandingAssets: landing.Assets,
-		Examples: server.ExamplesHandler(exs, *ipHeader),
+		// The relay hands the examples the visitor's address itself (its
+		// header list, Cloudflare): no header for them to read.
+		Examples: server.ExamplesHandler(exs, ""),
 		Register: relay.Registration{
 			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,
 		},
