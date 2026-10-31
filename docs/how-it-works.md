@@ -189,6 +189,14 @@ Each release also carries a build provenance attestation:
   inlined as data: URIs when it is set, `@import` and remote `url()`s are
   refused up front, and so is `</` (it could close the `<style>`). 512 KB at
   most, all included.
+- **One origin, many machines**: every machine on a relay answers under the
+  same origin, and with open registration anyone runs one. So the relay
+  confines what a machine sends back: a policy of its own on top of the
+  machine's lets no script run but the relay's (`script-src 'self'`, no
+  workers, `nosniff`, and a machine's own script is refused), a frame is
+  sandboxed into an opaque origin whatever the machine says, and a cookie
+  passes only for the form's own `/f/<id>` path. A machine can't read
+  another form's draft or cookie, or install a service worker over `/f/`.
 - **html blocks and mockups** are separate sandboxed documents with their own
   CSP. Inline styles are allowed; scripts are not, except our hash-pinned
   sizing beacon.
