@@ -111,6 +111,7 @@ type Relay struct {
 	tokens   map[[32]byte]string // sha256(token) → name
 	entries  Machines
 	tokFi    os.FileInfo
+	tokRacy  bool // tokFi was read too soon after a change to trust (loadTokens)
 	general  *ipLimiter
 	regLimit *ipLimiter
 	uploads  *ipLimiter    // upload chunks per visitor
