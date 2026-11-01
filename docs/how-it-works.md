@@ -215,11 +215,13 @@ Each release also carries a build provenance attestation:
   load nothing: a strict CSP of their own, frames sandboxed, two pinned scripts.
 - **Secrets**: `secret` fields stay out of the answers. They're written with
   `ask-form secret … --env` and purged 24 h after the submit.
-- **Uploads** (`file` fields, see [uploads](uploads.md)): chunked through the
-  relay (1 MiB, paced per visitor), sniffed against `accept`, hashed, stored
-  0600 on the machine and never served back; not in a `--multi` form; 50 MB
-  and 20 files per form; purged when the form closes or expires, and 7 days
-  after a submit.
+- **Uploads** (`file` fields, see [uploads](uploads.md), and the files
+  attached to a textarea or an "Other…" answer: any type, 10 MB each, 5 per
+  box): chunked through the relay (1 MiB, paced per visitor), sniffed against
+  `accept`, hashed, stored 0600 on the machine and never served back; not in a
+  `--multi` form; 50 MB and 20 files per form; purged when the form closes or
+  expires (attachments of an "Other…" left unpicked go too), and 7 days after
+  a submit.
 - **Hardening**: timeouts on every listener. The admin API is loopback-only
   and refuses browser requests. The relay runs as a non-root static binary on
   `scratch`, read-only, with no capabilities.
