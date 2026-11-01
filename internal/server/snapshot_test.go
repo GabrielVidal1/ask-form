@@ -107,7 +107,7 @@ func TestSnapshotSubmitted(t *testing.T) {
 	page := string(b)
 	for _, want := range []string{
 		`<meta http-equiv="Content-Security-Policy"`, "Answered on", `value="Ada"`,
-		`value="Vite" checked`, `value="eslint" checked`, `value="biome"`, // biome: Other…
+		`value="Vite" checked`, `value="eslint" checked`, `>biome</textarea>`, // biome: Other…
 		`value="4" checked`, `value="30"`, `value="2026-11-02"`, `value="docs"`,
 		"14 characters", "srcdoc=", "data:image/png;base64,", "mockup b", `<fieldset class="snap-fields" disabled>`,
 	} {
@@ -257,6 +257,37 @@ func TestSnapshotFiles(t *testing.T) {
 		t.Fatalf("want one thumbnail, got %d", n)
 	}
 	for _, want := range []string{"photo.png", "notes.txt", "passwd"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("snapshot lacks %q", want)
+		}
+	}
+}
+
+// Attached files show under their text: the catch-all's (even without a
+// text) and an "Other…" answer's.
+func TestSnapshotAttachments(t *testing.T) {
+	srv, st := snapServer(t, Config{})
+	fields, _ := form.Normalize(json.RawMessage(`[{"key":"stack","type":"radio","options":["Vite","Next"]}]`))
+	f := createSnapForm(t, st, store.CreateParams{Title: "Attach", Fields: fields})
+	put := func(key, name string, data []byte) form.FileInfo {
+		info, _, err := st.PutChunk(store.Chunk{Form: f.ID, Key: key, Session: "sess" + strings.Repeat("b", 8) + name[:1], Index: 0, Total: 1, Name: name, Data: data})
+		if err != nil || info == nil {
+			t.Fatalf("upload %s: %v", name, err)
+		}
+		return *info
+	}
+	shot := put("anything_else", "shot.png", pngBytes(t, 40, 20))
+	mock := put("stack", "mock.txt", []byte("a mockup"))
+	closed, err := st.Close(f.ID, store.Submitted, map[string]any{
+		"stack": "Remix", "stack.files": []form.FileInfo{mock}, "anything_else.files": []form.FileInfo{shot},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.snapshot(closed)
+	b, _ := st.Snapshot(f.ID)
+	page := string(b)
+	for _, want := range []string{">Remix</textarea>", "mock.txt", "shot.png", "Anything else?", `<img src="data:image/png;base64,`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("snapshot lacks %q", want)
 		}

@@ -1,9 +1,10 @@
-// ask-form answer page — file fields. A file is sent in 1 MB chunks to the
-// form's own upload endpoint the moment it is picked; the form post then only
-// carries the refs of the finished uploads (a JSON array in the field's hidden
+// ask-form answer page — file fields, and the files attached to a text (the
+// "Anything else?" box, an "Other…" answer). A file is sent in 1 MB chunks to
+// the form's own upload endpoint the moment it is picked; the form post then
+// only carries the refs of the finished uploads (a JSON array in a hidden
 // input), so the draft, the confirm step and the server's checks keep working
-// as for any other field. Loaded next to app.js; without JavaScript the field
-// says so and nothing else changes.
+// as for any other field. Loaded next to app.js; without JavaScript a file
+// field says so, a text just has no attach button, and nothing else changes.
 (function () {
   "use strict";
   var CHUNK = 1 << 20;
@@ -69,12 +70,22 @@
     });
   }
 
-  $all(".field.t-file").forEach(setup);
-
-  function setup(field) {
+  $all(".field.t-file").forEach(function (field) {
     var up = field.querySelector(".uploader");
-    if (!up) return;
-    var hidden = field.querySelector("input[data-refs]");
+    if (up) setup(field, up, field.querySelector("input[data-refs]"), null);
+  });
+  // An attach button: the files ride on the text box before it, which takes
+  // them dropped (anywhere around it) or pasted too.
+  $all(".attach").forEach(function (up) {
+    var box = up.previousElementSibling;
+    if (!box || box.tagName !== "TEXTAREA") return;
+    box.classList.add("has-attach");
+    // A press on the paperclip keeps the box's focus, so the button stays.
+    up.querySelector(".attach-add").addEventListener("mousedown", function (e) { e.preventDefault(); });
+    setup(up.closest(".field"), up, up.querySelector("input[data-refs]"), box);
+  });
+
+  function setup(field, up, hidden, box) {
     var input = up.querySelector(".file-input");
     var list = up.querySelector(".files");
     var drop = up.querySelector(".drop");
@@ -140,7 +151,8 @@
         }
         list.appendChild(li);
       });
-      up.classList.toggle("full", !multiple && items.length > 0);
+      var kept = items.filter(function (i) { return i.state !== "error"; }).length;
+      up.classList.toggle("full", box ? kept >= maxFiles : !multiple && items.length > 0);
       var uploading = items.some(function (i) { return i.state === "uploading"; });
       if (uploading) field.setAttribute("data-uploading", ""); else field.removeAttribute("data-uploading");
     }
@@ -257,6 +269,36 @@
       add(input.files);
       input.value = "";
     });
+    if (box) {
+      // Only a drag that carries files is ours: text dropped in stays text.
+      // The whole field (an "Other…" answer: its text's block) takes them.
+      var area = box.parentNode;
+      var hasFiles = function (e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0; };
+      ["dragenter", "dragover"].forEach(function (ev) {
+        area.addEventListener(ev, function (e) {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          box.classList.add("drop-over");
+        });
+      });
+      area.addEventListener("dragleave", function (e) {
+        if (!area.contains(e.relatedTarget)) box.classList.remove("drop-over");
+      });
+      area.addEventListener("drop", function (e) {
+        box.classList.remove("drop-over");
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        add(e.dataTransfer.files);
+      });
+      // A screenshot (or a file copied) pasted in is attached.
+      box.addEventListener("paste", function (e) {
+        var files = e.clipboardData && e.clipboardData.files;
+        if (!files || !files.length) return;
+        e.preventDefault();
+        add(files);
+      });
+      return;
+    }
     ["dragenter", "dragover"].forEach(function (ev) {
       drop.addEventListener(ev, function (e) { e.preventDefault(); up.classList.add("over"); });
     });

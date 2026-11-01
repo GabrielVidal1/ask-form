@@ -70,6 +70,7 @@ const snapCSS = `.snap-banner{background:hsl(var(--muted));border-bottom:1px sol
 	`.snap-files li{display:flex;flex-direction:column;gap:4px;max-width:240px;font-size:14px}` +
 	`.snap-files img{display:block;max-width:240px;max-height:240px;border-radius:calc(var(--radius) - 4px);border:1px solid hsl(var(--border));background:hsl(var(--card))}` +
 	`.snap-files small{color:hsl(var(--muted-foreground))}` +
+	`.snap-fields textarea{field-sizing:content;resize:none}` +
 	`.snap-responses{margin-top:32px}.snap-response{margin-top:16px}.snap-response h3{margin:0;font-size:16px}` +
 	`.snap-response time{color:hsl(var(--muted-foreground));font-weight:400}.snap-response .recap{margin-top:8px}`
 
@@ -159,10 +160,12 @@ func (s *Server) renderSnapshot(st store.State) ([]byte, error) {
 		}
 		g.Fields = kept
 	}
-	if _, said := answers[form.CatchAllKey]; !said {
-		page.CatchAll = nil // "Anything else?" left empty, or never answered
-	} else {
-		snapField(page.CatchAll, st, prefix, brandFrame, assets, asset, answers, nil)
+	if ca := page.CatchAll; ca != nil {
+		if _, said := answers[ca.Key]; !said && len(files[ca.Key]) == 0 {
+			page.CatchAll = nil // "Anything else?" left empty, or never answered
+		} else {
+			snapField(ca, st, prefix, brandFrame, assets, asset, answers, files[ca.Key])
+		}
 	}
 	groups := page.Groups[:0]
 	for _, g := range page.Groups {
@@ -380,16 +383,21 @@ func answerStrings(a any) []string {
 	return nil
 }
 
-// snapFiles lists each file field's uploads, a thumbnail for the pictures
-// still on disk.
+// snapFiles lists each file field's uploads and each text's attachments, a
+// thumbnail for the pictures still on disk.
 func (s *Server) snapFiles(st store.State, answers map[string]any) map[string][]snapFile {
 	out := map[string][]snapFile{}
 	lang := i18n.Of(st.Lang)
 	for _, f := range st.Fields {
-		if f.Type != form.File {
+		key := f.Key
+		switch {
+		case f.Type == form.File:
+		case f.Attachable():
+			key = form.FilesKey(f.Key)
+		default:
 			continue
 		}
-		raw, ok := answers[f.Key]
+		raw, ok := answers[key]
 		if !ok {
 			continue
 		}

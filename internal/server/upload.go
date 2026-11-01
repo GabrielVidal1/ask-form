@@ -60,13 +60,8 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		uploadFail(w, http.StatusForbidden, i18n.T(st.Lang, "Reload the page and try again."))
 		return
 	}
-	var fld *form.Field
-	for i := range st.Fields {
-		if st.Fields[i].Key == r.PathValue("key") && st.Fields[i].Type == form.File {
-			fld = &st.Fields[i]
-		}
-	}
-	if fld == nil || st.Multi {
+	fld, ok := form.UploadTarget(st.Fields, r.PathValue("key"))
+	if !ok || st.Multi {
 		notFound(w)
 		return
 	}

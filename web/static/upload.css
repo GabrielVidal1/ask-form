@@ -29,3 +29,27 @@
 }
 .file-item progress { display: block; width: 100%; height: 6px; margin-top: 8px; accent-color: hsl(var(--primary)); }
 .file-err { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; color: hsl(var(--destructive)); font-size: 14px; }
+
+/* Files attached to a text (a textarea, an "Other…" answer): a paperclip in
+   the box's bottom-right corner while it has the focus (or files are dragged
+   over it), the files listed under it. .attach comes right after the box, so
+   the button sits just above its top edge. */
+.attach { display: none; position: relative; }
+.js .attach { display: block; }
+textarea.has-attach { display: block; padding-right: 46px; resize: none; }
+/* Out of sight, not out of the page: Tab from the box still reaches it. */
+.attach-add {
+  position: absolute; right: 6px; bottom: calc(100% + 6px); z-index: 1;
+  display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  border-radius: 8px; cursor: pointer; color: hsl(var(--muted-foreground));
+  opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+textarea:focus + .attach .attach-add, textarea.drop-over + .attach .attach-add, .attach:focus-within .attach-add { opacity: 1; pointer-events: auto; }
+.attach.full .attach-add { display: none; }
+.attach-add:hover { color: hsl(var(--foreground)); background: hsl(var(--foreground) / .08); }
+.attach-add:focus-within { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.attach-add svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.attach-add .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.attach .files { margin-top: 8px; }
+textarea.drop-over { border-color: hsl(var(--primary)); background: hsl(var(--primary) / .06); }
+@media print { .attach { display: none !important; } }
