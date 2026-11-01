@@ -81,7 +81,8 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 		if len(vals) == 1 {
 			first = vals[0]
 		}
-		other := strings.TrimSpace(v.Get(OtherName(f.Key)))
+		// The "Other…" box is a textarea: a browser sends its lines as CRLF.
+		other := strings.TrimSpace(strings.ReplaceAll(v.Get(OtherName(f.Key)), "\r\n", "\n"))
 		// Files attached to the text (a textarea, an "Other…" answer while it is
 		// picked) come back under FilesKey; alone, they answer it, their names
 		// standing for the words.
