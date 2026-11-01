@@ -38,6 +38,56 @@ type FileInfo struct {
 	Path        string `json:"path"`
 }
 
+// Attachments: files a respondent adds to a text answer — any textarea (the
+// "Anything else?" box included) and the text of an "Other…" choice, unless
+// the spec says `"attach": false`. They go up the way a file field's do (to
+// the field's own key) and come back next to the text, under FilesKey. Not in
+// a `--multi` form (nothing is uploaded there).
+const (
+	AttachMaxMB    = 10
+	AttachMaxFiles = 5
+)
+
+// AttachName is the input name of the refs of a field's attachments.
+func AttachName(key string) string { return "a." + key }
+
+// FilesKey is where the answers carry a field's attachments: next to its
+// text, under a key no question can have (keys are [a-z0-9_-]).
+func FilesKey(key string) string { return key + ".files" }
+
+// Attachable reports whether files can be attached to the field's text.
+func (f Field) Attachable() bool {
+	return !f.NoAttach && (f.Type == Textarea || (f.Choice() && f.Other))
+}
+
+// FileNames is the text of an answer given with files alone: their names.
+func FileNames(infos []FileInfo) string {
+	names := make([]string, len(infos))
+	for i, f := range infos {
+		names[i] = f.Name
+	}
+	return strings.Join(names, ", ")
+}
+
+// UploadTarget is the field an upload to key goes into, with the limits it
+// takes: a file field as the spec says, an attachable field with the
+// attachments' (any type, AttachMaxMB, AttachMaxFiles).
+func UploadTarget(fields []Field, key string) (Field, bool) {
+	for _, f := range fields {
+		if f.Key != key {
+			continue
+		}
+		switch {
+		case f.Type == File:
+			return f, true
+		case f.Attachable():
+			f.Accept, f.MaxMB, f.Multiple, f.MaxFiles = "", AttachMaxMB, true, AttachMaxFiles
+			return f, true
+		}
+	}
+	return Field{}, false
+}
+
 // Hooks lets Parse reach what the form package can't see. File resolves the
 // ref of an upload a respondent made to this form's field; nil: uploads are
 // not available (a demo), so a file field can't be answered.

@@ -91,8 +91,18 @@
 {{define "zoom-icon"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>{{end}}
 
 {{define "other"}}{{if or (not .Snap) .OtherPicked}}<div class="other">
-  <input type="text" name="{{.OtherName}}" value="{{.OtherText}}" maxlength="2000" placeholder="{{t "Please specify…"}}" aria-label="{{t "Other — please specify"}}" data-other-for="{{.Name}}">
+  <textarea name="{{.OtherName}}" rows="1" maxlength="2000" placeholder="{{t "Please specify…"}}" aria-label="{{t "Other — please specify"}}" data-other-for="{{.Name}}">{{.OtherText}}</textarea>
+  {{template "attach" .}}
 </div>{{end}}{{end}}
+
+{{define "paperclip"}}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>{{end}}
+
+{{define "attach"}}{{if .Snap}}{{with .Files}}<ul class="snap-files">{{range .}}<li>{{with .Thumb}}<img src="{{.}}" alt="">{{end}}<span>{{.Name}} <small>{{.Size}}</small></span></li>{{end}}</ul>{{end}}
+{{else if .AttachURL}}<div class="attach" data-url="{{.AttachURL}}" data-max-bytes="{{.AttachBytes}}" data-max-files="{{.AttachFiles}}" data-multiple>
+    <input type="hidden" name="{{.AttachName}}" value="{{.AttachRefs}}" data-refs>
+    <label class="attach-add" title="{{t "Attach files"}}"><input class="file-input" type="file" multiple aria-label="{{t "Attach files"}}">{{template "paperclip"}}</label>
+    <ul class="files" aria-live="polite"></ul>
+  </div>{{end}}{{end}}
 
 {{define "field"}}
 <div class="field t-{{.Type}}{{if .Error}} has-error{{end}}{{if .Visual}} visual-field{{end}}{{if .Display}} is-display{{end}}" id="{{.DOMID}}" data-key="{{.Key}}" data-type="{{.Type}}"{{if .Required}} data-required{{end}}{{with .ShowIfJSON}} data-show-if="{{.}}"{{end}}{{with .RequiredIfJSON}} data-required-if="{{.}}"{{end}}>
@@ -246,6 +256,7 @@
   <label class="label" for="{{.DOMID}}-in">{{template "label" .}}</label>
   {{if eq .Type "textarea"}}
     <textarea id="{{.DOMID}}-in" name="{{.Name}}" rows="{{if .CatchAll}}3{{else}}4{{end}}" maxlength="20000"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>{{.Value}}</textarea>
+    {{template "attach" .}}
   {{else if eq .Type "number"}}
     <input id="{{.DOMID}}-in" type="number" inputmode="decimal" name="{{.Name}}" value="{{.Value}}"{{if .Num.Min}} min="{{.Num.Min}}"{{end}}{{if .Num.Max}} max="{{.Num.Max}}"{{end}}{{if .Num.Step}} step="{{.Num.Step}}"{{end}}{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
   {{else if eq .Type "slider"}}

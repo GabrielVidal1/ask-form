@@ -32,6 +32,11 @@ type pageField struct {
 	FitContent      bool     // choice cards take the ratio of what they show
 	UploadURL       string   // file field: where its chunks go ("" in a demo: nothing is stored)
 	FileHint        string   // file field: "Images, PDF · up to 10 MB"
+	AttachName      string   // its text takes files (form.Attachable): the input of their refs
+	AttachURL       string   // …where they go ("" in a demo or a multi form: none)
+	AttachRefs      string   // …the refs sent so far (a page shown again with errors)
+	AttachBytes     int64    // …and their limits
+	AttachFiles     int
 	Num             struct{ Min, Max, Step string }
 	ShowIfJSON      string // the field's conditions, for the page script
 	RequiredIfJSON  string
@@ -48,7 +53,7 @@ type pageField struct {
 	OptionDocs   []string       // per option: its mockup document, "" when none
 	OptionImages []template.URL // per option: its picture as a data: URI
 	SecretChars  string         // a secret given: its length
-	Files        []snapFile     // file field: what was uploaded
+	Files        []snapFile     // file field: what was uploaded; an attachable one: what was attached
 }
 
 // listCol is one input of a list row: the list's single text, or one column of
@@ -163,6 +168,11 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 				pf.UploadURL = fmt.Sprintf("%s/upload/%s", base, f.Key)
 			}
 			pf.FileHint = fileHint(lang, f)
+		}
+		if f.Attachable() && strings.HasPrefix(base, Prefix) && !st.Multi {
+			pf.AttachName, pf.AttachURL = form.AttachName(f.Key), fmt.Sprintf("%s/upload/%s", base, f.Key)
+			pf.AttachRefs = values.Get(pf.AttachName)
+			pf.AttachBytes, pf.AttachFiles = form.AttachMaxMB*1_000_000, form.AttachMaxFiles
 		}
 		if f.Visual() {
 			pf.OptionFrames = make([]string, len(f.Options))
@@ -444,12 +454,26 @@ func recap(lang string, fields []form.Field, answers map[string]any) []recapItem
 		if f.Display() {
 			continue
 		}
-		v, ok := answers[f.Key]
-		if !ok {
-			continue
+		var parts, files []string
+		var attached []form.FileInfo
+		if raw, ok := answers[form.FilesKey(f.Key)]; ok && f.Attachable() {
+			b, _ := json.Marshal(raw) // []FileInfo fresh from a submit, []any once stored
+			json.Unmarshal(b, &attached)
+			for _, a := range attached {
+				files = append(files, a.Name+" ("+form.HumanSizeIn(lang, a.Size)+")")
+			}
 		}
-		if t := form.AnswerTextIn(lang, f, v); t != "" {
-			out = append(out, recapItem{Label: f.Label, Text: t})
+		if v, ok := answers[f.Key]; ok {
+			// Files sent alone answer with their names: said once is enough.
+			if t := form.AnswerTextIn(lang, f, v); t != "" && (len(attached) == 0 || t != form.FileNames(attached)) {
+				parts = append(parts, t)
+			}
+		}
+		if len(files) > 0 {
+			parts = append(parts, "📎 "+strings.Join(files, ", "))
+		}
+		if len(parts) > 0 {
+			out = append(out, recapItem{Label: f.Label, Text: strings.Join(parts, " · ")})
 		}
 	}
 	return out

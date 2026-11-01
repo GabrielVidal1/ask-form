@@ -138,6 +138,7 @@ type Field struct {
 	MaxFiles    int      `json:"maxFiles,omitempty"` // file: how many
 	AutoSecret  bool     `json:"autoSecret,omitempty"`
 	CatchAll    bool     `json:"catchAll,omitempty"`
+	NoAttach    bool     `json:"noAttach,omitempty"`   // textarea, choice: `"attach": false`, no files with the text
 	Cols        []Column `json:"cols,omitempty"`       // list: the table's columns (spec key `columns`)
 	Style       string   `json:"style,omitempty"`      // rating: stars | numbers
 	Open        bool     `json:"open,omitempty"`       // details: starts expanded
@@ -354,6 +355,9 @@ func NormalizeIn(raw json.RawMessage, lang string) ([]Field, error) {
 			continue
 		}
 		f.Placeholder = clip(strings.TrimSpace(str(m["placeholder"])), MaxLabelChars)
+		if a, has := m["attach"]; has && a != nil && !truthy(a) {
+			f.NoAttach = true
+		}
 		f.Help = clip(strings.TrimSpace(str(m["help"])), MaxHelpChars)
 		if f.Choice() {
 			opts, _ := m["options"].([]any)

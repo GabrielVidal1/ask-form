@@ -82,6 +82,25 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			first = vals[0]
 		}
 		other := strings.TrimSpace(v.Get(OtherName(f.Key)))
+		// Files attached to the text (a textarea, an "Other…" answer while it is
+		// picked) come back under FilesKey; alone, they answer it, their names
+		// standing for the words.
+		if raw := v.Get(AttachName(f.Key)); raw != "" && f.Attachable() && (!f.Choice() || contains(trimmed(vals), OtherValue)) {
+			infos, msg := files(f.Key, raw, AttachMaxFiles, h)
+			if msg != "" {
+				r.Errors[f.Key] = msg
+				continue
+			}
+			if infos != nil {
+				r.Answers[FilesKey(f.Key)] = infos
+				if other == "" {
+					other = FileNames(infos)
+				}
+				if f.Type == Textarea && strings.TrimSpace(first) == "" {
+					first = FileNames(infos)
+				}
+			}
+		}
 		switch f.Type {
 		case Checkbox:
 			if first != "" && first != "on" && first != "true" {
@@ -287,37 +306,14 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 				r.Errors[f.Key] = t("Interact with this first.")
 			}
 		case File:
-			refs, msg := fileRefs(first, t)
-			if msg != "" {
+			infos, msg := files(f.Key, first, f.FileLimit(), h)
+			switch {
+			case msg != "":
 				r.Errors[f.Key] = msg
-				continue
-			}
-			if len(refs) == 0 {
-				if f.Required {
-					r.Errors[f.Key] = t("Add a file.")
-				}
-				continue
-			}
-			if len(refs) > f.FileLimit() {
-				r.Errors[f.Key] = i18n.N(h.Lang, f.FileLimit(), "At most %d file.", "At most %d files.")
-				continue
-			}
-			if h.File == nil {
-				r.Errors[f.Key] = t("Uploads aren't available here.")
-				continue
-			}
-			var infos []FileInfo
-			for _, ref := range refs {
-				info, ok := h.File(f.Key, ref)
-				if !ok {
-					infos = nil
-					r.Errors[f.Key] = t("A file is gone — add it again.")
-					break
-				}
-				infos = append(infos, info)
-			}
-			if infos != nil {
+			case infos != nil:
 				r.Answers[f.Key] = infos
+			case f.Required:
+				r.Errors[f.Key] = t("Add a file.")
 			}
 		case Secret:
 			// A pasted token often drags a newline or a space along.
@@ -359,6 +355,41 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 		}
 	}
 	return r
+}
+
+// files resolves the refs a file field, or a text's attachments, sent (raw:
+// their JSON array) to the uploads they name: nil when there are none, or a
+// message for the respondent.
+func files(key, raw string, limit int, h Hooks) ([]FileInfo, string) {
+	t := func(s string, a ...any) string { return i18n.T(h.Lang, s, a...) }
+	refs, msg := fileRefs(raw, t)
+	switch {
+	case msg != "":
+		return nil, msg
+	case len(refs) == 0:
+		return nil, ""
+	case len(refs) > limit:
+		return nil, i18n.N(h.Lang, limit, "At most %d file.", "At most %d files.")
+	case h.File == nil:
+		return nil, t("Uploads aren't available here.")
+	}
+	var infos []FileInfo
+	for _, ref := range refs {
+		info, ok := h.File(key, ref)
+		if !ok {
+			return nil, t("A file is gone — add it again.")
+		}
+		infos = append(infos, info)
+	}
+	return infos, ""
+}
+
+func trimmed(xs []string) []string {
+	out := make([]string, len(xs))
+	for i, x := range xs {
+		out[i] = strings.TrimSpace(x)
+	}
+	return out
 }
 
 // listAnswer reads a list field's rows: texts (no columns) or, for a table, one

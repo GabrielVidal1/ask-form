@@ -88,6 +88,9 @@ input[type=radio], input[type=checkbox] { accent-color: hsl(var(--primary)); wid
 .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; cursor: pointer; }
 .check input { margin-top: 4px; }
 .other { margin-top: 8px; }
+/* "Other…" text wraps and grows with what is typed (app.js sizes it; a
+   browser with field-sizing does without). */
+.other textarea { min-height: 44px; max-height: 16em; resize: none; field-sizing: content; }
 @supports selector(:has(*)) {
   .field:not(:has(input[value="__other__"]:checked, option[value="__other__"]:checked)) .other { display: none; }
 }
@@ -384,6 +387,7 @@ html:not(.js) .widget-frame { display: none; }
     .field:not(:has(select, input:checked)) .other, .field:has(select > option[value=""]:checked) .other { display: block !important; }
   }
   .other { margin: 4px 0 0 28px; }
+  .other textarea { min-height: 40px; max-height: none; }
   .other-row { margin-top: 6px; }
 
   /* A dropdown on paper is its options, a circle each, while nothing is

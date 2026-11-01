@@ -323,3 +323,84 @@ func TestFileHint(t *testing.T) {
 		}
 	}
 }
+
+// Files attached to a textarea ("Anything else?" included) and to an
+// "Other…" answer go up like a file field's and come back under <key>.files,
+// next to the text; alone, they answer with their names.
+func TestAttachments(t *testing.T) {
+	u := newUpServer(t, `[{"key":"stack","type":"radio","options":["Vite","Next"]},{"key":"tools","type":"multiselect","options":["eslint","biome"]},`+
+		`{"key":"why","type":"textarea","required":true},{"key":"plain","type":"textarea","attach":false},{"key":"note","type":"text"}]`)
+	for _, want := range []string{
+		`class="attach" data-url="/f/` + u.id + `/upload/stack"`, `data-url="/f/` + u.id + `/upload/anything_else"`,
+		`name="a.stack"`, `name="a.why"`, `name="a.anything_else"`, `data-max-files="5"`, `<textarea name="o.stack" rows="1"`,
+	} {
+		if !strings.Contains(u.page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	for _, bad := range []string{`name="a.plain"`, `name="a.note"`} {
+		if strings.Contains(u.page, bad) {
+			t.Errorf("page has %q", bad)
+		}
+	}
+	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte("x"), 100)...)
+	shot, _ := u.upload("anything_else", "sessionat1", "shot.png", png, 1)["ref"].(string)
+	mock, _ := u.upload("stack", "sessionat2", "mock.pdf", []byte("%PDF-1.4 hello"), 1)["ref"].(string)
+	lost, _ := u.upload("tools", "sessionat3", "lost.txt", []byte("never sent"), 1)["ref"].(string)
+	log, _ := u.upload("why", "sessionat5", "trace.log", []byte("panic: boom"), 1)["ref"].(string)
+	if !form.ValidRef(shot) || !form.ValidRef(mock) || !form.ValidRef(lost) || !form.ValidRef(log) {
+		t.Fatalf("refs %q %q %q %q", shot, mock, lost, log)
+	}
+	// Only a text that takes files does.
+	for _, key := range []string{"note", "plain"} {
+		if code, _ := u.chunk(key, u.q(url.Values{"u": {"sessionat4"}, "i": {"0"}, "n": {"1"}, "name": {"a.txt"}}), []byte("x"), nil); code != http.StatusNotFound {
+			t.Fatalf("%s: %d", key, code)
+		}
+	}
+	// A page shown again (the required textarea is empty) keeps the refs.
+	code, body := u.submit(url.Values{"f.stack": {"__other__"}, "a.stack": {`["` + mock + `"]`}})
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, `value="[&#34;`+mock+`&#34;]"`) {
+		t.Fatalf("shown again: %d", code)
+	}
+	code, _ = u.submit(url.Values{
+		"f.stack": {"__other__"}, "o.stack": {"Remix\nwith its loader"}, "a.stack": {`["` + mock + `"]`},
+		"f.tools": {"eslint"}, "a.tools": {`["` + lost + `"]`}, // "Other…" not picked: its files don't count
+		"a.why":           {`["` + log + `"]`}, // files alone answer a required textarea
+		"a.anything_else": {`["` + shot + `"]`},
+	})
+	if code != http.StatusSeeOther {
+		t.Fatalf("submit: %d", code)
+	}
+	st, _ := u.st.Get(u.id)
+	if st.Answers["stack"] != "Remix\nwith its loader" || st.Answers["why"] != "trace.log" || st.Answers["anything_else"] != "shot.png" {
+		t.Fatalf("texts: %+v", st.Answers)
+	}
+	stack, _ := st.Answers["stack.files"].([]form.FileInfo)
+	extra, _ := st.Answers["anything_else.files"].([]form.FileInfo)
+	if len(stack) != 1 || stack[0].Name != "mock.pdf" || len(extra) != 1 || extra[0].ContentType != "image/png" {
+		t.Fatalf("attachments: %+v", st.Answers)
+	}
+	if _, ok := st.Answers["tools.files"]; ok {
+		t.Fatal("files of an unpicked Other… were kept")
+	}
+	if _, err := os.Stat(extra[0].Path); err != nil {
+		t.Fatalf("attached file gone after submit: %v", err)
+	}
+	got := recap("", st.Fields, st.Answers)
+	if len(got) != 4 || got[3].Text != "📎 shot.png (108 B)" || !strings.HasPrefix(got[0].Text, "Remix\nwith its loader · 📎 mock.pdf") {
+		t.Fatalf("recap: %+v", got)
+	}
+}
+
+// Files alone answer an "Other…" choice: its text is their names.
+func TestAttachmentsOtherAlone(t *testing.T) {
+	u := newUpServer(t, `[{"key":"stack","type":"select","options":["Vite","Next"],"required":true}]`)
+	mock, _ := u.upload("stack", "sessionao1", "mock.pdf", []byte("%PDF-1.4 hello"), 1)["ref"].(string)
+	if code, _ := u.submit(url.Values{"f.stack": {"__other__"}, "a.stack": {`["` + mock + `"]`}}); code != http.StatusSeeOther {
+		t.Fatalf("submit: %d", code)
+	}
+	st, _ := u.st.Get(u.id)
+	if st.Answers["stack"] != "mock.pdf" || st.Answers["stack.files"] == nil {
+		t.Fatalf("answers: %+v", st.Answers)
+	}
+}

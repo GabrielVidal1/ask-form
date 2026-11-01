@@ -123,6 +123,22 @@
   // ── values ────────────────────────────────────────────────────────────────
   function inputs(f) { return $all("input, select, textarea", f); }
   function otherInput(f) { return f.querySelector("[data-other-for]"); }
+  // The names of the files attached to the field's text (upload.js lists them).
+  function attached(f) {
+    return $all(".attach .file-item.done .file-name", f).map(function (n) { return n.textContent; });
+  }
+  // A text box follows its content (up to its CSS max-height).
+  function grow(ta) {
+    if (!ta.offsetParent) return; // out of sight: measured once it shows
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight + 2, 600) + "px";
+  }
+  // The text of an "Other…" answer: typed, or the names of the files alone.
+  function otherText(f) {
+    var o = otherInput(f);
+    if (!o || !otherPicked(f)) return "";
+    return o.value.trim() || attached(f).join(", ");
+  }
   function otherPicked(f) {
     return inputs(f).some(function (i) {
       return (i.value === "__other__" && i.checked) || (i.tagName === "SELECT" && i.value === "__other__");
@@ -136,18 +152,16 @@
     if (t === "radio" || t === "rating" || t === "multiselect" || (t === "select" && f.classList.contains("visual-field"))) {
       var picked = els.filter(function (i) { return (i.type === "radio" || i.type === "checkbox") && i.checked && i.value !== "__other__"; });
       if (picked.length) return false;
-      var o = otherInput(f);
-      return !(otherPicked(f) && o && o.value.trim());
+      return !otherText(f);
     }
     if (t === "select") {
       var s = f.querySelector("select");
       if (!s || !s.value) return true;
       if (s.value !== "__other__") return false;
-      var oi = otherInput(f);
-      return !(oi && oi.value.trim());
+      return !otherText(f);
     }
     var main = els[0];
-    return !main || !main.value.trim();
+    return !main || !(main.value.trim() || attached(f).length);
   }
   function unanswered(f) {
     if (f.closest(".catchall") || f.hidden) return false;
@@ -160,7 +174,7 @@
   function problem(f) {
     var t = f.getAttribute("data-type");
     if (f.hidden) return "";
-    if (t === "file" && f.hasAttribute("data-uploading")) return tr("Wait for the upload to finish.");
+    if (f.hasAttribute("data-uploading")) return tr("Wait for the upload to finish.");
     if (t === "checkbox" || t === "slider") return "";
     var main = f.querySelector("input:not([type=hidden]):not([data-other-for]), textarea");
     // A half-typed number or date reads as "": the browser knows better.
@@ -268,7 +282,7 @@
   function saveDraft() {
     var v = {};
     $all("input, select, textarea", form).forEach(function (i) {
-      if (!/^[fo]\./.test(i.name) || i.type === "password") return;
+      if (!/^[foa]\./.test(i.name) || i.type === "password") return;
       if (i.type === "radio" || i.type === "checkbox") {
         if (i.checked) (v[i.name] = v[i.name] || []).push(i.value);
         else v[i.name] = v[i.name] || [];
@@ -323,8 +337,21 @@
       });
       inputs(f).forEach(function (i) {
         if (i.value === "__other__" || i.tagName === "SELECT") {
-          i.addEventListener("change", function () { if (otherPicked(f) && !o.value) o.focus(); });
+          i.addEventListener("change", function () {
+            if (!otherPicked(f)) return;
+            if (o.tagName === "TEXTAREA") grow(o);
+            if (!o.value) o.focus();
+          });
         }
+      });
+      // So does attaching a file to it.
+      var refs = f.querySelector(".other input[data-refs]");
+      if (refs) refs.addEventListener("change", function () {
+        if (!refs.value) return;
+        inputs(f).forEach(function (i) {
+          if (i.value === "__other__" && (i.type === "radio" || i.type === "checkbox")) i.checked = true;
+          if (i.tagName === "SELECT") i.value = "__other__";
+        });
       });
     }
     if (t === "slider") {
@@ -345,9 +372,8 @@
       p.parentNode.appendChild(b);
     }
     $all("textarea", f).forEach(function (ta) {
-      var grow = function () { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, 600) + "px"; };
-      ta.addEventListener("input", grow);
-      grow();
+      ta.addEventListener("input", function () { grow(ta); });
+      grow(ta);
     });
     if (t === "daterange") {
       var dr = inputs(f);
@@ -380,7 +406,7 @@
       return c ? Number(c.value) : null;
     }
     if (t === "radio" || t === "select" || t === "multiselect") {
-      var o = otherInput(f), other = o && otherPicked(f) ? o.value.trim() : "";
+      var other = otherText(f);
       if (t === "select" && !f.classList.contains("visual-field")) {
         var s = f.querySelector("select");
         return s.value === "__other__" ? (other || null) : (s.value || null);
@@ -422,6 +448,7 @@
     }
     var v = els[0] ? els[0].value.trim() : "";
     if (v !== "" && t === "email") v = v.toLowerCase();
+    if (v === "" && t === "textarea") v = attached(f).join(", ");
     return v === "" ? null : v;
   }
   function isAnswered(v) {
@@ -725,8 +752,7 @@
   function answerOf(f) {
     var t = f.getAttribute("data-type");
     if (t === "file") return $all(".file-item.done .file-name", f).map(function (n) { return n.textContent; }).join(", ");
-    var o = otherInput(f);
-    var oText = o && otherPicked(f) ? o.value.trim() : "";
+    var oText = otherText(f);
     if (t === "checkbox") return tr(f.querySelector("input").checked ? "Yes" : "No");
     if (t === "secret") {
       var p = f.querySelector("input");
@@ -773,6 +799,12 @@
     fields.forEach(function (f) {
       if (f.hidden) return;
       var a = answerOf(f);
+      var files = attached(f);
+      if (files.length && (!otherInput(f) || otherPicked(f))) {
+        // Files alone answer with their names: said once is enough.
+        if (a === files.join(", ")) a = "";
+        a = (a ? a + " · " : "") + "📎 " + files.join(", ");
+      }
       if (!a) return;
       dl.appendChild(make("dt", null, labelOf(f)));
       dl.appendChild(make("dd", null, a));

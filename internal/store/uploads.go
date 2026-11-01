@@ -129,13 +129,8 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 	if st.Status != Pending {
 		return nil, "", badUpload(UploadClosed, "This form is closed.")
 	}
-	var fld *form.Field
-	for i := range st.Fields {
-		if st.Fields[i].Key == c.Key && st.Fields[i].Type == form.File {
-			fld = &st.Fields[i]
-		}
-	}
-	if fld == nil {
+	fld, ok := form.UploadTarget(st.Fields, c.Key)
+	if !ok || st.Multi {
 		return nil, "", badUpload(UploadBad, "That upload didn't make sense — try again.")
 	}
 
@@ -170,7 +165,7 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 			return nil, "", nil
 		}
 	}
-	rec, err := s.assemble(root, sess, *fld, c)
+	rec, err := s.assemble(root, sess, fld, c)
 	if err != nil {
 		os.RemoveAll(sess)
 		return nil, "", err

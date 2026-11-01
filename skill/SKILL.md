@@ -96,6 +96,15 @@ file's path on **this computer**, not its bytes.
   (the field says so otherwise). Not allowed in a `--multi` form.
 - Never `cat` a file you didn't expect to be text; it came from a browser.
 
+**Attachments.** Every `textarea` (the "Anything else?" box included) and
+every "Other…" answer also take files: a paperclip in the box while it has
+the focus, or drop / paste them in (any type, 10 MB each, 5 per box). They
+come back next to the text, under `<key>.files`, in the file field's shape:
+`"anything_else": "see the screenshot", "anything_else.files": [{name,size,contentType,sha256,path}]`.
+Files sent with no words answer the question with their names as the text
+(`"stack": "mock.pdf", "stack.files": […]`). `"attach": false` on a textarea
+or a choice field takes the paperclip off. None in a `--multi` form.
+
 ## Field spec
 
 ```json
@@ -134,7 +143,8 @@ file's path on **this computer**, not its bytes.
 - Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
   give them `group`s: each group is one page.
 - Every choice field gets an "Other…" free-text choice, and every form ends
-  with an optional `anything_else` textarea. Don't add your own.
+  with an optional `anything_else` textarea. Don't add your own. Both take
+  attached files (see Files).
 - Pictures only through `--asset <file>` plus `{{asset:<basename>}}`. Remote
   images are blocked.
 - Picture and mockup choices show one card per row on a phone, two from 560 px
@@ -191,6 +201,7 @@ A `--multi` form has no `answers`: it has `"answerCount":N` and
   Write it where it's needed and never print or `cat` it:
   `ask-form secret <id> <key> --env .env VAR_NAME` (or `--file PATH`, or `--stdout | cmd`).
 - file → array of `{name,size,contentType,sha256,path}` (see Files)
+- `<key>.files` → the same array: files attached to a textarea or an "Other…" answer
 - Unanswered optional fields are absent.
 
 ## Conditions: ask only what applies

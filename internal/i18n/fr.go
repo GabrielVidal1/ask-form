@@ -62,6 +62,7 @@ var fr = map[string]string{
 	"Interactive control":                "Contrôle interactif",
 	"Choose a file":                      "Choisir un fichier",
 	"Choose files":                       "Choisir des fichiers",
+	"Attach files":                       "Joindre des fichiers",
 	" or drop it here":                   " ou déposez-le ici",
 	" or drop them here":                 " ou déposez-les ici",
 	"Please type it again:":              "Merci de la retaper :",
