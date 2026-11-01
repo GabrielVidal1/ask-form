@@ -363,7 +363,7 @@ func TestAttachments(t *testing.T) {
 		t.Fatalf("shown again: %d", code)
 	}
 	code, _ = u.submit(url.Values{
-		"f.stack": {"__other__"}, "o.stack": {"Remix\nwith its loader"}, "a.stack": {`["` + mock + `"]`},
+		"f.stack": {"__other__"}, "o.stack": {"Remix\r\nwith its loader"}, "a.stack": {`["` + mock + `"]`},
 		"f.tools": {"eslint"}, "a.tools": {`["` + lost + `"]`}, // "Other…" not picked: its files don't count
 		"a.why":           {`["` + log + `"]`}, // files alone answer a required textarea
 		"a.anything_else": {`["` + shot + `"]`},
