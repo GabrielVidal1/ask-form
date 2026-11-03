@@ -72,7 +72,8 @@ const snapCSS = `.snap-banner{background:hsl(var(--muted));border-bottom:1px sol
 	`.snap-files small{color:hsl(var(--muted-foreground))}` +
 	`.snap-fields textarea{field-sizing:content;resize:none}` +
 	`.snap-responses{margin-top:32px}.snap-response{margin-top:16px}.snap-response h3{margin:0;font-size:16px}` +
-	`.snap-response time{color:hsl(var(--muted-foreground));font-weight:400}.snap-response .recap{margin-top:8px}`
+	`.snap-response time{color:hsl(var(--muted-foreground));font-weight:400}.snap-response .recap{margin-top:8px}` +
+	`.snap-note{margin:0 0 16px;border-color:hsl(var(--destructive)/.4)}.snap-note dd{color:hsl(var(--foreground))}`
 
 var (
 	snapScriptHash = func() string {
@@ -107,6 +108,13 @@ type snapshotPage struct {
 	Styles               template.CSS
 	Script               template.JS
 	Responses            []snapResponse
+	Note                 *snapNote // a declined form's note, when one was left
+}
+
+// snapNote is the note a respondent declined with.
+type snapNote struct {
+	Text  string
+	Files []snapFile
 }
 
 // snapResponse is one answer to a multi form.
@@ -180,6 +188,9 @@ func (s *Server) renderSnapshot(st store.State) ([]byte, error) {
 		Styles: template.CSS(snapBaseCSS + string(page.Brand.CSS) + string(page.PageCSS)),
 		Script: template.JS(snapScript),
 		Banner: snapBanner(lang, st),
+	}
+	if st.Status == store.Declined && (st.Reason != "" || len(st.ReasonFiles) > 0) {
+		p.Note = &snapNote{Text: st.Reason, Files: s.snapFileList(st, st.ReasonFiles)}
 	}
 	for _, r := range st.Responses {
 		p.Responses = append(p.Responses, snapResponse{N: r.N, When: i18n.Date(lang, r.At), Recap: recap(lang, st.Fields, r.Answers)})
@@ -387,7 +398,6 @@ func answerStrings(a any) []string {
 // thumbnail for the pictures still on disk.
 func (s *Server) snapFiles(st store.State, answers map[string]any) map[string][]snapFile {
 	out := map[string][]snapFile{}
-	lang := i18n.Of(st.Lang)
 	for _, f := range st.Fields {
 		key := f.Key
 		switch {
@@ -406,13 +416,21 @@ func (s *Server) snapFiles(st store.State, answers map[string]any) map[string][]
 		if json.Unmarshal(b, &infos) != nil {
 			continue
 		}
-		for _, fi := range infos {
-			sf := snapFile{Name: fi.Name, Size: form.HumanSizeIn(lang, fi.Size)}
-			if data, err := s.store.UploadedFile(st.ID, fi.Path); err == nil {
-				sf.Thumb = thumbnail(fi.ContentType, data)
-			}
-			out[f.Key] = append(out[f.Key], sf)
+		out[f.Key] = append(out[f.Key], s.snapFileList(st, infos)...)
+	}
+	return out
+}
+
+// snapFileList is files as a snapshot lists them: name, size, a picture's thumbnail.
+func (s *Server) snapFileList(st store.State, infos []form.FileInfo) []snapFile {
+	lang := i18n.Of(st.Lang)
+	var out []snapFile
+	for _, fi := range infos {
+		sf := snapFile{Name: fi.Name, Size: form.HumanSizeIn(lang, fi.Size)}
+		if data, err := s.store.UploadedFile(st.ID, fi.Path); err == nil {
+			sf.Thumb = thumbnail(fi.ContentType, data)
 		}
+		out = append(out, sf)
 	}
 	return out
 }

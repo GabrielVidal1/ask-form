@@ -30,8 +30,8 @@ import (
 // chunk to arrive assembles them, the bytes are sniffed against the field's
 // `accept`, the SHA-256 is taken and the file gets a ref (`upl_…`). The form
 // post carries refs; once it is submitted the files it names stay (UploadTTL)
-// and everything else goes. A form that closes any other way, or expires,
-// loses all of them.
+// and everything else goes — so do the files a decline's note carries. A form
+// that closes any other way, or expires, loses all of them.
 
 // Limits.
 const (
@@ -291,13 +291,16 @@ func (s *Store) findBySession(id, key, session string) *uploadRecord {
 }
 
 // settleUploads is what a form's close does to its uploads: keep the files
-// the answers name, drop the rest.
-func (s *Store) settleUploads(id string, answers map[string]any) {
+// the answers name (and more: a decline's), drop the rest.
+func (s *Store) settleUploads(id string, answers map[string]any, more ...form.FileInfo) {
 	root := s.uploadsDir(id)
 	if _, err := os.Stat(root); err != nil {
 		return
 	}
 	keep := answerPaths(answers)
+	for _, f := range more {
+		keep[f.Path] = true
+	}
 	if len(keep) == 0 {
 		os.RemoveAll(root)
 		return
@@ -336,7 +339,8 @@ func answerPaths(answers map[string]any) map[string]bool {
 
 // PurgeUploads drops what no form needs any more: half-sent files past an
 // hour, the uploads of a form that is closed without them, expired or
-// unknown, and the files of a submitted form after UploadTTL. `serve` runs
+// unknown, and the files of a submitted form (or a decline's note) after
+// UploadTTL. `serve` runs
 // it hourly (and at start).
 func (s *Store) PurgeUploads() {
 	entries, err := os.ReadDir(filepath.Join(s.dir, "uploads"))
@@ -358,11 +362,11 @@ func (s *Store) PurgeUploads() {
 			os.RemoveAll(root)
 		case st.Status == Pending:
 			dropStale(filepath.Join(root, "tmp"), now)
-		case st.Status == Submitted:
+		case st.Status == Submitted, st.Status == Declined && len(st.ReasonFiles) > 0:
 			if st.ClosedAt != nil && now.Sub(*st.ClosedAt) > UploadTTL {
 				os.RemoveAll(root)
 			} else {
-				s.settleUploads(st.ID, st.Answers)
+				s.settleUploads(st.ID, st.Answers, st.ReasonFiles...)
 			}
 		default:
 			os.RemoveAll(root)

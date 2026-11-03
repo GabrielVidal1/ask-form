@@ -220,6 +220,8 @@ type closedPage struct {
 	Recap                          []recapItem
 	Multi, Mine, ShowCount         bool // a multi form; this browser answered it; its count shows
 	Count                          int  // its answers
+	Reason                         string
+	ReasonFiles                    string // a decline's note and its files ("a.png (12 KB)")
 }
 
 // renderClosed is the page of a form that takes no more answers from this
@@ -240,6 +242,8 @@ func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store
 		p.Recap = recap(lang, st.Fields, mine.Answers)
 	case st.Status == store.Submitted:
 		p.Recap = recap(lang, st.Fields, st.Answers)
+	case st.Status == store.Declined:
+		p.Reason, p.ReasonFiles = st.Reason, form.FileText(st.ReasonFiles)
 	}
 	renderPage(w, lang, "closed", p, pageCSP(p.Nonce), http.StatusOK)
 }
@@ -333,7 +337,14 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 			s.message(w, st.Lang, http.StatusBadRequest, "Nothing to decline", "This form is open to several people: just leave it unanswered.")
 			return
 		}
-		st, err = s.store.Close(st.ID, store.Declined, nil, nil)
+		reason, files, msg := form.ParseDecline(st.Fields, v, form.Hooks{Lang: st.Lang, File: func(key, ref string) (form.FileInfo, bool) {
+			return s.store.Upload(st.ID, key, ref)
+		}})
+		if msg != "" {
+			s.renderForm(w, st, v, map[string]string{form.DeclineKey(st.Fields): msg}, http.StatusUnprocessableEntity)
+			return
+		}
+		st, err = s.store.Decline(st.ID, reason, files)
 	case "submit", "":
 		res := form.ParseWith(st.Fields, v, form.Hooks{Lang: st.Lang, File: func(key, ref string) (form.FileInfo, bool) {
 			return s.store.Upload(st.ID, key, ref)

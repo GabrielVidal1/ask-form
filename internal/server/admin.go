@@ -47,6 +47,10 @@ type FormJSON struct {
 	ExpiresAt time.Time      `json:"expiresAt"`
 	ClosedAt  *time.Time     `json:"closedAt,omitempty"`
 	Answers   map[string]any `json:"answers,omitempty"`
+	// Reason: why a declined form was declined, in the respondent's words,
+	// and the files they added to it (either may be missing).
+	Reason      string          `json:"reason,omitempty"`
+	ReasonFiles []form.FileInfo `json:"reasonFiles,omitempty"`
 	// A multi form: every answer so far (not in a list), and how many.
 	Multi       bool              `json:"multi,omitempty"`
 	MaxAnswers  int               `json:"maxAnswers,omitempty"`
@@ -65,7 +69,7 @@ func toJSON(st store.State, withFields, withResponses bool) FormJSON {
 	j := FormJSON{
 		ID: st.ID, Title: st.Title, Description: st.Description, Status: st.Status, CreatedAt: st.CreatedAt,
 		ExpiresAt: st.ExpiresAt, ClosedAt: st.ClosedAt, Answers: st.Answers, Meta: st.Meta, Lang: st.Lang,
-		Snapshot: st.Snapshot,
+		Snapshot: st.Snapshot, Reason: st.Reason, ReasonFiles: st.ReasonFiles,
 	}
 	if st.Multi {
 		n := len(st.Responses)

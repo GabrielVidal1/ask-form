@@ -115,6 +115,9 @@ type Event struct {
 	Type    string         `json:"type"`
 	At      time.Time      `json:"at"`
 	Answers map[string]any `json:"answers,omitempty"`
+	// Reason: what a respondent who declined wrote, and the files they added.
+	Reason      string          `json:"reason,omitempty"`
+	ReasonFiles []form.FileInfo `json:"reasonFiles,omitempty"`
 }
 
 // State is a form with its current status.
@@ -127,6 +130,9 @@ type State struct {
 	Responses []Response `json:"responses,omitempty"`
 	// Snapshot: a page of it as it closed is stored (snapshots.go).
 	Snapshot bool `json:"snapshot,omitempty"`
+	// Reason: a declined form's note, if the respondent left one (Decline).
+	Reason      string          `json:"reason,omitempty"`
+	ReasonFiles []form.FileInfo `json:"reasonFiles,omitempty"`
 }
 
 // Response is one respondent's answers to a multi form; N counts from 1.
@@ -154,6 +160,7 @@ func (e *entry) state(now time.Time) State {
 	case e.event != nil:
 		at := e.event.At
 		s.Status, s.ClosedAt, s.Answers = e.event.Type, &at, e.event.Answers
+		s.Reason, s.ReasonFiles = e.event.Reason, e.event.ReasonFiles
 	case !now.Before(e.form.ExpiresAt):
 		at := e.form.ExpiresAt
 		s.Status, s.ClosedAt = Expired, &at
@@ -495,6 +502,16 @@ func (s *Store) Authorize(id, token string) (State, bool) {
 // Answer). The first one wins: a form already closed or expired returns
 // ErrClosed and keeps what it has.
 func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string]string) (State, error) {
+	return s.close(id, Event{Type: typ, Answers: answers}, secrets)
+}
+
+// Decline closes a form as declined with the respondent's note: a reason, the
+// files they added to it, or neither.
+func (s *Store) Decline(id, reason string, files []form.FileInfo) (State, error) {
+	return s.close(id, Event{Type: Declined, Reason: reason, ReasonFiles: files}, nil)
+}
+
+func (s *Store) close(id string, ev Event, secrets map[string]string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.forms[id]
@@ -505,13 +522,13 @@ func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string
 	if st := e.state(now); st.Status != Pending {
 		return st, ErrClosed
 	}
-	if !terminal(typ, e.form.Multi) {
+	if !terminal(ev.Type, e.form.Multi) {
 		if e.form.Multi {
 			return e.state(now), ErrMulti
 		}
-		return State{}, fmt.Errorf("%s doesn't close a form", typ)
+		return State{}, fmt.Errorf("%s doesn't close a form", ev.Type)
 	}
-	ev := Event{Type: typ, At: now.UTC().Truncate(time.Millisecond), Answers: answers}
+	ev.At = now.UTC().Truncate(time.Millisecond)
 	if len(secrets) > 0 {
 		if err := s.putSecrets(id, secrets, now); err != nil {
 			return State{}, err
@@ -522,7 +539,7 @@ func (s *Store) Close(id, typ string, answers map[string]any, secrets map[string
 	}
 	e.event = &ev
 	close(e.done)
-	s.settleUploads(id, answers)
+	s.settleUploads(id, ev.Answers, ev.ReasonFiles...)
 	return e.state(now), nil
 }
 

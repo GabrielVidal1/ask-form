@@ -818,6 +818,9 @@ func cmdWait(args []string) int {
 			case store.Declined, store.Revoked, store.Expired:
 				printJSON(out)
 				fmt.Fprintf(os.Stderr, "ask-form: %s ended without answers (%v)\n", id, out["status"])
+				if _, ok := out["reason"]; ok || out["reasonFiles"] != nil {
+					fmt.Fprintf(os.Stderr, "ask-form: the respondent said why: see reason (and reasonFiles) above\n")
+				}
 				return exitClosed
 			}
 		}

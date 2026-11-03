@@ -76,9 +76,15 @@
       <button type="submit" name="action" value="submit" class="btn primary">{{t "Send answers"}}</button>
     </div>
 
-    {{if not (or .Demo .Multi)}}<details class="decline">
+    {{if not (or .Demo .Multi)}}<details class="decline" id="decline"{{with .Decline}}{{if or .Value .AttachRefs .Error}} open{{end}}{{end}}>
       <summary>{{t "Can't or won't answer?"}}</summary>
       <p>{{t "Declining tells the asker you won't answer. The form closes for good."}}</p>
+      {{with .Decline}}<div class="decline-note{{if .Error}} has-error{{end}}" data-key="{{.Key}}">
+        <label for="{{.DOMID}}">{{t "Tell me why (optional)"}}</label>
+        <textarea id="{{.DOMID}}" name="{{.Name}}" rows="3" maxlength="20000">{{.Value}}</textarea>
+        {{template "attach" .}}
+        {{with .Error}}<p class="err">{{.}}</p>{{end}}
+      </div>{{end}}
       <button type="submit" name="action" value="decline" class="btn ghost" formnovalidate>{{t "Decline this form"}}</button>
     </details>{{end}}
   </form>
@@ -317,6 +323,11 @@
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
   </header>
   <div class="page">
+  {{with .Note}}<dl class="recap snap-note">
+    <dt>{{t "Why it was declined"}}</dt>
+    {{with .Text}}<dd>{{.}}</dd>{{end}}
+    {{with .Files}}<dd><ul class="snap-files">{{range .}}<li>{{with .Thumb}}<img src="{{.}}" alt="">{{end}}<span>{{.Name}} <small>{{.Size}}</small></span></li>{{end}}</ul></dd>{{end}}
+  </dl>{{end}}
   <div class="form">
     <fieldset class="snap-fields" disabled>
     {{range .Groups}}
@@ -361,6 +372,11 @@
     {{end}}
   {{else if eq .Status "declined"}}
     <p class="lead">{{t "You declined this form — nothing else to do."}}</p>
+    {{if or .Reason .ReasonFiles}}
+    <dl class="recap">
+      <dt>{{t "Your note to the asker"}}</dt>{{with .Reason}}<dd>{{.}}</dd>{{end}}{{with .ReasonFiles}}<dd>📎 {{.}}</dd>{{end}}
+    </dl>
+    {{end}}
   {{else if eq .Status "closed"}}
     <p class="lead">{{if .When}}{{t "This form is closed since %s" .When}}{{else}}{{t "This form is closed"}}{{end}}{{if .ShowCount}}{{tn .Count ": it took %d answer" ": it took %d answers"}}{{end}}{{t ". Thanks for stopping by."}}</p>
   {{else if eq .Status "revoked"}}
