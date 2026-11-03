@@ -266,7 +266,7 @@ forgotten after a while without a poll:
 | flag | env | default |
 |------|-----|---------|
 | `--max-forms` | `ASK_FORM_RELAY_MAX_FORMS` | 50 open forms per machine |
-| `--register-per-ip` | `ASK_FORM_RELAY_REGISTER_PER_IP` | 5 registrations per address per day |
+| `--register-per-ip` | `ASK_FORM_RELAY_REGISTER_PER_IP` | 5 registrations per address (IPv6: per /64) per day |
 | `--max-machines` | `ASK_FORM_RELAY_MAX_MACHINES` | 1000 self-registered machines |
 | `--forget-after` | | 2160h (90 days; negative: never) |
 

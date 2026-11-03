@@ -131,8 +131,11 @@ func (r *Relay) loadTokens(force bool) error {
 		return err
 	}
 	// Every save renames a fresh file over the old one, so a new inode means
-	// new content even within one mtime tick.
-	if !force && fi != nil && r.tokFi != nil && os.SameFile(fi, r.tokFi) && fi.ModTime().Equal(r.tokFi.ModTime()) {
+	// new content even within one mtime tick — unless the freed inode came
+	// back for the next file (ext4 hands it out again at once). So a file read
+	// within a couple of timestamp ticks of its last change is read again
+	// until it has been still for that long (git's "racily clean").
+	if !force && fi != nil && r.tokFi != nil && !r.tokRacy && os.SameFile(fi, r.tokFi) && fi.ModTime().Equal(r.tokFi.ModTime()) {
 		return nil
 	}
 	m, err := LoadMachines(r.cfg.MachinesFile)
@@ -150,6 +153,7 @@ func (r *Relay) loadTokens(force bool) error {
 		toks[a] = name
 	}
 	r.tokens, r.entries, r.tokFi = toks, m, fi
+	r.tokRacy = fi != nil && time.Since(fi.ModTime()) < 2*time.Second
 	return nil
 }
 

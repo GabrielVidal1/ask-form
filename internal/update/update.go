@@ -109,8 +109,9 @@ func (v Version) Less(o Version) bool {
 	return v.Pre != "" && (o.Pre == "" || v.Pre < o.Pre)
 }
 
-// Release reports whether v is a plain release (no pre-release suffix — a
-// `git describe` build like v0.1.0-3-g7fedbda counts as one).
+// Release reports whether v is a plain release: no pre-release suffix, so
+// a `git describe` build between tags (v0.1.0-3-g7fedbda) is not one, and
+// never upgrades itself (Due).
 func (v Version) Release() bool { return v.Pre == "" }
 
 // ── fetching ────────────────────────────────────────────────────────────────

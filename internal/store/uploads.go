@@ -22,9 +22,12 @@ import (
 
 // Uploads, on the machine running `serve`:
 //
-//	<dir>/uploads/<id>/tmp/<key>/<session>/<n>.part   chunks of a file on its way
+//	<dir>/uploads/<id>/.tmp/<key>/<session>/<n>.part  chunks of a file on its way
 //	<dir>/uploads/<id>/<key>/<name>                   a finished file
 //	<dir>/uploads/<id>/<key>/.<ref>.json              its record (ref → file), until the form closes
+//
+// The staging directory starts with a dot so no field key can name it (a
+// file field keyed "tmp" would otherwise keep its files where a close sweeps).
 //
 // A browser sends a file as chunks under a session id it makes up; the last
 // chunk to arrive assembles them, the bytes are sniffed against the field's
@@ -41,6 +44,7 @@ const (
 	MaxChunks     = 64         // chunks per file
 	UploadTTL     = 7 * 24 * time.Hour
 	stagingTTL    = time.Hour // a half-sent file is dropped after this
+	stagingDir    = ".tmp"    // under a form's uploads: chunks on their way (never a field key)
 )
 
 // UploadKind says why an upload was refused, for the HTTP status.
@@ -140,7 +144,7 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 		return &rec.File, rec.Ref, nil
 	}
 	root := s.uploadsDir(c.Form)
-	sess := filepath.Join(root, "tmp", c.Key, c.Session)
+	sess := filepath.Join(root, stagingDir, c.Key, c.Session)
 	if err := os.MkdirAll(sess, 0o700); err != nil {
 		return nil, "", err
 	}
@@ -302,7 +306,7 @@ func (s *Store) settleUploads(id string, answers map[string]any) {
 		os.RemoveAll(root)
 		return
 	}
-	os.RemoveAll(filepath.Join(root, "tmp"))
+	os.RemoveAll(filepath.Join(root, stagingDir))
 	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && !keep[p] {
 			os.Remove(p)
@@ -357,7 +361,7 @@ func (s *Store) PurgeUploads() {
 		case !known:
 			os.RemoveAll(root)
 		case st.Status == Pending:
-			dropStale(filepath.Join(root, "tmp"), now)
+			dropStale(filepath.Join(root, stagingDir), now)
 		case st.Status == Submitted:
 			if st.ClosedAt != nil && now.Sub(*st.ClosedAt) > UploadTTL {
 				os.RemoveAll(root)

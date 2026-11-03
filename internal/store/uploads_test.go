@@ -114,7 +114,7 @@ func TestUploadAssemblesOutOfOrder(t *testing.T) {
 	if fi, _ := os.Stat(info.Path); fi.Mode().Perm() != 0o600 {
 		t.Fatalf("file mode %v", fi.Mode())
 	}
-	if _, err := os.Stat(filepath.Join(r.dir, "uploads", r.id, "tmp", "doc", "sessabcd1")); err == nil {
+	if _, err := os.Stat(filepath.Join(r.dir, "uploads", r.id, stagingDir, "doc", "sessabcd1")); err == nil {
 		t.Fatal("chunks left behind")
 	}
 	// The ref resolves, only for this form and field.
@@ -167,7 +167,7 @@ func TestUploadRefusals(t *testing.T) {
 	if _, _, err := r.send("img", "big.png", big, 4, nil); kindOf(err) != UploadTooBig {
 		t.Fatalf("oversize: %v", err)
 	}
-	if left, _ := filepath.Glob(filepath.Join(r.dir, "uploads", r.id, "tmp", "img", "*")); len(left) != 0 {
+	if left, _ := filepath.Glob(filepath.Join(r.dir, "uploads", r.id, stagingDir, "img", "*")); len(left) != 0 {
 		t.Fatalf("oversize left chunks: %v", left)
 	}
 	// Anything goes on a field without accept.
@@ -341,7 +341,7 @@ func TestPurgeUploads(t *testing.T) {
 	// Files on disk keep the real clock: set the ages the purge will see.
 	age := func(session string, d time.Duration) {
 		at := now.Add(2 * time.Hour).Add(-d)
-		os.Chtimes(filepath.Join(dir, "uploads", open.ID, "tmp", "a", session), at, at)
+		os.Chtimes(filepath.Join(dir, "uploads", open.ID, stagingDir, "a", session), at, at)
 	}
 	age("freshsess1", 10*time.Minute)
 	age("stalesess1", 2*time.Hour)
@@ -361,10 +361,10 @@ func TestPurgeUploads(t *testing.T) {
 	s.now = func() time.Time { return now.Add(2 * time.Hour) } // `short` has expired
 	s.PurgeUploads()
 	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
-	if !exists(filepath.Join(dir, "uploads", open.ID, "tmp", "a", "freshsess1")) {
+	if !exists(filepath.Join(dir, "uploads", open.ID, stagingDir, "a", "freshsess1")) {
 		t.Error("a fresh half-sent file was purged")
 	}
-	if exists(filepath.Join(dir, "uploads", open.ID, "tmp", "a", "stalesess1")) {
+	if exists(filepath.Join(dir, "uploads", open.ID, stagingDir, "a", "stalesess1")) {
 		t.Error("a stale half-sent file stayed")
 	}
 	if !exists(done.Path) {
@@ -405,4 +405,24 @@ func filesUnder(root string) []string {
 		return nil
 	})
 	return out
+}
+
+// A file field may be keyed "tmp": its files must not share the directory
+// half-sent chunks are staged in (and that a close sweeps away).
+func TestUploadFieldKeyedTmpKeepsItsFiles(t *testing.T) {
+	r := newUpRig(t, `[{"key":"tmp","type":"file"}]`)
+	keep, _, err := r.send("tmp", "keep.txt", []byte("keep me"), 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.s.Close(r.id, Submitted, map[string]any{"tmp": []form.FileInfo{*keep}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(keep.Path); err != nil || string(b) != "keep me" {
+		t.Fatalf("the submitted file is gone: %v", err)
+	}
+	r.s.PurgeUploads()
+	if _, err := os.Stat(keep.Path); err != nil {
+		t.Fatalf("purge dropped the submitted file: %v", err)
+	}
 }

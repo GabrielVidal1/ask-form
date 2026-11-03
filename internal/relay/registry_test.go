@@ -103,6 +103,23 @@ func TestRegisterPerIPLimit(t *testing.T) {
 	}
 }
 
+// An IPv6 visitor holds a whole /64: each of its addresses is not a new
+// visitor, or one of them could fill the relay.
+func TestRegisterPerIPLimitIPv6(t *testing.T) {
+	g := newRegRig(t, Registration{Open: true, PerIP: 2})
+	for i, ip := range []string{"2001:db8:1:2::1", "2001:db8:1:2::2"} {
+		if _, _, code := g.register(ip, "x"); code != 200 {
+			t.Fatalf("registration %d refused: %d", i, code)
+		}
+	}
+	if _, _, code := g.register("2001:db8:1:2:ffff::3", "x"); code != http.StatusTooManyRequests {
+		t.Fatalf("third registration from one /64: %d", code)
+	}
+	if _, _, code := g.register("2001:db8:1:3::1", "x"); code != 200 {
+		t.Fatalf("another /64 refused: %d", code)
+	}
+}
+
 func TestRegisterMaxMachines(t *testing.T) {
 	g := newRegRig(t, Registration{Open: true, MaxMachines: 1})
 	g.register("1.1.1.1", "a")

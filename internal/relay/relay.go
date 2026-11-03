@@ -111,6 +111,7 @@ type Relay struct {
 	tokens   map[[32]byte]string // sha256(token) → name
 	entries  Machines
 	tokFi    os.FileInfo
+	tokRacy  bool // tokFi was read too soon after a change to trust (loadTokens)
 	general  *ipLimiter
 	regLimit *ipLimiter
 	uploads  *ipLimiter    // upload chunks per visitor
@@ -388,10 +389,11 @@ func (r *Relay) Public() http.Handler {
 		})
 	}
 	if r.cfg.Examples != nil {
+		ex := r.withVisitor(r.cfg.Examples)
 		for _, lang := range i18n.Langs {
 			p := server.ExamplesPrefix(lang) // /examples, /fr/examples
-			mux.Handle(p, r.cfg.Examples)
-			mux.Handle(p+"/", r.cfg.Examples)
+			mux.Handle(p, ex)
+			mux.Handle(p+"/", ex)
 		}
 	}
 	mux.HandleFunc("/f/{id}", r.forward)
@@ -423,6 +425,18 @@ func (r *Relay) clientIP(req *http.Request) string {
 		}
 	}
 	return ip
+}
+
+// withVisitor hands h the visitor's address (clientIP) as the request's
+// peer, the way a machine gets it through the tunnel: the examples count
+// their submits by it, and this is the one place that reads the proxy's
+// headers.
+func (r *Relay) withVisitor(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req = req.WithContext(req.Context())
+		req.RemoteAddr = net.JoinHostPort(r.clientIP(req), "0")
+		h.ServeHTTP(w, req)
+	})
 }
 
 // peerIP is the address the proxy in front reports (ClientIPHeader), else
@@ -637,8 +651,13 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 	defer t.Stop()
 	select {
 	case resp := <-p.resp:
+		hdr := tunnel.Filter(resp.Header, tunnel.ResponseHeaders)
+		if !confine(hdr, id, req.URL.Path) {
+			http.Error(w, "Bad gateway", http.StatusBadGateway)
+			return
+		}
 		h := w.Header()
-		for k, v := range tunnel.Filter(resp.Header, tunnel.ResponseHeaders) {
+		for k, v := range hdr {
 			h[k] = v
 		}
 		status := resp.Status
@@ -653,6 +672,62 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 		page(w, http.StatusGatewayTimeout, offlinePage)
 	case <-req.Context().Done():
 	}
+}
+
+// confine keeps a machine's answer to what a form's pages need. It comes out
+// on the origin every machine on the relay shares, and a machine that
+// registered itself can send anything: a script of its own there could read
+// the drafts other forms keep in localStorage, fetch another form with the
+// visitor's cookie, or install a service worker over /f/. So no script runs
+// but the relay's own (/f/_static: machines never serve one, and a script
+// from a machine is refused, false), a frame — the one document with inline
+// script — is sandboxed into an opaque origin whatever the machine says, and
+// cookies stay on the form's own path. The policies are added to the
+// machine's: a browser enforces every one of them.
+func confine(h http.Header, id, urlPath string) bool {
+	for _, v := range h.Values("Content-Type") {
+		for _, ct := range strings.Split(v, ",") {
+			if isScript(ct) {
+				return false
+			}
+		}
+	}
+	h.Set("X-Content-Type-Options", "nosniff")
+	if isFrame(urlPath, id) {
+		h.Add("Content-Security-Policy", "sandbox allow-scripts")
+	} else {
+		h.Add("Content-Security-Policy", "script-src 'self'; worker-src 'none'")
+	}
+	var keep []string
+	for _, raw := range h.Values("Set-Cookie") {
+		cs := (&http.Response{Header: http.Header{"Set-Cookie": {raw}}}).Cookies()
+		// The form's own path: /f/<id>, or /forms/<id> from a machine older
+		// than the /f/ prefix.
+		own := len(cs) == 1 && (cs[0].Path == server.Prefix+id || cs[0].Path == server.LegacyPrefix+id)
+		if own && cs[0].Domain == "" {
+			keep = append(keep, raw)
+		}
+	}
+	h.Del("Set-Cookie")
+	if keep != nil {
+		h["Set-Cookie"] = keep
+	}
+	return true
+}
+
+// isScript: a JavaScript media type (the WHATWG list), what a browser needs
+// to run a script or a service worker under nosniff.
+func isScript(contentType string) bool {
+	mt, _, _ := strings.Cut(contentType, ";")
+	mt = strings.ToLower(strings.TrimSpace(mt))
+	return strings.HasSuffix(mt, "javascript") || strings.HasSuffix(mt, "ecmascript") ||
+		strings.HasPrefix(mt, "text/javascript") || mt == "text/jscript" || mt == "text/livescript"
+}
+
+// isFrame: an html block's, mockup's or widget's document, /f/<id>/frame/….
+func isFrame(urlPath, id string) bool {
+	return strings.HasPrefix(urlPath, server.Prefix+id+"/frame/") ||
+		strings.HasPrefix(urlPath, server.LegacyPrefix+id+"/frame/")
 }
 
 // isUpload: a POST to /f/<id>/upload/<key> (or the legacy /forms/ prefix).
@@ -698,11 +773,12 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// ipLimiter is a fixed window per address.
+// ipLimiter is a fixed window per address (an IPv6 one's /64: limitKey).
 type ipLimiter struct {
 	mu     sync.Mutex
 	max    int
 	window time.Duration
+	swept  time.Time
 	hits   map[string]*struct {
 		start time.Time
 		n     int
@@ -717,10 +793,14 @@ func newIPLimiter(max int, window time.Duration) *ipLimiter {
 }
 
 func (l *ipLimiter) hit(ip string) bool {
+	ip = limitKey(ip)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	if len(l.hits) > 50000 {
+	// A big map is swept at most once a second: while its entries are all
+	// still in their window, sweeping on every hit would walk it each time.
+	if len(l.hits) > 50000 && now.Sub(l.swept) > time.Second {
+		l.swept = now
 		for k, v := range l.hits {
 			if now.Sub(v.start) > l.window {
 				delete(l.hits, k)
@@ -737,4 +817,15 @@ func (l *ipLimiter) hit(ip string) bool {
 	}
 	w.n++
 	return w.n <= l.max
+}
+
+// limitKey is what a limit counts: an IPv4 address, or an IPv6 address's
+// /64 — one subscriber gets a whole /64, so counting each address would give
+// one visitor (or one registration spree) billions of budgets.
+func limitKey(ip string) string {
+	a := net.ParseIP(ip)
+	if a == nil || a.To4() != nil {
+		return ip
+	}
+	return a.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
