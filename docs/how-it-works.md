@@ -113,7 +113,8 @@ multi form closed) gets a snapshot: one HTML page written to
 `<data>/snapshots/<id>.html` once and kept forever, like the form itself.
 It is the answer page drawn read-only: every question as the respondent saw
 it (the ones a condition hid from them left out), with the answers filled
-in. A declined, withdrawn or expired form shows its questions empty. A multi
+in. A declined, withdrawn or expired form shows its questions empty (a
+decline's note, when the respondent left one, above them). A multi
 form shows its questions once, then each answer as a numbered, dated recap.
 A line on top says how and when the form ended.
 

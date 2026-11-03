@@ -61,12 +61,13 @@
     });
   }
 
-  var busy = 0;
-  function setBusy(delta) {
-    busy += delta;
+  // Sending waits for the answers' files, declining for its note's only.
+  var busy = 0, declineBusy = 0;
+  function setBusy(delta, decline) {
+    if (decline) declineBusy += delta; else busy += delta;
     $all("button[type=submit]", form).forEach(function (b) {
-      if (b.getAttribute("name") === "action" && b.value === "decline") return;
-      b.disabled = busy > 0;
+      var declines = b.getAttribute("name") === "action" && b.value === "decline";
+      b.disabled = (declines ? declineBusy : busy) > 0;
     });
   }
 
@@ -75,14 +76,15 @@
     if (up) setup(field, up, field.querySelector("input[data-refs]"), null);
   });
   // An attach button: the files ride on the text box before it, which takes
-  // them dropped (anywhere around it) or pasted too.
+  // them dropped (anywhere around it) or pasted too. The box is a field's, or
+  // the note a decline carries ([data-key] on both).
   $all(".attach").forEach(function (up) {
     var box = up.previousElementSibling;
     if (!box || box.tagName !== "TEXTAREA") return;
     box.classList.add("has-attach");
     // A press on the paperclip keeps the box's focus, so the button stays.
     up.querySelector(".attach-add").addEventListener("mousedown", function (e) { e.preventDefault(); });
-    setup(up.closest(".field"), up, up.querySelector("input[data-refs]"), box);
+    setup(up.closest(".field, [data-key]"), up, up.querySelector("input[data-refs]"), box);
   });
 
   function setup(field, up, hidden, box) {
@@ -96,6 +98,7 @@
     var multiple = up.hasAttribute("data-multiple");
     var accept = up.getAttribute("data-accept") || "";
     var metaKey = "ask-form:files:" + formId + ":" + key;
+    var inDecline = !!up.closest(".decline");
     var items = [];
 
     // Refs already in the field (a draft, a page re-shown with errors): the
@@ -208,7 +211,7 @@
       it.session = it.session || rand();
       it.aborted = false;
       render();
-      setBusy(1);
+      setBusy(1, inDecline);
       try {
         var total = Math.max(1, Math.ceil(file.size / CHUNK));
         var data = null;
@@ -233,7 +236,7 @@
           render();
         }
       } finally {
-        setBusy(-1);
+        setBusy(-1, inDecline);
       }
     }
 

@@ -71,7 +71,8 @@ func FileNames(infos []FileInfo) string {
 
 // UploadTarget is the field an upload to key goes into, with the limits it
 // takes: a file field as the spec says, an attachable field with the
-// attachments' (any type, AttachMaxMB, AttachMaxFiles).
+// attachments' (any type, AttachMaxMB, AttachMaxFiles) — a decline's note
+// (DeclineKey) is one of those.
 func UploadTarget(fields []Field, key string) (Field, bool) {
 	for _, f := range fields {
 		if f.Key != key {
@@ -84,6 +85,12 @@ func UploadTarget(fields []Field, key string) (Field, bool) {
 			f.Accept, f.MaxMB, f.Multiple, f.MaxFiles = "", AttachMaxMB, true, AttachMaxFiles
 			return f, true
 		}
+		return Field{}, false
+	}
+	if key == DeclineKey(fields) {
+		f := DeclineNote(fields)
+		f.MaxMB, f.Multiple, f.MaxFiles = AttachMaxMB, true, AttachMaxFiles
+		return f, true
 	}
 	return Field{}, false
 }

@@ -221,6 +221,10 @@ html:not(.js) .widget-frame { display: none; }
 .decline { margin-top: 28px; font-size: 14px; color: hsl(var(--muted-foreground)); }
 .decline summary { cursor: pointer; }
 .decline p { margin: 8px 0; }
+.decline-note { margin: 12px 0; color: hsl(var(--foreground)); }
+.decline-note label { display: block; font-weight: 600; margin-bottom: 6px; }
+.decline-note textarea { min-height: 72px; font-size: 16px; }
+.decline-note.has-error textarea { border-color: hsl(var(--destructive)); }
 .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 
 /* closed page */

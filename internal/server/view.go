@@ -88,6 +88,7 @@ type formPage struct {
 	Description template.HTML
 	Groups      []pageGroup
 	CatchAll    *pageField
+	Decline     *pageField // the note a decline carries (none in a multi form)
 	CSRF        string
 	Errors      []pageError
 	Nonce       string
@@ -208,6 +209,12 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 		}
 		fields = append(fields, pf)
 	}
+	if !st.Multi {
+		p.Decline = declineNote(st, base, values, errs)
+		if p.Decline.Error != "" {
+			p.Errors = append(p.Errors, pageError{DOMID: "decline", Label: i18n.T(lang, "Decline this form"), Msg: p.Decline.Error})
+		}
+	}
 	p.PageCSS = template.CSS(css.String())
 	p.Groups, p.CatchAll = groupFields(fields)
 	p.Paged = len(p.Groups) > 1
@@ -219,6 +226,19 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 		}
 	}
 	return p
+}
+
+// declineNote is the box a respondent who declines can write in and attach
+// files to (form.DeclineNote).
+func declineNote(st store.State, base string, values url.Values, errs map[string]string) *pageField {
+	f := form.DeclineNote(st.Fields)
+	pf := &pageField{Field: f, Name: form.InputName(f.Key), DOMID: "decline-note", Error: errs[f.Key], Value: values.Get(form.InputName(f.Key))}
+	if strings.HasPrefix(base, Prefix) {
+		pf.AttachName, pf.AttachURL = form.AttachName(f.Key), fmt.Sprintf("%s/upload/%s", base, f.Key)
+		pf.AttachRefs = values.Get(pf.AttachName)
+		pf.AttachBytes, pf.AttachFiles = form.AttachMaxMB*1_000_000, form.AttachMaxFiles
+	}
+	return pf
 }
 
 // fill sets a field's current value: from the submitted values when there

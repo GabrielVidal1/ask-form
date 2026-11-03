@@ -25,7 +25,10 @@ ask-form wait <id> --timeout 30m
 ```
 
 Exit codes of `wait`: 0 submitted · 3 declined/revoked/expired · 4 timed out
-(the form stays open: wait again, or `ask-form revoke <id>`).
+(the form stays open: wait again, or `ask-form revoke <id>`). A respondent who
+declines may say why: a declined form can carry `"reason": "…"` and
+`"reasonFiles": [{name,size,contentType,sha256,path}]` — read them before
+deciding what to do next.
 
 The `url` opens on this computer (no relay in between). `publicUrl` is the
 same form from any device: give that one when the user is away from this

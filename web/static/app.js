@@ -320,6 +320,12 @@
     touched = draft.t || {};
   }
   if (draft && draft.seen) seen = draft.seen;
+  // A note to decline with, or files for it, kept in the draft: its section
+  // opens on them.
+  var declineNote = form.querySelector(".decline-note");
+  if (declineNote && $all("textarea, input[data-refs]", declineNote).some(function (i) { return i.value.trim(); })) {
+    declineNote.closest("details").open = true;
+  }
 
   // ── per-field behaviour ─────────────────────────────────────────────────
   fields.forEach(function (f) {

@@ -192,3 +192,34 @@ func TestMultiAnswers(t *testing.T) {
 		t.Fatalf("reloaded: %+v", got)
 	}
 }
+
+// A decline's note is the decline event's: read back after a restart, and
+// refused on a multi form, which can't be declined.
+func TestDeclineReason(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := Open(dir)
+	f, _, err := s.Create(context.Background(), CreateParams{Title: "T", Fields: fields(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []form.FileInfo{{Name: "why.txt", Size: 3, ContentType: "text/plain", Path: "/nowhere/why.txt"}}
+	st, err := s.Decline(f.ID, "Not mine", files)
+	if err != nil || st.Status != Declined || st.Reason != "Not mine" || len(st.ReasonFiles) != 1 {
+		t.Fatalf("decline: %v %+v", err, st)
+	}
+	if _, err := s.Decline(f.ID, "again", nil); !errors.Is(err, ErrClosed) {
+		t.Fatalf("second decline: %v", err)
+	}
+	s2, _ := Open(dir)
+	if st, _ := s2.Get(f.ID); st.Reason != "Not mine" || len(st.ReasonFiles) != 1 || st.ReasonFiles[0].Name != "why.txt" {
+		t.Fatalf("reopened: %+v", st)
+	}
+	plain, _ := form.Normalize(json.RawMessage(`[{"key":"a","label":"A"}]`))
+	m, _, err := s.Create(context.Background(), CreateParams{Title: "M", Fields: plain, Multi: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Decline(m.ID, "no", nil); !errors.Is(err, ErrMulti) {
+		t.Fatalf("multi decline: %v", err)
+	}
+}
