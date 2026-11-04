@@ -323,6 +323,10 @@ func answerValues(fields []form.Field, answers map[string]any) url.Values {
 			s := fmt.Sprint(a)
 			if hasOption(f, s) {
 				v.Set(name, s)
+				if o, ok := answers[form.OtherKey(f.Key)].(string); ok && o != "" {
+					v.Add(name, form.OtherValue)
+					v.Set(form.OtherName(f.Key), o)
+				}
 			} else {
 				v.Set(name, form.OtherValue)
 				v.Set(form.OtherName(f.Key), s)

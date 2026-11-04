@@ -145,6 +145,65 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// A single choice's "Other…" is ticked on its own: an option, the text, or
+// both — the option stays the answer, the text goes next to it.
+func TestParseOtherWithOption(t *testing.T) {
+	fields := norm(t, `[
+		{"key":"r","type":"radio","required":true,"options":["a","b","c"]},
+		{"key":"s","type":"select","required":true,"options":["a","b"]}
+	]`)
+	cases := []struct {
+		name        string
+		vals        []string
+		other       string
+		want, extra any
+		err         bool
+	}{
+		{"option", []string{"a"}, "", "a", nil, false},
+		{"other alone", []string{OtherValue}, "mine", "mine", nil, false},
+		{"both", []string{"b", OtherValue}, " with more\r\nlines ", "b", "with more\nlines", false},
+		{"both, other first", []string{OtherValue, "b"}, "x", "b", "x", false},
+		{"other ticked empty", []string{"a", OtherValue}, "", "a", nil, false},
+		{"text not ticked", []string{"a"}, "stale", "a", nil, false},
+		{"nothing", nil, "", nil, nil, true},
+		{"other alone empty", []string{OtherValue}, "  ", nil, nil, true},
+		{"two options", []string{"a", "b", OtherValue}, "x", nil, nil, true},
+		{"unknown", []string{"zzz", OtherValue}, "x", nil, nil, true},
+	}
+	for _, k := range []string{"r", "s"} {
+		for _, c := range cases {
+			v := url.Values{}
+			v[InputName(k)] = c.vals
+			v.Set(OtherName(k), c.other)
+			r := Parse(fields[:2], v)
+			if got := r.Errors[k] != ""; got != c.err {
+				t.Errorf("%s/%s: error %q, want error=%v", k, c.name, r.Errors[k], c.err)
+				continue
+			}
+			if c.err {
+				continue
+			}
+			if r.Answers[k] != c.want {
+				t.Errorf("%s/%s: answer %#v, want %#v", k, c.name, r.Answers[k], c.want)
+			}
+			if x, ok := r.Answers[OtherKey(k)]; (c.extra == nil && ok) || (c.extra != nil && x != c.extra) {
+				t.Errorf("%s/%s: %s = %#v, want %#v", k, c.name, OtherKey(k), x, c.extra)
+			}
+		}
+	}
+	// A condition on the question still sees the option.
+	cf := norm(t, `[
+		{"key":"r","type":"radio","options":["a","b"]},
+		{"key":"why","type":"text","required":true,"showIf":{"key":"r","equals":"a"}}
+	]`)
+	v := url.Values{}
+	v[InputName("r")] = []string{"a", OtherValue}
+	v.Set(OtherName("r"), "and more")
+	if r := Parse(cf, v); r.Errors["why"] == "" {
+		t.Errorf("showIf on the option lost: %v", r.Answers)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	fields := norm(t, `[
 		{"key":"name","type":"text","required":true},

@@ -139,6 +139,14 @@
     if (!o || !otherPicked(f)) return "";
     return o.value.trim() || attached(f).join(", ");
   }
+  // Tick "Other…": its own box next to a single choice, or (a page from an
+  // older machine) the choice itself, which replaces the option picked.
+  function pickOther(f) {
+    inputs(f).forEach(function (i) {
+      if (i.value === "__other__" && (i.type === "radio" || i.type === "checkbox")) i.checked = true;
+      if (i.tagName === "SELECT" && i.querySelector('option[value="__other__"]')) i.value = "__other__";
+    });
+  }
   function otherPicked(f) {
     return inputs(f).some(function (i) {
       return (i.value === "__other__" && i.checked) || (i.tagName === "SELECT" && i.value === "__other__");
@@ -156,8 +164,7 @@
     }
     if (t === "select") {
       var s = f.querySelector("select");
-      if (!s || !s.value) return true;
-      if (s.value !== "__other__") return false;
+      if (s && s.value && s.value !== "__other__") return false;
       return !otherText(f);
     }
     var main = els[0];
@@ -283,10 +290,13 @@
     var v = {};
     $all("input, select, textarea", form).forEach(function (i) {
       if (!/^[foa]\./.test(i.name) || i.type === "password") return;
+      var had = v[i.name];
+      if (typeof had === "string") had = had ? [had] : []; // a dropdown before its Other… box
       if (i.type === "radio" || i.type === "checkbox") {
-        if (i.checked) (v[i.name] = v[i.name] || []).push(i.value);
-        else v[i.name] = v[i.name] || [];
-      } else if (i.closest("[data-list]")) (v[i.name] = v[i.name] || []).push(i.value);
+        if (i.checked) (v[i.name] = had || []).push(i.value);
+        else v[i.name] = had || [];
+      } else if (i.closest("[data-list]")) (v[i.name] = had || []).push(i.value);
+      else if (had) { if (i.value) had.unshift(i.value); v[i.name] = had; }
       else v[i.name] = i.value;
     });
     store.set(draftKey, { v: v, t: touched, seen: seen, at: Date.now() });
@@ -299,6 +309,13 @@
       var val = draft.v[i.name];
       if (i.type === "radio" || i.type === "checkbox") i.checked = Array.isArray(val) && val.indexOf(i.value) >= 0;
       else if (typeof val === "string") i.value = val;
+      else if (i.tagName === "SELECT" && Array.isArray(val) && !i.closest("[data-list]")) {
+        // A dropdown kept next to its Other… box: the option among the values.
+        var opt = val.filter(function (x) {
+          return x !== "__other__" && Array.prototype.some.call(i.options, function (o) { return o.value === x; });
+        })[0];
+        i.value = opt || "";
+      }
     });
     // A list comes back with as many rows as it had.
     $all("[data-list]", form).forEach(function (list) {
@@ -336,28 +353,53 @@
       // Typing next to "Other…" picks it.
       o.addEventListener("input", function () {
         if (!o.value.trim()) return;
-        inputs(f).forEach(function (i) {
-          if (i.value === "__other__" && (i.type === "radio" || i.type === "checkbox")) i.checked = true;
-          if (i.tagName === "SELECT") i.value = "__other__";
-        });
+        pickOther(f);
       });
       inputs(f).forEach(function (i) {
         if (i.value === "__other__" || i.tagName === "SELECT") {
           i.addEventListener("change", function () {
-            if (!otherPicked(f)) return;
+            if (i.tagName === "SELECT" ? i.value !== "__other__" : !i.checked) return;
             if (o.tagName === "TEXTAREA") grow(o);
             if (!o.value) o.focus();
           });
         }
       });
+      // A second tap (or Space) on the picked option clears it, so that
+      // "Other…" alone can answer a single choice.
+      var was = null;
+      var note = function () { was = $all("input[type=radio]", f).filter(function (i) { return i.checked; })[0] || null; };
+      f.addEventListener("pointerdown", note, true);
+      f.addEventListener("keydown", note, true);
+      var clear = function (i) {
+        i.checked = false;
+        was = null;
+        i.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      $all("input[type=radio]", f).forEach(function (i) {
+        if (i.value === "__other__") return; // an older machine's Other… radio
+        var spaced = false;
+        i.addEventListener("click", function () {
+          if (i !== was) { was = i; return; }
+          clear(i);
+        });
+        // Space on the picked radio clears it at once; its click (on key up)
+        // would tick it again, so the key goes no further.
+        i.addEventListener("keydown", function (e) {
+          if (e.key !== " " || !i.checked) return;
+          e.preventDefault();
+          spaced = true;
+          clear(i);
+        });
+        i.addEventListener("keyup", function (e) {
+          if (e.key === " " && spaced) e.preventDefault();
+          spaced = false;
+        });
+      });
       // So does attaching a file to it.
       var refs = f.querySelector(".other input[data-refs]");
       if (refs) refs.addEventListener("change", function () {
         if (!refs.value) return;
-        inputs(f).forEach(function (i) {
-          if (i.value === "__other__" && (i.type === "radio" || i.type === "checkbox")) i.checked = true;
-          if (i.tagName === "SELECT") i.value = "__other__";
-        });
+        pickOther(f);
       });
     }
     if (t === "slider") {
@@ -415,7 +457,7 @@
       var other = otherText(f);
       if (t === "select" && !f.classList.contains("visual-field")) {
         var s = f.querySelector("select");
-        return s.value === "__other__" ? (other || null) : (s.value || null);
+        return s.value && s.value !== "__other__" ? s.value : (other || null);
       }
       var picked = els.filter(function (i) {
         return (i.type === "radio" || i.type === "checkbox") && i.checked && i.value !== "__other__";
@@ -766,8 +808,9 @@
     }
     if (t === "select" && !f.classList.contains("visual-field")) {
       var s = f.querySelector("select");
-      if (!s.value) return "";
-      return s.value === "__other__" ? oText : s.options[s.selectedIndex].textContent.trim();
+      var sel = s.value && s.value !== "__other__" ? [s.options[s.selectedIndex].textContent.trim()] : [];
+      if (oText) sel.push(oText);
+      return sel.join(", ");
     }
     if (t === "radio" || t === "rating" || t === "multiselect" || t === "select") {
       var parts = inputs(f).filter(function (i) {

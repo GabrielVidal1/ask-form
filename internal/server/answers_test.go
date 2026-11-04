@@ -219,3 +219,71 @@ func TestAnswersViewMulti(t *testing.T) {
 		t.Errorf("closed: tea's own answer gone")
 	}
 }
+
+// A single choice's "Other…" is a box of its own: the page ticks it next to an
+// option (no `required` that would refuse "Other…" alone without a script),
+// the answer keeps the option and adds the text, and the closed page, the
+// answers view and the snapshot show both.
+func TestOtherNextToAnOption(t *testing.T) {
+	srv, st := snapServer(t, Config{PublicURL: "https://x.example"})
+	pub := httptest.NewServer(srv.Public())
+	defer pub.Close()
+	fields, err := form.Normalize(json.RawMessage(`[
+		{"key":"stack","label":"Stack","type":"radio","required":true,"options":["Vite","Next"]},
+		{"key":"db","label":"Database","type":"select","required":true,"options":["Postgres","SQLite"]},
+		{"key":"host","label":"Host","type":"radio","options":["Fly","Render"]}
+	]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, token, err := st.Create(context.Background(), store.CreateParams{Title: "Stack", Fields: fields})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newVisitor(t, pub.URL, f.ID, token)
+	_, page, _ := v.get("/f/" + f.ID)
+	for _, want := range []string{
+		`<input type="checkbox" name="f.stack" value="__other__">`,
+		`<input type="checkbox" name="f.db" value="__other__">`,
+		`<select id="q1-in" name="f.db">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %s", want)
+		}
+	}
+	for _, bad := range []string{`<option value="__other__"`, `type="radio" name="f.stack" value="Vite" required`, `name="f.db" required`} {
+		if strings.Contains(page, bad) {
+			t.Errorf("page holds %s", bad)
+		}
+	}
+
+	in, o := form.InputName, form.OtherName
+	v.send(url.Values{in("stack"): {"Vite", "__other__"}, o("stack"): {"with SSR"},
+		in("db"): {"", "__other__"}, o("db"): {"Turso"}, in("host"): {"Fly"}})
+	got, _ := st.Get(f.ID)
+	want := map[string]any{"stack": "Vite", "stack.other": "with SSR", "db": "Turso", "host": "Fly"}
+	if len(got.Answers) != len(want) {
+		t.Errorf("answers %v, want %v", got.Answers, want)
+	}
+	for k, x := range want {
+		if got.Answers[k] != x {
+			t.Errorf("%s = %#v, want %#v", k, got.Answers[k], x)
+		}
+	}
+	_, thanks, _ := v.get("/f/" + f.ID)
+	if !strings.Contains(thanks, "<dt>Stack</dt><dd>Vite, with SSR</dd>") {
+		t.Errorf("closed page recap:\n%s", thanks)
+	}
+	_, view, _ := v.get("/f/" + f.ID + "/answers")
+	for _, want := range []string{
+		`value="Vite" checked`, `<input type="checkbox" name="f.stack" value="__other__" checked>`, `>with SSR</textarea>`,
+		`<input type="checkbox" name="f.db" value="__other__" checked>`, `>Turso</textarea>`,
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("answers view lacks %s", want)
+		}
+	}
+	if strings.Contains(view, `name="f.host" value="__other__" checked`) {
+		t.Error("an option alone shows Other… ticked")
+	}
+}
