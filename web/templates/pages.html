@@ -220,7 +220,7 @@
             <span class="visual mock"><iframe src="{{index $.OptionFrames $i}}#card" sandbox="allow-scripts" tabindex="-1" loading="lazy" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span><a class="zoom" href="{{index $.OptionFrames $i}}" target="_blank" rel="noopener noreferrer" aria-label="{{t "Open full size"}}" title="{{t "Open full size"}}" data-zoom-frame data-zoom-label="{{$o.Label}}">{{template "zoom-icon"}}</a></span>
           {{end}}
           <span class="bar">
-            <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}{{if and $.Required (ne $.Type "multiselect")}} required{{end}}>
+            <input class="card-input" type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{$o.Value}}"{{if index $.Picked $o.Value}} checked{{end}}>
             <span class="bar-text"><span>{{inline $o.Label}}</span>{{if $o.Description}}<small>{{inline $o.Description}}</small>{{end}}</span>
           </span>
         </label>
@@ -228,29 +228,34 @@
       </div>
       <div class="choices other-row">
         <label class="choice">
-          <input type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
+          <input type="checkbox" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
           <span class="choice-text"><span>{{t "Other…"}}</span></span>
         </label>
       </div>
       {{template "other" .}}
     {{else if eq .Type "select"}}
-      <select id="{{.DOMID}}-in" name="{{.Name}}"{{if .Required}} required{{end}}>
+      <select id="{{.DOMID}}-in" name="{{.Name}}">
         <option value="">{{or .Placeholder (t "Pick one…")}}</option>
         {{range .Options}}<option value="{{.Value}}"{{if index $.Picked .Value}} selected{{end}}>{{.Label}}</option>{{end}}
-        <option value="__other__"{{if .OtherPicked}} selected{{end}}>{{t "Other…"}}</option>
       </select>
-      {{if not .Snap}}<ul class="print-options" hidden>{{range .Options}}<li>{{inline .Label}}</li>{{end}}<li>{{t "Other…"}}</li></ul>{{end}}
+      {{if not .Snap}}<ul class="print-options" hidden>{{range .Options}}<li>{{inline .Label}}</li>{{end}}</ul>{{end}}
+      <div class="choices other-row">
+        <label class="choice">
+          <input type="checkbox" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
+          <span class="choice-text"><span>{{t "Other…"}}</span></span>
+        </label>
+      </div>
       {{template "other" .}}
     {{else}}
       <div class="choices">
       {{range .Options}}
         <label class="choice">
-          <input type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{.Value}}"{{if index $.Picked .Value}} checked{{end}}{{if and $.Required (eq $.Type "radio")}} required{{end}}>
+          <input type="{{if eq $.Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{$.Name}}" value="{{.Value}}"{{if index $.Picked .Value}} checked{{end}}>
           <span class="choice-text"><span>{{inline .Label}}</span>{{if .Description}}<small>{{inline .Description}}</small>{{end}}</span>
         </label>
       {{end}}
         <label class="choice">
-          <input type="{{if eq .Type "multiselect"}}checkbox{{else}}radio{{end}}" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
+          <input type="checkbox" name="{{.Name}}" value="__other__"{{if .OtherPicked}} checked{{end}}>
           <span class="choice-text"><span>{{t "Other…"}}</span></span>
         </label>
       </div>

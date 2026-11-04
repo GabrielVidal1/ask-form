@@ -145,7 +145,8 @@ or a choice field takes the paperclip off. None in a `--multi` form.
 - `file` is a field type too (see Files above).
 - Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
   give them `group`s: each group is one page.
-- Every choice field gets an "Other…" free-text choice, and every form ends
+- Every choice field gets an "Other…" free-text choice (on a select or radio
+  it can be ticked next to the option, to add a detail), and every form ends
   with an optional `anything_else` textarea. Don't add your own. Both take
   attached files (see Files).
 - Pictures only through `--asset <file>` plus `{{asset:<basename>}}`. Remote
@@ -195,6 +196,8 @@ A `--multi` form has no `answers`: it has `"answerCount":N` and
 `"responses":[{"n":1,"at":"…","answers":{key: value}},…]`, oldest first.
 
 - text, textarea, date, select, radio → string (an "Other…" answer is the user's own text)
+- `<key>.other` → a select's or radio's "Other…" text when an option is picked
+  too: `<key>` stays the option (conditions on it still hold), this is what they added
 - email → the address, trimmed and lowercased (checked to look like one)
 - multiselect → array of strings · checkbox → bool · number, slider → number
 - time, datetime → a string · daterange → `{"start","end"}` · rating → a number

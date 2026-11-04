@@ -28,6 +28,11 @@ func InputName(key string) string { return "f." + key }
 // OtherName is the input name of a field's "Other…" free text.
 func OtherName(key string) string { return "o." + key }
 
+// OtherKey is where the answers carry a single choice's "Other…" text when an
+// option is picked too (the option stays the answer, so a condition on it
+// still holds): a key no question can have (keys are [a-z0-9_-]).
+func OtherKey(key string) string { return key + ".other" }
+
 // SecretPlaceholder is what the answers keep in place of a secret's value.
 func SecretPlaceholder(value string) map[string]any {
 	return map[string]any{"secret": true, "chars": utf8.RuneCountInString(value)}
@@ -51,6 +56,8 @@ func (r Result) OK() bool { return len(r.Errors) == 0 }
 // Shapes: multiselect → []string, checkbox → bool, number/slider → float64
 // (an integer when it is one), secret → {"secret":true,"chars":N}, email → the
 // address trimmed and lowercased, widget → its decoded JSON value, the rest a string. An unanswered optional field is left out (a checkbox is false).
+// A select or radio answered with an option and "Other…" text both keeps the
+// option and adds the text under OtherKey.
 func Parse(fields []Field, v url.Values) Result { return ParseWith(fields, v, Hooks{}) }
 
 // ParseWith is Parse with the hooks that reach beyond the spec (uploads).
@@ -73,6 +80,13 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			f.Required = true
 		}
 		vals := v[InputName(f.Key)]
+		// A single choice's "Other…" is a box of its own, ticked next to (or
+		// instead of) the one option: it comes as a second value.
+		otherOn := false
+		if f.Type == Select || f.Type == Radio {
+			otherOn = contains(trimmed(vals), OtherValue)
+			vals = without(vals, OtherValue)
+		}
 		if f.Type != Multiselect && f.Type != List && len(vals) > 1 {
 			r.Errors[f.Key] = t("Give one value only.")
 			continue
@@ -86,7 +100,7 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 		// Files attached to the text (a textarea, an "Other…" answer while it is
 		// picked) come back under FilesKey; alone, they answer it, their names
 		// standing for the words.
-		if raw := v.Get(AttachName(f.Key)); raw != "" && f.Attachable() && (!f.Choice() || contains(trimmed(vals), OtherValue)) {
+		if raw := v.Get(AttachName(f.Key)); raw != "" && f.Attachable() && (!f.Choice() || otherOn || contains(trimmed(vals), OtherValue)) {
 			infos, msg := files(f.Key, raw, AttachMaxFiles, h)
 			if msg != "" {
 				r.Errors[f.Key] = msg
@@ -110,32 +124,30 @@ func ParseWith(fields []Field, v url.Values, h Hooks) Result {
 			}
 			r.Answers[f.Key] = first != ""
 		case Select, Radio:
+			// The answer is the option picked, else the "Other…" text; both
+			// given, the text comes next to the option under OtherKey.
 			val := strings.TrimSpace(first)
-			if val == OtherValue {
-				if other == "" {
-					if f.Required {
-						r.Errors[f.Key] = t("Type your answer next to “Other…”.")
-					}
-					continue
-				}
-				if utf8.RuneCountInString(other) > MaxTextChars {
-					r.Errors[f.Key] = t("Keep it under %d characters.", MaxTextChars)
-					continue
-				}
-				r.Answers[f.Key] = other
-				continue
-			}
-			if val == "" {
-				if f.Required {
-					r.Errors[f.Key] = t("This question is required.")
-				}
-				continue
-			}
-			if !hasValue(f.Options, val) {
+			if val != "" && !hasValue(f.Options, val) {
 				r.Errors[f.Key] = t("Pick one of the choices.")
 				continue
 			}
-			r.Answers[f.Key] = val
+			if otherOn && other != "" && utf8.RuneCountInString(other) > MaxTextChars {
+				r.Errors[f.Key] = t("Keep it under %d characters.", MaxTextChars)
+				continue
+			}
+			switch {
+			case val != "":
+				r.Answers[f.Key] = val
+				if otherOn && other != "" {
+					r.Answers[OtherKey(f.Key)] = other
+				}
+			case otherOn && other != "":
+				r.Answers[f.Key] = other
+			case otherOn && f.Required:
+				r.Errors[f.Key] = t("Type your answer next to “Other…”.")
+			case f.Required:
+				r.Errors[f.Key] = t("This question is required.")
+			}
 		case Multiselect:
 			var picked []string
 			bad := false
@@ -383,6 +395,17 @@ func files(key, raw string, limit int, h Hooks) ([]FileInfo, string) {
 		infos = append(infos, info)
 	}
 	return infos, ""
+}
+
+// without drops every x (spaces around it aside) from xs.
+func without(xs []string, x string) []string {
+	var out []string
+	for _, s := range xs {
+		if strings.TrimSpace(s) != x {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func trimmed(xs []string) []string {

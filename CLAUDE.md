@@ -68,6 +68,12 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   no app.js: it must read right without it. The live `answers` page (no
   `.Inline`) loads the relay's app.css and app.js like the closed page, its
   own CSS (`answersCSS`) in the nonce'd `<style>`.
+- "Other…" on a select or radio is a checkbox of its own sharing the field's
+  input name (`f.<key>=__other__` next to the option), so it can be ticked
+  with an option: the answer stays the option and the text goes under
+  `<key>.other` (`form.OtherKey`). app.js still handles an older machine's
+  page, where it was one more radio (or a dropdown entry) replacing the
+  option; a second tap or Space on the picked radio clears it.
 - Print (`@media print` at the end of app.css, `beforeprint`/`afterprint` in
   app.js): what only paper shows (`.print-options`, `.print-scale`,
   `.print-if`, …) is markup with the `hidden` attribute that the print CSS

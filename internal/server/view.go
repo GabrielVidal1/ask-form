@@ -488,7 +488,12 @@ func recap(lang string, fields []form.Field, answers map[string]any) []recapItem
 		}
 		if v, ok := answers[f.Key]; ok {
 			// Files sent alone answer with their names: said once is enough.
-			if t := form.AnswerTextIn(lang, f, v); t != "" && (len(attached) == 0 || t != form.FileNames(attached)) {
+			t := form.AnswerTextIn(lang, f, v)
+			// A single choice's "Other…" text next to its option.
+			if o, ok := answers[form.OtherKey(f.Key)].(string); ok && o != "" && (len(attached) == 0 || o != form.FileNames(attached)) {
+				t += ", " + o
+			}
+			if t != "" && (len(attached) == 0 || t != form.FileNames(attached)) {
 				parts = append(parts, t)
 			}
 		}

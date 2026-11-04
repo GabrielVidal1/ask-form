@@ -69,7 +69,7 @@ func TestPrintMarkup(t *testing.T) {
 		`<p class="print-if" hidden>Only if “Pick” is Beta</p>`,
 		`<div class="print-scale" hidden><span>0</span>`,
 		`<div class="print-line" hidden></div>`,
-		`<ul class="print-options" hidden><li>Alpha</li><li>Beta</li><li>Other…</li></ul>`,
+		`<ul class="print-options" hidden><li>Alpha</li><li>Beta</li></ul>`, // "Other…": its own box under it
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %s", want)
