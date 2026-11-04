@@ -133,56 +133,11 @@ type snapFile struct {
 // renderSnapshot draws a closed form's snapshot page.
 func (s *Server) renderSnapshot(st store.State) ([]byte, error) {
 	lang := i18n.Of(st.Lang)
-	asset := func(name string) (string, bool) {
-		b, a, err := s.store.Asset(st.ID, name)
-		if err != nil {
-			return "", false
-		}
-		return dataURI(a.ContentType, b), true
-	}
-	assets := map[string]string{} // asset URL → data: URI
-	prefix := Prefix + st.ID + "/assets/"
-	for _, a := range st.Assets {
-		if data, ok := asset(a.Name); ok {
-			assets[prefix+a.Name] = data
-		}
-	}
 	answers := st.Answers
 	if st.Multi || st.Status != store.Submitted {
 		answers = nil // the questions as they were asked, every one of them
 	}
-	page := buildPage(st, Prefix+st.ID, answerValues(st.Fields, answers), nil, "", "")
-	page.Brand = pageLook(s.look())
-	brandFrame := s.look().FrameCSS()
-	hidden := hiddenFields(st.Fields, answers)
-	files := s.snapFiles(st, answers)
-	for gi := range page.Groups {
-		g := &page.Groups[gi]
-		kept := g.Fields[:0]
-		for _, pf := range g.Fields {
-			if hidden[pf.Key] {
-				continue
-			}
-			snapField(&pf, st, prefix, brandFrame, assets, asset, answers, files[pf.Key])
-			kept = append(kept, pf)
-		}
-		g.Fields = kept
-	}
-	if ca := page.CatchAll; ca != nil {
-		if _, said := answers[ca.Key]; !said && len(files[ca.Key]) == 0 {
-			page.CatchAll = nil // "Anything else?" left empty, or never answered
-		} else {
-			snapField(ca, st, prefix, brandFrame, assets, asset, answers, files[ca.Key])
-		}
-	}
-	groups := page.Groups[:0]
-	for _, g := range page.Groups {
-		if len(g.Fields) > 0 {
-			groups = append(groups, g)
-		}
-	}
-	page.Groups, page.Paged = groups, false
-
+	page := s.readOnlyPage(st, answers, true)
 	p := snapshotPage{
 		formPage: page, CSP: snapshotCSP(), Version: Version,
 		Styles: template.CSS(snapBaseCSS + string(page.Brand.CSS) + string(page.PageCSS)),
@@ -200,6 +155,62 @@ func (s *Server) renderSnapshot(st store.State) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// readOnlyPage is the form drawn read-only with answers in it (nil: the
+// questions as they were asked): the questions a respondent never saw left
+// out, an empty catch-all and empty sections too. inline: every frame,
+// picture and mockup carries its bytes (the snapshot file, which opens
+// offline); else they load from the form's links like on the answer page.
+func (s *Server) readOnlyPage(st store.State, answers map[string]any, inline bool) formPage {
+	asset := func(name string) (string, bool) {
+		b, a, err := s.store.Asset(st.ID, name)
+		if err != nil {
+			return "", false
+		}
+		return dataURI(a.ContentType, b), true
+	}
+	assets := map[string]string{} // asset URL → data: URI
+	prefix := Prefix + st.ID + "/assets/"
+	if inline {
+		for _, a := range st.Assets {
+			if data, ok := asset(a.Name); ok {
+				assets[prefix+a.Name] = data
+			}
+		}
+	}
+	page := buildPage(st, Prefix+st.ID, answerValues(st.Fields, answers), nil, "", "")
+	page.Brand = pageLook(s.look())
+	brandFrame := s.look().FrameCSS()
+	hidden := hiddenFields(st.Fields, answers)
+	files := s.snapFiles(st, answers)
+	for gi := range page.Groups {
+		g := &page.Groups[gi]
+		kept := g.Fields[:0]
+		for _, pf := range g.Fields {
+			if hidden[pf.Key] {
+				continue
+			}
+			snapField(&pf, st, prefix, brandFrame, inline, assets, asset, answers, files[pf.Key])
+			kept = append(kept, pf)
+		}
+		g.Fields = kept
+	}
+	if ca := page.CatchAll; ca != nil {
+		if _, said := answers[ca.Key]; !said && len(files[ca.Key]) == 0 {
+			page.CatchAll = nil // "Anything else?" left empty, or never answered
+		} else {
+			snapField(ca, st, prefix, brandFrame, inline, assets, asset, answers, files[ca.Key])
+		}
+	}
+	groups := page.Groups[:0]
+	for _, g := range page.Groups {
+		if len(g.Fields) > 0 {
+			groups = append(groups, g)
+		}
+	}
+	page.Groups, page.Paged = groups, false
+	return page
 }
 
 // snapBanner is the line on top of a snapshot: how the form ended, and when.
@@ -233,10 +244,10 @@ func snapBanner(lang string, st store.State) string {
 
 // snapField turns one field of the answer page into its read-only, offline
 // self: frames carry their document, pictures their bytes, links go.
-func snapField(pf *pageField, st store.State, prefix, brandFrame string, assets map[string]string,
+func snapField(pf *pageField, st store.State, prefix, brandFrame string, inline bool, assets map[string]string,
 	asset func(string) (string, bool), answers map[string]any, files []snapFile) {
-	pf.Snap = true
-	if pf.FrameURL != "" && pf.Type == form.HTML {
+	pf.Snap, pf.Inline = true, inline
+	if inline && pf.FrameURL != "" && pf.Type == form.HTML {
 		pf.FrameDoc = frameDocWith(st, prefix, pf.HTML, false, "", brandFrame, asset)
 	}
 	if pf.Type == form.Widget {
@@ -263,7 +274,7 @@ func snapField(pf *pageField, st store.State, prefix, brandFrame string, assets 
 		}
 		pf.Rows = rows
 	}
-	if pf.Visual() {
+	if inline && pf.Visual() {
 		pf.OptionDocs = make([]string, len(pf.Options))
 		pf.OptionImages = make([]template.URL, len(pf.Options))
 		for n, o := range pf.Options {

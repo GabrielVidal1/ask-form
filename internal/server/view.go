@@ -47,8 +47,11 @@ type pageField struct {
 	ShowIfText      string   // its showIf in words, noted above it on paper
 	RangeStart      string
 	RangeEnd        string
-	// A snapshot's (snapshot.go): read-only, everything inlined.
-	Snap         bool
+	// Read-only, with the answers in it (snapshot.go): a snapshot, or the
+	// respondent's own look back at what they sent. Inline: everything the
+	// page shows travels in it (the snapshot file); else frames and
+	// pictures load from the form's links, as on the answer page.
+	Snap, Inline bool
 	FrameDoc     string         // html block: its document, for srcdoc
 	OptionDocs   []string       // per option: its mockup document, "" when none
 	OptionImages []template.URL // per option: its picture as a data: URI

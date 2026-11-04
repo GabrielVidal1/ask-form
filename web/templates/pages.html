@@ -118,7 +118,7 @@
   <div class="md">{{md .Text}}</div>
 {{else if eq .Type "html"}}
   {{if .Label}}<h3 class="block-label">{{inline .Label}}</h3>{{end}}
-  {{if .Snap}}<iframe class="frame{{if not .Height}} autosize{{end}}" srcdoc="{{.FrameDoc}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" referrerpolicy="no-referrer"></iframe>
+  {{if .Inline}}<iframe class="frame{{if not .Height}} autosize{{end}}" srcdoc="{{.FrameDoc}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" referrerpolicy="no-referrer"></iframe>
   {{else}}<iframe class="frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label (t "Illustration")}}" loading="lazy" referrerpolicy="no-referrer"></iframe>
   <a class="frame-open" href="{{.FrameURL}}" target="_blank" rel="noopener noreferrer">{{t "Open full size ⤢"}}</a>{{end}}
 {{else if eq .Type "diff"}}
@@ -211,7 +211,7 @@
       <div class="cards{{if .FitContent}} fit-content{{end}}">
       {{range $i, $o := .Options}}
         <label class="card{{if not $o.Visual}} plain{{end}}">
-          {{if $.Snap}}
+          {{if $.Inline}}
             {{if $o.Image}}<span class="visual">{{with index $.OptionImages $i}}<img src="{{.}}" alt="{{if not $o.Bare}}{{$o.Label}}{{end}}">{{end}}</span>
             {{else if $o.HTML}}<span class="visual mock"><iframe srcdoc="{{index $.OptionDocs $i}}" sandbox="allow-scripts" tabindex="-1" title="{{$o.Label}}" referrerpolicy="no-referrer"></iframe><span class="cover"></span></span>{{end}}
           {{else if $o.Image}}
@@ -356,6 +356,39 @@
 </html>
 {{end}}
 
+{{define "answers"}}{{template "head" .}}
+<aside class="snap-banner answers-banner"><div class="snap-banner-in">
+  <p><a href="{{.Back}}">{{t "← Back"}}</a></p>
+  <p><strong>{{.Label}}</strong> · {{.Banner}}</p>
+</div></aside>
+<main class="wrap snapshot answers" data-closed="{{.ID}}">
+  <header class="top">
+    {{template "brand" .}}
+    <h1>{{.Title}}</h1>
+    {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
+  </header>
+  <div class="page">
+  {{with .Note}}<dl class="recap snap-note">
+    <dt>{{t "Your note to the asker"}}</dt>
+    {{with .Text}}<dd>{{.}}</dd>{{end}}
+    {{with .Files}}<dd><ul class="snap-files">{{range .}}<li>{{with .Thumb}}<img src="{{.}}" alt="">{{end}}<span>{{.Name}} <small>{{.Size}}</small></span></li>{{end}}</ul></dd>{{end}}
+  </dl>{{end}}
+  <div class="form">
+    <fieldset class="snap-fields" disabled>
+    {{range .Groups}}
+    <section class="group">
+      {{if .Title}}<h2 class="group-title">{{.Title}}</h2>{{end}}
+      {{range .Fields}}{{template "field" .}}{{end}}
+    </section>
+    {{end}}
+    {{with .CatchAll}}<div class="catchall">{{template "field" .}}</div>{{end}}
+    </fieldset>
+  </div>
+  <p class="actions answers-back"><a class="btn" href="{{.Back}}">{{t "← Back"}}</a></p>
+  </div>
+</main>
+{{template "foot" .}}{{end}}
+
 {{define "closed"}}{{template "head" .}}
 <main class="wrap closed" data-closed="{{.ID}}">
   <header class="top">
@@ -384,6 +417,7 @@
   {{else}}
     <p class="lead">{{if .When}}{{t "This form expired on %s — no answer needed any more." .When}}{{else}}{{t "This form expired — no answer needed any more."}}{{end}}</p>
   {{end}}
+  {{with .AnswersURL}}<p class="actions"><a class="btn" href="{{.}}">{{t "View the full form"}}</a></p>{{end}}
 </main>
 {{template "foot" .}}{{end}}
 
