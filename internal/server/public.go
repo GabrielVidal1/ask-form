@@ -85,6 +85,9 @@ func (s *Server) publicHandler() http.Handler {
 		mux.Handle("GET "+p+"_static/{file}", StaticHandler())
 		mux.HandleFunc("GET "+p+"{id}", s.formPage)
 		mux.HandleFunc("POST "+p+"{id}", s.formPost)
+		// {page}, not "answers": a literal there and _static's would be
+		// two patterns neither of which is more specific (a mux panic).
+		mux.HandleFunc("GET "+p+"{id}/{page}", s.subPage)
 		mux.HandleFunc("POST "+p+"{id}/upload/{key}", s.uploadChunk)
 		mux.HandleFunc("GET "+p+"{id}/assets/{name}", s.assetFile)
 		mux.HandleFunc("GET "+p+"{id}/frame/{key}", s.frame)
@@ -222,6 +225,7 @@ type closedPage struct {
 	Count                          int  // its answers
 	Reason                         string
 	ReasonFiles                    string // a decline's note and its files ("a.png (12 KB)")
+	AnswersURL                     string // the whole form read-only, answers in it (answers.go)
 }
 
 // renderClosed is the page of a form that takes no more answers from this
@@ -236,6 +240,7 @@ func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store
 	if st.ClosedAt != nil {
 		p.When = i18n.Date(lang, *st.ClosedAt)
 	}
+	p.AnswersURL = Prefix + st.ID + "/answers" // every closed page: the questions, and what was sent
 	switch {
 	case mine != nil:
 		p.Mine, p.When = true, i18n.Date(lang, mine.At)

@@ -90,6 +90,12 @@ var fr = map[string]string{
 	"This form expired — no answer needed any more.":               "Ce formulaire a expiré : plus besoin de répondre.",
 	"This form expired on %s — no answer needed any more.":         "Ce formulaire a expiré le %s : plus besoin de répondre.",
 
+	// The respondent's look back at the form they sent (internal/server/answers.go).
+	"View the full form": "Voir le formulaire complet",
+	"The questions":      "Les questions",
+	"Your answers":       "Vos réponses",
+	"Sent on %s":         "Envoyées le %s",
+
 	// Snapshots (internal/server/snapshot.go): the page kept of a closed form.
 	"Snapshot":                        "Instantané",
 	"Answered on %s":                  "Répondu le %s",
