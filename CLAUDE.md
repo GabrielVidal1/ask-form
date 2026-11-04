@@ -29,6 +29,8 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `server.PreviewHandler`). `internal/server/snapshot.go`: the page kept of
   each form that closes (`<data>/snapshots/<id>.html`, `store/snapshots.go`),
   written at close and by `SnapshotSweep`, read at `GET /v1/forms/{id}/snapshot`.
+  `internal/server/answers.go`: the respondent's `GET /f/{id}/answers` (the
+  closed page's "View the full form"), the same read-only page drawn live.
 - `web/` (templates, CSS, JS, embedded), `landing/` (the relay's `/` and
   `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
   `install.sh`
@@ -58,11 +60,14 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `widget.js` accepting messages only from the field's own iframe.
 - `/forms/` is the old prefix: it must keep answering (links already sent).
 - A snapshot is the `field` template again with `.Snap` set (the `snapshot`
-  page in `pages.html`): frames get `srcdoc` instead of `src`, pictures data:
-  URIs, secrets a length, files a list. A new field type needs its snapshot
-  look too (and `answerValues`, which turns an answer back into input
-  values), or it shows empty there. The page inlines app.css as this binary
-  has it and runs no app.js: it must read right without it.
+  page in `pages.html`, built by `readOnlyPage`): secrets a length, files a
+  list, and with `.Inline` too frames get `srcdoc` instead of `src`, pictures
+  data: URIs. A new field type needs its snapshot look too (and
+  `answerValues`, which turns an answer back into input values), or it shows
+  empty there. The stored page inlines app.css as this binary has it and runs
+  no app.js: it must read right without it. The live `answers` page (no
+  `.Inline`) loads the relay's app.css and app.js like the closed page, its
+  own CSS (`answersCSS`) in the nonce'd `<style>`.
 - Print (`@media print` at the end of app.css, `beforeprint`/`afterprint` in
   app.js): what only paper shows (`.print-options`, `.print-scale`,
   `.print-if`, …) is markup with the `hidden` attribute that the print CSS

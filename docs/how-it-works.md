@@ -106,6 +106,23 @@ should treat the stream as a hint and reconcile with `ask-form list` /
 is the first receiver: it mirrors the forms, pushes the link to the phone
 and lists open forms.
 
+## Looking back at the form
+
+Once a form takes no more answers from a browser, its link shows the thanks
+(or closed) page: a recap of the answers, one line per question. A **View the
+full form** button under it opens `/f/<id>/answers`: the whole form again,
+read-only, with the answers in it — the mockups and pictures the respondent
+chose from, a mockup full size on a tap. A declined, withdrawn or expired
+form (or a multi form that closed before this browser answered) shows its
+questions empty, a decline's note above them. A multi form shows the answer
+this browser sent, never anyone else's. Still open: the address is the form.
+
+It is a [snapshot](#snapshots) drawn live rather than the stored file: the
+frames and pictures load from the form's links, as on the answer page, so it
+weighs what that page did and goes through any relay; uploads show as
+thumbnails while they are kept (7 days), then as their name and size. The
+same cookie as the form's guards it, and it works with snapshots off.
+
 ## Snapshots
 
 A form that stops taking answers (submitted, declined, revoked, expired, or a
@@ -137,8 +154,8 @@ forms closed while snapshots were off. Each form is tried once per run.
 
 The admin API serves a snapshot at `GET /v1/forms/<id>/snapshot` (404 while
 the form is open or when there is none), with the page's CSP plus `sandbox
-allow-scripts` as a header. The form's link never shows it: the respondent
-still sees the thanks page.
+allow-scripts` as a header. The form's link never shows the file: the
+respondent gets the [same page drawn live](#looking-back-at-the-form).
 
 Turning them off: `serve --no-snapshots` or `ASK_FORM_SNAPSHOTS=off` (`ask-form
 setup --no-snapshots` writes it to `serve.env`; `--snapshots` turns them back
