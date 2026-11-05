@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"image"
 	"image/color"
@@ -16,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -97,9 +99,36 @@ var (
 // without headers) and on the admin response: nothing loads, the two pinned
 // scripts run — ours, and the frames' (which inherit it) — and nothing posts.
 func snapshotCSP() string {
+	return snapshotCSPWith(snapScriptHash + " " + frameScriptHash)
+}
+
+func snapshotCSPWith(hashes string) string {
 	return "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; " +
-		"script-src " + snapScriptHash + " " + frameScriptHash + "; frame-src 'self' data: about:; " +
+		"script-src " + hashes + "; frame-src 'self' data: about:; " +
 		"base-uri 'none'; form-action 'none'"
+}
+
+var (
+	snapMetaCSP = regexp.MustCompile(`<meta http-equiv="Content-Security-Policy" content="([^"]*)">`)
+	cspHashRe   = regexp.MustCompile(`'sha256-[A-Za-z0-9+/]+=*'`)
+)
+
+// storedSnapshotCSP is the policy for a snapshot on disk: the scripts it
+// pins are the ones the binary that wrote it inlined (its <meta>, in its
+// head), which a later binary's frame script no longer matches — with this
+// binary's hashes, an older snapshot's mockups would lose their fit. Only
+// the hashes come from the file; the rest is snapshotCSP's.
+func storedSnapshotCSP(page []byte) string {
+	head := page
+	if i := bytes.Index(page, []byte("</head>")); i >= 0 {
+		head = page[:i]
+	}
+	if m := snapMetaCSP.FindSubmatch(head); m != nil {
+		if hashes := cspHashRe.FindAllString(html.UnescapeString(string(m[1])), -1); len(hashes) > 0 {
+			return snapshotCSPWith(strings.Join(hashes, " "))
+		}
+	}
+	return snapshotCSP()
 }
 
 type snapshotPage struct {
@@ -598,7 +627,7 @@ func (s *Server) adminSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Content-Security-Policy", snapshotCSP()+"; sandbox allow-scripts")
+	h.Set("Content-Security-Policy", storedSnapshotCSP(page)+"; sandbox allow-scripts")
 	h.Set("X-Content-Type-Options", "nosniff")
 	w.Write(page)
 }

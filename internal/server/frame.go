@@ -24,9 +24,18 @@ import (
 //
 // Fit lays a mockup out at its own size and scales it to fill its frame,
 // whole and centred — a card, the fullscreen view, or a tab of its own. Its
-// own size is its width (what it draws: text, pictures and painted boxes, not
-// the empty full-width blocks around them — measured at a wide probe, then
-// shrunk until it stops changing) and the body's height at that width. A
+// own size is the narrowest width that draws it as a wide probe (1600 px)
+// does — no taller (nothing wrapped), nothing sticking out, every text and
+// painted box as wide as it was (a centred caption or a toggle pushed right
+// may move closer, nothing may shrink) — and the body's height at that
+// width. It shrinks to the width of what it draws while that holds, which
+// handles a centred card; that step forgets the padding around the ink
+// (text in a padded box would wrap a word a line, then be scaled up to fill
+// the card), so when it fails the padding is mirrored and a binary search,
+// no lower than its widest piece, finds the narrowest width that holds. A
+// mockup that draws more at a wider probe (2000 px: a paragraph that wraps,
+// a box across the page), or that no narrower width holds, follows the
+// width it's given: it is fluid. A
 // mockup that fills any width (fluid) is laid out at the frame's width
 // instead, wider only when it has to shrink to fit the height. It reports its
 // size to the page, which shapes a card or the fullscreen view after it
@@ -43,18 +52,21 @@ const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribu
 	`function paper(b){var w=b.style.width,h=0;[700,724].forEach(function(x){b.style.width=x+"px";h=Math.max(h,high(b))});b.style.width=w;return h}` +
 	`function painted(s){return s.backgroundImage!=="none"||s.boxShadow!=="none"||!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(s.backgroundColor)||` +
 	`parseFloat(s.borderLeftWidth)+parseFloat(s.borderRightWidth)+parseFloat(s.borderTopWidth)+parseFloat(s.borderBottomWidth)>0}` +
-	`function ink(b){var o=b.getBoundingClientRect().left,L=1/0,R=-1/0,g=document.createRange();` +
-	`function add(r,c){var l=c?Math.max(r.left,c[0]):r.left,x=c?Math.min(r.right,c[1]):r.right;if(x>l&&r.height>0){L=Math.min(L,l);R=Math.max(R,x)}}` +
+	`function ink(b){var o=b.getBoundingClientRect().left,L=1/0,R=-1/0,S=0,M=0,g=document.createRange();` +
+	`function add(r,c){var l=c?Math.max(r.left,c[0]):r.left,x=c?Math.min(r.right,c[1]):r.right;if(x>l&&r.height>0){L=Math.min(L,l);R=Math.max(R,x);S+=x-l;M=Math.max(M,x-l)}}` +
 	`(function walk(n,c){for(var k=n.firstChild;k;k=k.nextSibling){` +
 	`if(k.nodeType===3){if(/\S/.test(k.data)){g.selectNodeContents(k);add(g.getBoundingClientRect(),c)}}` +
 	`else if(k.nodeType===1){var s=getComputedStyle(k),t=k.tagName.toUpperCase(),r=k.getBoundingClientRect();if(s.display==="none")continue;` +
 	`if(s.visibility!=="hidden"&&(SOLID.test(t)||painted(s)))add(r,c);` +
 	`if(!LEAF.test(t))walk(k,s.overflowX==="visible"?c:[Math.max(r.left,c?c[0]:-1/0),Math.min(r.right,c?c[1]:1/0)])}}})(b,null);` +
-	`return R>L?[L-o,R-o]:null}` +
-	`function natural(b){var w=1600,e,f,n,i;b.style.width=w+"px";e=ink(b);if(!e)return 0;` +
-	`if(e[1]>w+1)return Math.ceil(e[1]+Math.max(0,e[0]));if(e[1]-e[0]>=w-2)return 0;` +
-	`for(i=0;i<6;i++){n=Math.ceil(e[1]-e[0]);if(n>=w-1)break;b.style.width=n+"px";f=ink(b);` +
-	`if(!f||f[0]<-1||f[1]>n+1){w=Math.min(w,Math.ceil(e[1]+Math.max(0,e[0])));break}w=n;e=f}return w}` +
+	`return R>L?[L-o,R-o,S,M]:null}` +
+	`function natural(b){var w=1600,h,k,e,f,lo,m,n,i;b.style.width="2000px";e=ink(b);k=e?e[2]:0;b.style.width=w+"px";e=ink(b);if(!e)return 0;` +
+	`if(e[1]>w+1)return Math.ceil(e[1]+Math.max(0,e[0]));if(e[1]-e[0]>=w-2||k>e[2]+.5)return 0;h=high(b);k=e[2];lo=Math.max(0,Math.floor(e[3])-2);` +
+	`function fits(x){b.style.width=x+"px";if(high(b)>h+1)return null;var g=ink(b);return g&&g[0]>=-1&&g[1]<=x+1&&g[2]>=k-.5?g:null}` +
+	`for(i=0;i<4;i++){n=Math.ceil(e[1]-e[0]);if(n>=w-1)break;f=fits(n);if(f){w=n;e=f;continue}` +
+	`lo=Math.max(lo,n);n=Math.ceil(e[1]+Math.max(0,e[0]));if(n<w&&fits(n))w=n;break}` +
+	`while(w-lo>1){m=(lo+w)>>1;if(fits(m))w=m;else lo=m}` +
+	`if(w>=1600)return 0;b.style.width=w+"px";e=ink(b)||e;return Math.max(w,Math.ceil(e[1]+Math.max(0,e[0])))}` +
 	`function place(){var b=document.body,vw=innerWidth,vh=innerHeight,W,H,h0,z,i;if(!b)return;` +
 	`if(!fit){send({h:high(b),p:paper(b)});return}` +
 	`d.style.overflow="hidden";b.style.boxSizing="border-box";b.style.transform="";if(nat<0)nat=natural(b);` +
