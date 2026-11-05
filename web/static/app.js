@@ -35,6 +35,45 @@
   var closed = document.querySelector("[data-closed]");
   if (closed) store.del("ask-form:draft:" + closed.getAttribute("data-closed"));
 
+  // In a frame (serve --embed-origins): a site the machine allows — an agent
+  // hub opening the form over its conversation — hears which page is showing
+  // (the form, or the page once it went through: the hub closes the frame
+  // then) and may send its theme tokens, so the form wears the hub's look.
+  // <html data-embed> lists the allowed origins only on a framed load, and
+  // frame-ancestors has already made sure the parent is one of them.
+  var embedders = (root.getAttribute("data-embed") || "").split(" ").filter(Boolean);
+  if (embedders.length && window.parent !== window) {
+    // A message page ("Not sent", "Page expired"…) is a main.closed too, but
+    // only a closed form's own pages carry data-closed.
+    var main = document.querySelector("main[data-closed]");
+    var kind = document.getElementById("form") ? "form"
+      : !main ? "message"
+      : main.classList.contains("answers") ? "answers" : "closed";
+    var info = {
+      type: "ask-form:page", page: kind,
+      id: (location.pathname.match(/^\/(?:f|forms)\/([^/]+)/) || [])[1] || "",
+      status: kind === "form" ? "pending" : (main && main.getAttribute("data-status")) || ""
+    };
+    embedders.forEach(function (o) {
+      try { window.parent.postMessage(info, o); } catch (e) { /* not this origin */ }
+    });
+    // Only colour tokens and lengths (H S% L%, 0.65rem, #rrggbb): nothing
+    // that can load a file or reach past the custom property it names.
+    var TOKEN = /^--[a-z][a-z0-9-]{0,40}$/, VALUE = /^[\w\s.%#,-]{1,80}$/;
+    window.addEventListener("message", function (e) {
+      var d = e.data;
+      if (e.source !== window.parent || embedders.indexOf(e.origin) < 0 || !d || d.type !== "ask-form:theme") return;
+      var tokens = d.tokens && typeof d.tokens === "object" ? d.tokens : {};
+      Object.keys(tokens).forEach(function (k) {
+        if (TOKEN.test(k) && typeof tokens[k] === "string" && VALUE.test(tokens[k])) root.style.setProperty(k, tokens[k]);
+      });
+      if (d.scheme === "dark" || d.scheme === "light") {
+        root.style.colorScheme = d.scheme;
+        root.setAttribute("data-scheme", d.scheme);
+      }
+    });
+  }
+
   // Frame documents report their size. An html block without a fixed height
   // follows its height (and keeps the one it takes on paper for printing); a
   // mockup reports the size it is drawn at, which a

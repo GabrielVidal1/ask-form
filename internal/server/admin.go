@@ -165,6 +165,9 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 	if s.UpdateStatus != nil {
 		out["update"] = s.UpdateStatus()
 	}
+	if len(s.cfg.EmbedOrigins) > 0 {
+		out["embedOrigins"] = s.cfg.EmbedOrigins // who may frame the pages
+	}
 	apiJSON(w, http.StatusOK, out)
 }
 

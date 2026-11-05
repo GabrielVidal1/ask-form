@@ -182,12 +182,55 @@ every 6 hours. Dev builds and pre-releases never upgrade by themselves.
 Each release also carries a build provenance attestation:
 `gh attestation verify ask-form-linux-amd64 -R GabrielVidal1/ask-form`.
 
+## In another app's frame
+
+`ask-form serve --embed-origins "https://hub.example.com …"` (or
+`ASK_FORM_EMBED_ORIGINS` in `serve.env`; `ask-form setup --embed-origins …`
+writes it, `-` clears it) lets those sites show this machine's answer pages
+in an `<iframe>` — an agent hub opening the form over the conversation that
+asked it. Without it no site may frame them (`frame-ancestors 'none'`,
+`X-Frame-Options: DENY`). With it:
+
+- the form's pages (the form, its thanks page, its messages, the answers
+  view) send `frame-ancestors <the origins>` and no `X-Frame-Options`, which
+  can't name a site; a mockup's or widget's frame sends `'self' <the
+  origins>`, since `frame-ancestors` checks every ancestor;
+- a page loading in a frame (`Sec-Fetch-Dest: iframe`) trades the token for
+  a cookie that is `SameSite=None; Partitioned` (CHIPS): inside the frame
+  every request is cross-site to the browser, so a Lax cookie never comes
+  back, and the partition keeps the cookie to that embedder only. A browser
+  that refuses even partitioned third-party cookies gets the 404 page in the
+  frame: the embedder should offer the link in a new tab;
+- that page's `<html data-embed>` lists the origins, and `app.js` posts the
+  parent one message per page load:
+
+  ```json
+  {"type": "ask-form:page", "page": "form", "id": "project-setup_k3f9q2", "status": "pending"}
+  ```
+
+  `page` is `form`, `closed` (sent or declined: `status` says which), `answers`
+  or `message`. The embedder closes its frame on the first `closed` after a
+  `form`. It may answer with its theme, which the page applies over its own
+  (and the machine's brand):
+
+  ```json
+  {"type": "ask-form:theme", "scheme": "dark", "tokens": {"--primary": "24 95% 55%", "--background": "0 0% 4%"}}
+  ```
+
+  Tokens are the custom properties of `theme.css` (`H S% L%` triplets,
+  `--radius`); the page takes only `--name: value` pairs made of letters,
+  digits, spaces and `.%#,-` — nothing that loads a file — and only from its
+  parent, at one of the origins. In a frame the brand's logo line hides: the
+  embedder's panel names the form.
+
 ## Security
 
 - **Tokens**: 32 random bytes, base64url. Only the SHA-256 is stored, and it's
   compared in constant time.
 - **First visit**: the token is traded for an `HttpOnly; Secure; SameSite=Lax`
-  cookie scoped to `/f/<id>`, followed by a 302 to the clean URL. A `--multi`
+  cookie scoped to `/f/<id>`, followed by a 302 to the clean URL (in the
+  frame of an `--embed-origins` site: `SameSite=None; Partitioned`, see
+  above). A `--multi`
   form keeps the token in the address bar instead (its link is meant to be
   shared): a link copied from there opens in any browser.
 - **One answer, then closed**: the first submission closes the form. It

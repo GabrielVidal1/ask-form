@@ -46,9 +46,9 @@ const usage = `ask-form — ask a human questions through a private web form
 
 Setup (once per machine):
   ask-form setup [--relay URL | --local] [--no-service] [--no-skill] [--lang en|fr]
-                 [--no-snapshots | --snapshots]
+                 [--no-snapshots | --snapshots] [--embed-origins ORIGINS]
   ask-form serve [--relay URL] [--public-url URL] [--data DIR] [--auto-upgrade minor|all|notify|off]
-                 [--events-url URL] [--lang en|fr] [--no-snapshots]
+                 [--events-url URL] [--lang en|fr] [--no-snapshots] [--embed-origins ORIGINS]
   ask-form upgrade [--check] [--version vX.Y.Z] [--force]
   ask-form skill install | print [--body] | refresh
   ask-form uninstall [--purge]
@@ -77,7 +77,8 @@ Client (JSON on stdout):
 
 Environment: ASK_FORM_ADMIN_URL (default http://127.0.0.1:7461), ASK_FORM_ADMIN_TOKEN
 (default: the admin-token file 'serve' writes), ASK_FORM_NOTIFY_CMD, ASK_FORM_PUBLIC_URL, ASK_FORM_EVENTS_URL,
-ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE, ASK_FORM_LANG, ASK_FORM_SNAPSHOTS (off: none).
+ASK_FORM_RELAY, ASK_FORM_DATA, ASK_FORM_CONFIG, ASK_FORM_AUTO_UPGRADE, ASK_FORM_LANG, ASK_FORM_SNAPSHOTS (off: none),
+ASK_FORM_EMBED_ORIGINS (sites that may show the forms in a frame: "https://hub.example.com …").
 `
 
 const (
@@ -220,6 +221,7 @@ func cmdServe(args []string) int {
 	eventsURL := fs.String("events-url", os.Getenv("ASK_FORM_EVENTS_URL"), "POST every form event (created, submitted, …) to this URL (empty: off)")
 	langFlag := fs.String("lang", os.Getenv("ASK_FORM_LANG"), "language of the pages of a form created without --lang: "+strings.Join(i18n.Langs, ", ")+" (empty: en)")
 	noSnapshots := fs.Bool("no-snapshots", snapshotsOff(os.Getenv("ASK_FORM_SNAPSHOTS")), "keep no page of the forms that close (default: one per form, in <data>/snapshots/)")
+	embedFlag := fs.String("embed-origins", os.Getenv("ASK_FORM_EMBED_ORIGINS"), "sites that may show the answer pages in a frame, https://host[:port] split on spaces or commas (empty: none)")
 	fs.Parse(args)
 	if !validAutoMode(*autoMode) {
 		log.Fatalf("--auto-upgrade %q: use minor, all, notify or off", *autoMode)
@@ -227,6 +229,10 @@ func cmdServe(args []string) int {
 	lang, err := i18n.Parse(*langFlag)
 	if err != nil {
 		log.Fatalf("--lang: %v", err)
+	}
+	embed, err := server.ParseOrigins(*embedFlag)
+	if err != nil {
+		log.Fatalf("--embed-origins: %v", err)
 	}
 
 	log.SetFlags(log.LstdFlags)
@@ -257,7 +263,7 @@ func cmdServe(args []string) int {
 	}
 	srv := server.New(server.Config{
 		PublicURL: *publicURL, DefaultURL: defaultURL, LocalURL: localURL, ClientIPHeader: *ipHeader, AdminToken: adminToken, Key: []byte(keyStr),
-		Lang: lang, NoSnapshots: *noSnapshots,
+		Lang: lang, NoSnapshots: *noSnapshots, EmbedOrigins: embed,
 	}, st)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

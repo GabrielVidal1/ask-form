@@ -166,7 +166,7 @@ func (s *Server) formPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Has("token") {
 		// Trade the token for a cookie scoped to this form (the POST reads it).
 		maxAge := int(time.Until(st.ExpiresAt).Seconds()) + 7*24*3600
-		http.SetCookie(w, &http.Cookie{
+		s.setCookie(w, r, &http.Cookie{
 			Name: cookieName, Value: token, Path: Prefix + st.ID, MaxAge: maxAge,
 			HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		})
@@ -182,10 +182,10 @@ func (s *Server) formPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if mine := s.answered(r, st); st.Status != store.Pending || mine != nil {
-		s.renderClosed(w, st, mine)
+		s.renderClosed(w, r, st, mine)
 		return
 	}
-	s.renderForm(w, st, nil, nil, http.StatusOK)
+	s.renderForm(w, r, st, nil, nil, http.StatusOK)
 }
 
 func (s *Server) sentMAC(st store.State, n int) string {
@@ -209,11 +209,11 @@ func (s *Server) answered(r *http.Request, st store.State) *store.Response {
 	return &st.Responses[n-1]
 }
 
-func (s *Server) renderForm(w http.ResponseWriter, st store.State, values url.Values, errs map[string]string, code int) {
+func (s *Server) renderForm(w http.ResponseWriter, r *http.Request, st store.State, values url.Values, errs map[string]string, code int) {
 	nonce := newNonce()
 	page := buildPage(st, Prefix+st.ID, values, errs, s.csrf(st), nonce)
 	page.Brand = pageLook(s.look())
-	renderPage(w, st.Lang, "form", page, pageCSP(nonce), code)
+	s.render(w, r, st.Lang, "form", page, pageCSP(nonce), code)
 }
 
 type closedPage struct {
@@ -230,7 +230,7 @@ type closedPage struct {
 
 // renderClosed is the page of a form that takes no more answers from this
 // visitor: closed, or a multi form this browser answered (mine).
-func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store.Response) {
+func (s *Server) renderClosed(w http.ResponseWriter, r *http.Request, st store.State, mine *store.Response) {
 	lang := i18n.Of(st.Lang)
 	p := closedPage{
 		ID: st.ID, Title: st.Title, Status: st.Status, Nonce: newNonce(),
@@ -250,7 +250,7 @@ func (s *Server) renderClosed(w http.ResponseWriter, st store.State, mine *store
 	case st.Status == store.Declined:
 		p.Reason, p.ReasonFiles = st.Reason, form.FileText(st.ReasonFiles)
 	}
-	renderPage(w, lang, "closed", p, pageCSP(p.Nonce), http.StatusOK)
+	s.render(w, r, lang, "closed", p, pageCSP(p.Nonce), http.StatusOK)
 }
 
 type messagePage struct {
@@ -259,21 +259,51 @@ type messagePage struct {
 	Brand                 pageBrand
 }
 
-// renderPage renders a page in lang ("" or unknown: English).
+// renderPage renders a page in lang ("" or unknown: English), never framed.
 func renderPage(w http.ResponseWriter, lang, name string, data any, csp string, code int) {
+	writePage(w, lang, name, data, csp, "DENY", "", code)
+}
+
+// render is renderPage for a form's own pages, which the embed origins may
+// frame (serve --embed-origins): their frame-ancestors, and in a frame the
+// <html data-embed> app.js talks to the embedder through.
+func (s *Server) render(w http.ResponseWriter, r *http.Request, lang, name string, data any, csp string, code int) {
+	if len(s.cfg.EmbedOrigins) == 0 {
+		renderPage(w, lang, name, data, csp, code)
+		return
+	}
+	embed := ""
+	if s.framed(r) {
+		embed = strings.Join(s.cfg.EmbedOrigins, " ")
+	}
+	// No X-Frame-Options: it can't name a site, and frame-ancestors wins.
+	writePage(w, lang, name, data, s.ancestors(csp), "", embed, code)
+}
+
+// htmlTag is how every page's document starts (the head template).
+var htmlTag = []byte("<html ")
+
+func writePage(w http.ResponseWriter, lang, name string, data any, csp, xfo, embed string, code int) {
 	var buf bytes.Buffer
 	if err := pageTemplates[i18n.Of(lang)].ExecuteTemplate(&buf, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	b := buf.Bytes()
+	if embed != "" {
+		attr := []byte(`<html data-embed="` + template.HTMLEscapeString(embed) + `" `)
+		b = bytes.Replace(b, htmlTag, attr, 1)
+	}
 	h := w.Header()
 	baseHeaders(h)
 	h.Set("Content-Security-Policy", csp)
-	h.Set("X-Frame-Options", "DENY")
+	if xfo != "" {
+		h.Set("X-Frame-Options", xfo)
+	}
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
-	w.Write(buf.Bytes())
+	w.Write(b)
 }
 
 // csrf is the form's anti-forgery token: a MAC of its id and token hash under
@@ -308,45 +338,45 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 	}
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if ct != "application/x-www-form-urlencoded" {
-		s.message(w, st.Lang, http.StatusUnsupportedMediaType, "Can't read that", "This form only accepts a plain form submission.")
+		s.message(w, r, st.Lang, http.StatusUnsupportedMediaType, "Can't read that", "This form only accepts a plain form submission.")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
 	if err := r.ParseForm(); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			s.message(w, st.Lang, http.StatusRequestEntityTooLarge, "Too long", "Those answers are over the size limit (%d KB). Shorten them and send again.", MaxBody>>10)
+			s.message(w, r, st.Lang, http.StatusRequestEntityTooLarge, "Too long", "Those answers are over the size limit (%d KB). Shorten them and send again.", MaxBody>>10)
 			return
 		}
-		s.message(w, st.Lang, http.StatusBadRequest, "Can't read that", "The submission was malformed.")
+		s.message(w, r, st.Lang, http.StatusBadRequest, "Can't read that", "The submission was malformed.")
 		return
 	}
 	v := r.PostForm
 	if !macEqual(v.Get("csrf"), s.csrf(st)) {
-		s.message(w, st.Lang, http.StatusForbidden, "Page expired", "Reload the form and send it again.")
+		s.message(w, r, st.Lang, http.StatusForbidden, "Page expired", "Reload the form and send it again.")
 		return
 	}
 	if v.Get("website_url") != "" {
 		log.Printf("honeypot tripped on %s ip=%s", st.ID, ip)
-		s.message(w, st.Lang, http.StatusBadRequest, "Not sent", "That submission looked automated and was not recorded.")
+		s.message(w, r, st.Lang, http.StatusBadRequest, "Not sent", "That submission looked automated and was not recorded.")
 		return
 	}
 	if mine := s.answered(r, st); st.Status != store.Pending || mine != nil {
-		s.renderClosed(w, st, mine)
+		s.renderClosed(w, r, st, mine)
 		return
 	}
 	var err error
 	switch v.Get("action") {
 	case "decline":
 		if st.Multi {
-			s.message(w, st.Lang, http.StatusBadRequest, "Nothing to decline", "This form is open to several people: just leave it unanswered.")
+			s.message(w, r, st.Lang, http.StatusBadRequest, "Nothing to decline", "This form is open to several people: just leave it unanswered.")
 			return
 		}
 		reason, files, msg := form.ParseDecline(st.Fields, v, form.Hooks{Lang: st.Lang, File: func(key, ref string) (form.FileInfo, bool) {
 			return s.store.Upload(st.ID, key, ref)
 		}})
 		if msg != "" {
-			s.renderForm(w, st, v, map[string]string{form.DeclineKey(st.Fields): msg}, http.StatusUnprocessableEntity)
+			s.renderForm(w, r, st, v, map[string]string{form.DeclineKey(st.Fields): msg}, http.StatusUnprocessableEntity)
 			return
 		}
 		st, err = s.store.Decline(st.ID, reason, files)
@@ -355,13 +385,13 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 			return s.store.Upload(st.ID, key, ref)
 		}})
 		if !res.OK() {
-			s.renderForm(w, st, v, res.Errors, http.StatusUnprocessableEntity)
+			s.renderForm(w, r, st, v, res.Errors, http.StatusUnprocessableEntity)
 			return
 		}
 		if st.Multi {
 			var n int
 			if st, n, err = s.store.Answer(st.ID, res.Answers); err == nil {
-				http.SetCookie(w, &http.Cookie{
+				s.setCookie(w, r, &http.Cookie{
 					Name: sentCookie, Value: strconv.Itoa(n) + "." + s.sentMAC(st, n), Path: Prefix + st.ID,
 					MaxAge: int(time.Until(st.ExpiresAt).Seconds()) + 7*24*3600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 				})
@@ -370,12 +400,12 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		}
 		st, err = s.store.Close(st.ID, store.Submitted, res.Answers, res.Secrets)
 	default:
-		s.message(w, st.Lang, http.StatusBadRequest, "Can't read that", "Unknown action.")
+		s.message(w, r, st.Lang, http.StatusBadRequest, "Can't read that", "Unknown action.")
 		return
 	}
 	if err != nil && !errors.Is(err, store.ErrClosed) {
 		log.Printf("close %s: %v", st.ID, err)
-		s.message(w, st.Lang, http.StatusInternalServerError, "Not saved", "Something went wrong saving your answers — try again.")
+		s.message(w, r, st.Lang, http.StatusInternalServerError, "Not saved", "Something went wrong saving your answers — try again.")
 		return
 	}
 	if err == nil {
@@ -403,9 +433,9 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 }
 
 // message is a page of one line, title and msg in lang (both are i18n keys).
-func (s *Server) message(w http.ResponseWriter, lang string, code int, title, msg string, args ...any) {
+func (s *Server) message(w http.ResponseWriter, r *http.Request, lang string, code int, title, msg string, args ...any) {
 	p := messagePage{Title: i18n.T(lang, title), Message: i18n.T(lang, msg, args...), Nonce: newNonce(), Brand: pageLook(s.look())}
-	renderPage(w, lang, "message", p, pageCSP(p.Nonce), code)
+	s.render(w, r, lang, "message", p, pageCSP(p.Nonce), code)
 }
 
 func (s *Server) assetFile(w http.ResponseWriter, r *http.Request) {
@@ -447,8 +477,10 @@ func (s *Server) frame(w http.ResponseWriter, r *http.Request) {
 	})
 	h := w.Header()
 	baseHeaders(h)
-	h.Set("Content-Security-Policy", csp)
-	h.Set("X-Frame-Options", "SAMEORIGIN")
+	h.Set("Content-Security-Policy", s.ancestors(csp))
+	if len(s.cfg.EmbedOrigins) == 0 {
+		h.Set("X-Frame-Options", "SAMEORIGIN")
+	}
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(doc))
 }

@@ -68,18 +68,20 @@ func loadServeEnv(path string) {
 // ── setup ────────────────────────────────────────────────────────────────────
 
 type setupReport struct {
-	Version   string   `json:"version"`
-	Binary    string   `json:"binary"`
-	Mode      string   `json:"mode"` // relay | local
-	Relay     string   `json:"relay,omitempty"`
-	Machine   string   `json:"machine,omitempty"`
-	PublicURL string   `json:"publicUrl"`
-	Service   string   `json:"service"`
-	Skill     string   `json:"skill"`
-	Lang      string   `json:"lang,omitempty"`
-	Snapshots string   `json:"snapshots"` // on | off
-	Status    any      `json:"status,omitempty"`
-	Warnings  []string `json:"warnings,omitempty"`
+	Version   string `json:"version"`
+	Binary    string `json:"binary"`
+	Mode      string `json:"mode"` // relay | local
+	Relay     string `json:"relay,omitempty"`
+	Machine   string `json:"machine,omitempty"`
+	PublicURL string `json:"publicUrl"`
+	Service   string `json:"service"`
+	Skill     string `json:"skill"`
+	Lang      string `json:"lang,omitempty"`
+	Snapshots string `json:"snapshots"` // on | off
+	// EmbedOrigins may frame the pages (serve's --embed-origins).
+	EmbedOrigins []string `json:"embedOrigins,omitempty"`
+	Status       any      `json:"status,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
 }
 
 func cmdSetup(args []string) int {
@@ -89,6 +91,7 @@ func cmdSetup(args []string) int {
 	langFlag := fs.String("lang", "", "language of this machine's forms by default: "+strings.Join(i18n.Langs, ", ")+" (serve's --lang; \"-\" clears it: en)")
 	noSnapshots := fs.Bool("no-snapshots", false, "keep no page of the forms that close (serve's --no-snapshots)")
 	snapshots := fs.Bool("snapshots", false, "keep one again (undoes --no-snapshots)")
+	embedFlag := fs.String("embed-origins", "", "sites that may show the forms in a frame, https://host[:port] split on spaces or commas (serve's --embed-origins; \"-\" clears it)")
 	local := fs.Bool("local", false, "no relay: forms are answered at http://"+localListen+" (this machine only)")
 	token := fs.String("token", "", "machine token for the relay (default: register this machine, or keep the saved one)")
 	name := fs.String("name", "", "machine name hint for the relay (default: the hostname)")
@@ -119,6 +122,22 @@ func cmdSetup(args []string) int {
 			return fail(exitErr, "%s: %v", envFile, err)
 		}
 	}
+	// Who may frame the answer pages: kept across setups unless given.
+	if *embedFlag != "" {
+		v := ""
+		if *embedFlag != "-" {
+			list, err := server.ParseOrigins(*embedFlag)
+			if err != nil {
+				return fail(exitUsage, "--embed-origins: %v", err)
+			}
+			v = strings.Join(list, " ")
+		}
+		if err := setEnv(envFile, "ASK_FORM_EMBED_ORIGINS", v); err != nil {
+			return fail(exitErr, "%s: %v", envFile, err)
+		}
+		os.Setenv("ASK_FORM_EMBED_ORIGINS", v)
+	}
+	rep.EmbedOrigins, _ = server.ParseOrigins(os.Getenv("ASK_FORM_EMBED_ORIGINS"))
 	// The forms' default language: kept across setups unless given.
 	lang := os.Getenv("ASK_FORM_LANG") // serve.env's, loaded at start
 	if *langFlag != "" {
