@@ -154,7 +154,9 @@ forms closed while snapshots were off. Each form is tried once per run.
 
 The admin API serves a snapshot at `GET /v1/forms/<id>/snapshot` (404 while
 the form is open or when there is none), with the page's CSP plus `sandbox
-allow-scripts` as a header. The form's link never shows the file: the
+allow-scripts` as a header — the script hashes the page itself pins, so a
+snapshot an older version wrote keeps its mockups fitted after an upgrade
+changed the frame script. The form's link never shows the file: the
 respondent gets the [same page drawn live](#looking-back-at-the-form).
 
 Turning them off: `serve --no-snapshots` or `ASK_FORM_SNAPSHOTS=off` (`ask-form

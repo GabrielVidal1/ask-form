@@ -158,7 +158,8 @@ func TestSnapshotAdmin(t *testing.T) {
 	if res.StatusCode != http.StatusOK || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") {
 		t.Fatalf("snapshot: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
 	}
-	if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox allow-scripts") {
+	if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox allow-scripts") ||
+		!strings.Contains(csp, frameScriptHash) {
 		t.Fatalf("csp %q", csp)
 	}
 	if !strings.Contains(body, "Withdrawn on") || strings.Contains(body, " checked") {
@@ -310,5 +311,24 @@ func TestThumbnail(t *testing.T) {
 	}
 	if thumbnail("application/pdf", []byte("%PDF")) != "" {
 		t.Fatal("a pdf has no thumbnail")
+	}
+}
+
+// A snapshot written by an older binary pins that binary's frame script: the
+// admin response keeps its hashes (and only those), not this binary's.
+func TestStoredSnapshotCSP(t *testing.T) {
+	old := "'sha256-KRaegJv+C2CB9oahO1xMM2Nzyg8QwpEDps0QgwdKaWw='"
+	page := `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; ` +
+		`script-src &#39;sha256-KRaegJv&#43;C2CB9oahO1xMM2Nzyg8QwpEDps0QgwdKaWw=&#39; https://evil.example">` +
+		`</head><body><meta http-equiv="Content-Security-Policy" content="script-src &#39;sha256-AAAA=&#39;"></body></html>`
+	csp := storedSnapshotCSP([]byte(page))
+	if !strings.Contains(csp, "script-src "+old+";") || strings.Contains(csp, frameScriptHash) {
+		t.Fatalf("the stored hashes, only them: %q", csp)
+	}
+	if strings.Contains(csp, "evil") || strings.Contains(csp, "AAAA") || !strings.HasPrefix(csp, "default-src 'none'") {
+		t.Fatalf("only hashes from the file's head: %q", csp)
+	}
+	if got := storedSnapshotCSP([]byte("<html><head></head></html>")); got != snapshotCSP() {
+		t.Fatalf("no meta: %q", got)
 	}
 }
