@@ -104,6 +104,14 @@ how another program follows the forms without polling. The
 [ai-agent](https://git.gabvdl.xyz/gabrielvidal/ai-agent) hub receives them on
 the lab. Details in [how it works](docs/how-it-works.md#events).
 
+## In another app
+
+`ask-form setup --embed-origins https://hub.example.com` lets that site show
+this machine's forms in a frame — an agent hub opening a form over the
+conversation that asked it. The page tells the hub when it has been answered
+and can take the hub's theme. Without it no site may frame the forms. Details
+in [how it works](docs/how-it-works.md#in-another-apps-frame).
+
 ## Your own relay
 
 ask-form.xyz is one relay; `ask-form-relay` is in this repo, so you can run

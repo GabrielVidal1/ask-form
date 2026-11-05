@@ -41,6 +41,12 @@ type Config struct {
 	// NoSnapshots: keep no page of the forms that close (snapshot.go;
 	// `serve --no-snapshots`). The ones already taken stay readable.
 	NoSnapshots bool
+	// EmbedOrigins may show the answer pages in a frame (`serve
+	// --embed-origins`, ParseOrigins): frame-ancestors lists them, and a page
+	// loading in a frame gets a partitioned cookie and <html data-embed>, so
+	// app.js tells the embedder when the form is answered and takes its
+	// theme. Empty: no site may frame them.
+	EmbedOrigins []string
 }
 
 // RelayLink is the machine's connection to a relay (internal/tunnel).

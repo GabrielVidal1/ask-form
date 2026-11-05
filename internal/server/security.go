@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +36,76 @@ func pageCSP(nonce string) string {
 	return "default-src 'none'; script-src 'self'; style-src 'self' 'nonce-" + nonce + "'; " +
 		"img-src 'self' data:; font-src data:; connect-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; " +
 		"base-uri 'none'; manifest-src 'none'"
+}
+
+// ── embedding (serve --embed-origins) ───────────────────────────────────────
+
+// ParseOrigins reads --embed-origins: the sites allowed to show this
+// machine's answer pages in a frame (an agent hub that opens a form over its
+// conversation), as https://host[:port] origins split on spaces or commas.
+// No wildcard, path or credentials; http only for a loopback host.
+func ParseOrigins(s string) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	for _, raw := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' }) {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" || u.Opaque != "" || u.User != nil ||
+			(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" ||
+			strings.ContainsAny(u.Host, "*'\"; ") {
+			return nil, fmt.Errorf("%q: not an origin (https://host[:port])", raw)
+		}
+		host := strings.ToLower(u.Host)
+		switch u.Scheme {
+		case "https":
+		case "http":
+			if h := u.Hostname(); h != "localhost" && h != "127.0.0.1" && h != "::1" {
+				return nil, fmt.Errorf("%q: https only (http is for localhost)", raw)
+			}
+		default:
+			return nil, fmt.Errorf("%q: not an origin (https://host[:port])", raw)
+		}
+		o := u.Scheme + "://" + host
+		if !seen[o] {
+			seen[o] = true
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}
+
+// framed: this request is a page loading in a frame, on a machine that lets
+// some origin frame its pages. The browser's frame-ancestors check decides
+// which embedder may; this only picks the frame's cookie and markup.
+func (s *Server) framed(r *http.Request) bool {
+	return len(s.cfg.EmbedOrigins) > 0 && r.Header.Get("Sec-Fetch-Dest") == "iframe"
+}
+
+// ancestors opens a policy's frame-ancestors to the embed origins: 'none'
+// becomes the list, 'self' (a mockup's frame, which sits in the page) gets
+// them next to it — frame-ancestors checks every ancestor, the hub included.
+func (s *Server) ancestors(csp string) string {
+	if len(s.cfg.EmbedOrigins) == 0 {
+		return csp
+	}
+	list := strings.Join(s.cfg.EmbedOrigins, " ")
+	csp = strings.Replace(csp, "frame-ancestors 'none'", "frame-ancestors "+list, 1)
+	return strings.Replace(csp, "frame-ancestors 'self'", "frame-ancestors 'self' "+list, 1)
+}
+
+// setCookie sets c the way the page is being seen. In a frame, the page's
+// requests are cross-site to the browser (the hub is the top-level site), so
+// a Lax cookie would never come back: it goes SameSite=None and Partitioned
+// (CHIPS) — kept in that embedder's jar only, never seen by the same browser
+// on another site, nor by a visit to the link itself.
+func (s *Server) setCookie(w http.ResponseWriter, r *http.Request, c *http.Cookie) {
+	if !s.framed(r) {
+		http.SetCookie(w, c)
+		return
+	}
+	c.SameSite, c.Secure = http.SameSiteNoneMode, true
+	if v := c.String(); v != "" {
+		w.Header().Add("Set-Cookie", v+"; Partitioned")
+	}
 }
 
 func newNonce() string {

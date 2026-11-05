@@ -395,7 +395,7 @@
 {{template "foot" .}}{{end}}
 
 {{define "closed"}}{{template "head" .}}
-<main class="wrap closed" data-closed="{{.ID}}">
+<main class="wrap closed" data-closed="{{.ID}}" data-status="{{.Status}}">
   <header class="top">
     {{template "brand" .}}
     <h1>{{.Title}}</h1>

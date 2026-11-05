@@ -19,6 +19,24 @@ h1 { margin: 0 0 10px; font-size: clamp(24px, 5vw, 32px); line-height: 1.2; lett
 .lead.ok { color: hsl(140 55% 36%); }
 @media (prefers-color-scheme: dark) { .lead.ok { color: hsl(140 50% 60%); } }
 
+/* In a hub's frame (<html data-embed>, serve --embed-origins): the hub's
+   panel names the form and its machine, so the brand line goes; the hub's
+   theme may force a scheme the OS doesn't have (data-scheme, app.js) — its
+   tokens cover the colours, these the rest. Keyed on new attributes only: an
+   older machine's page never has them. */
+html[data-embed] .brand { display: none; }
+html[data-embed] .wrap { padding-top: 20px; }
+html[data-scheme="dark"] .lead.ok { color: hsl(140 50% 60%); }
+html[data-scheme="light"] .lead.ok { color: hsl(140 55% 36%); }
+html[data-scheme="dark"] {
+  --code-foreground: 30 20% 88%; --code-comment: 30 6% 52%; --code-keyword: 280 70% 72%; --code-string: 140 45% 62%;
+  --code-number: 30 90% 65%; --code-function: 210 80% 70%; --code-tag: 0 75% 70%; --code-variable: 200 70% 70%;
+}
+html[data-scheme="light"] {
+  --code-foreground: 24 10% 20%; --code-comment: 30 8% 50%; --code-keyword: 280 60% 45%; --code-string: 140 50% 32%;
+  --code-number: 24 85% 42%; --code-function: 210 70% 42%; --code-tag: 0 65% 45%; --code-variable: 200 60% 35%;
+}
+
 /* markdown */
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }

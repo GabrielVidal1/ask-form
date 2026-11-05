@@ -90,5 +90,5 @@ func (s *Server) answersView(w http.ResponseWriter, r *http.Request) {
 	p.formPage = s.readOnlyPage(st, answers, false)
 	p.Nonce = newNonce()
 	p.PageCSS = template.CSS(answersCSS) + p.PageCSS
-	renderPage(w, lang, "answers", p, pageCSP(p.Nonce), http.StatusOK)
+	s.render(w, r, lang, "answers", p, pageCSP(p.Nonce), http.StatusOK)
 }

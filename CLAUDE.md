@@ -59,6 +59,14 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `script-src 'unsafe-inline'`, still no network); don't widen it, and keep
   `widget.js` accepting messages only from the field's own iframe.
 - `/forms/` is the old prefix: it must keep answering (links already sent).
+- Embedding (`serve --embed-origins`, `Config.EmbedOrigins`,
+  `docs/how-it-works.md` → "In another app's frame"): a form's own pages go
+  through `s.render` (frame-ancestors opened to the origins, no
+  X-Frame-Options, `<html data-embed>` on a `Sec-Fetch-Dest: iframe` load),
+  their cookies through `s.setCookie` (partitioned in a frame) and frames'
+  CSP through `s.ancestors`. Examples and the not-found page stay
+  unframeable (`renderPage`). The `ask-form:page` / `ask-form:theme` messages
+  are a contract with embedders (the ai-agent hub): extend, don't rename.
 - A snapshot is the `field` template again with `.Snap` set (the `snapshot`
   page in `pages.html`, built by `readOnlyPage`): secrets a length, files a
   list, and with `.Inline` too frames get `srcdoc` instead of `src`, pictures
