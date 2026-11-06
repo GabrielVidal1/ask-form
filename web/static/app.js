@@ -781,8 +781,10 @@
         (i !== current && groupPending(i) ? " pending" : "");
     });
     pager.querySelector(".pager-title").textContent = groups[current].getAttribute("data-title") || "";
-    nav.back.disabled = stepGroup(current, -1) === current;
-    nav.next.disabled = stepGroup(current, 1) === current;
+    // No button where it would go nowhere: hidden, not just disabled, so
+    // the row never shows a greyed dead end (a first or a last page).
+    nav.back.hidden = stepGroup(current, -1) === current;
+    nav.next.hidden = stepGroup(current, 1) === current;
   }
   if (pager) {
     var start = 0;
