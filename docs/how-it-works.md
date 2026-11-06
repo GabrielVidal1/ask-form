@@ -221,7 +221,11 @@ asked it. Without it no site may frame them (`frame-ancestors 'none'`,
   `--radius`); the page takes only `--name: value` pairs made of letters,
   digits, spaces and `.%#,-` — nothing that loads a file — and only from its
   parent, at one of the origins. In a frame the brand's logo line hides: the
-  embedder's panel names the form.
+  embedder's panel names the form. html blocks and mockups keep the machine's
+  brand, not the embedder's tokens, but follow the scheme: the page tells each
+  of them the colour behind it, and one whose text would be unreadable there
+  (a mockup written with light-page colours, or a brand with no dark palette,
+  on a dark page) is drawn on a light sheet of its own.
 
 ## Security
 

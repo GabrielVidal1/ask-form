@@ -71,8 +71,55 @@
         root.style.colorScheme = d.scheme;
         root.setAttribute("data-scheme", d.scheme);
       }
+      tellFrames();
     });
   }
+
+  // What is behind each frame: the colour the page paints there and its
+  // colour scheme, which a frame keeps (Chromium paints the canvas of a frame
+  // whose scheme differs opaque). The frame takes the palette of that side
+  // and draws a mockup written for a light page on a light sheet of its own
+  // when the page is dark (frameScript, internal/server/frame.go). Told when a
+  // frame reports in, and again when the hub's theme or the OS's changes.
+  function rgba(s) {
+    var m = /^rgba?\(([^)]*)\)$/.exec(s || ""), v;
+    if (!m) return null;
+    v = m[1].split(/[\s,\/]+/).map(Number);
+    return v.length > 2 && v.length < 5 && v.every(isFinite) ? [v[0], v[1], v[2], v.length > 3 ? v[3] : 1] : null;
+  }
+  function usedScheme(el) {
+    var cs = getComputedStyle(el).colorScheme || "", dk = /dark/.test(cs), lt = /light/.test(cs);
+    var os = false;
+    try { os = matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) { /* none */ }
+    return dk && (!lt || os) ? "dark" : "light";
+  }
+  function backdrop(f) {
+    var layers = [], el, c, k, base = usedScheme(root) === "dark" ? [18, 18, 18] : [255, 255, 255];
+    for (el = f; el && el.nodeType === 1; el = el.parentElement) {
+      c = rgba(getComputedStyle(el).backgroundColor);
+      if (c && c[3] > 0) { layers.push(c); if (c[3] >= 1) break; }
+    }
+    while (layers.length) {
+      c = layers.pop(); k = c[3];
+      base = [c[0] * k + base[0] * (1 - k), c[1] * k + base[1] * (1 - k), c[2] * k + base[2] * (1 - k)];
+    }
+    return "rgb(" + base.map(Math.round).join(", ") + ")";
+  }
+  function tellFrame(f) {
+    try {
+      if (f.contentWindow) f.contentWindow.postMessage({ type: "ask-form:backdrop", color: backdrop(f), scheme: usedScheme(f) }, "*");
+    } catch (e) { /* gone */ }
+  }
+  function tellFrames() { $all("iframe").forEach(tellFrame); }
+  // A frame that loaded before this script ran has reported its size to no
+  // one: told now, or once it loads, it reports again.
+  $all("iframe").forEach(function (f) { f.addEventListener("load", function () { tellFrame(f); }); });
+  tellFrames();
+  try {
+    var osDark = matchMedia("(prefers-color-scheme: dark)");
+    if (osDark.addEventListener) osDark.addEventListener("change", tellFrames);
+    else if (osDark.addListener) osDark.addListener(tellFrames);
+  } catch (e) { /* no media queries */ }
 
   // Frame documents report their size. An html block without a fixed height
   // follows its height (and keeps the one it takes on paper for printing); a
@@ -82,6 +129,7 @@
   window.addEventListener("message", function (e) {
     var d = e.data;
     if (!d || d.type !== "ask-form:frame" || typeof d.h !== "number") return;
+    $all("iframe").forEach(function (f) { if (f.contentWindow === e.source) tellFrame(f); });
     $all("iframe.frame.autosize").forEach(function (f) {
       if (f.contentWindow !== e.source) return;
       f.style.height = frameHeight(d.h);

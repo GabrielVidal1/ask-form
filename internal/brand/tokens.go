@@ -40,6 +40,71 @@ func tokensIn(css string) string {
 	return out.String()
 }
 
+// SchemeTokens splits the custom properties that css's :root / html rules
+// set into the two palettes a page is drawn in, each a list of declarations
+// ("--x: v;--y: w"): light takes the rules no colour-scheme query guards and
+// those under (prefers-color-scheme: light), dark the unguarded ones and
+// those under (prefers-color-scheme: dark), in source order, so a later
+// declaration wins as it does in the cascade. A frame told which side of
+// the page it sits on applies one of them whatever the OS prefers. Rules
+// under any other condition (print, a width) are left out. A property set
+// twice keeps its last value, in the place of its first.
+func SchemeTokens(css string) (light, dark string) {
+	var l, d []string
+	schemeTokensIn(stripComments(css), true, true, &l, &d)
+	return lastWins(l), lastWins(d)
+}
+
+func lastWins(decls []string) string {
+	at := map[string]int{}
+	var out []string
+	for _, decl := range decls {
+		name, _, _ := strings.Cut(decl, ":")
+		name = strings.TrimSpace(name)
+		if i, ok := at[name]; ok {
+			out[i] = decl
+			continue
+		}
+		at[name] = len(out)
+		out = append(out, decl)
+	}
+	return strings.Join(out, ";")
+}
+
+func schemeTokensIn(css string, inLight, inDark bool, l, d *[]string) {
+	for i := 0; i < len(css); {
+		open, term := scanTo(css, i, "{;")
+		prelude := strings.TrimSpace(css[i:open])
+		if term != '{' {
+			i = open + 1
+			continue
+		}
+		end, _ := scanTo(css, open+1, "}")
+		body := css[open+1 : min(end, len(css))]
+		i = end + 1
+		switch {
+		case foldPrefix(prelude, "@media"):
+			switch strings.TrimPrefix(strings.Join(strings.Fields(strings.ToLower(prelude[6:])), ""), "screenand") {
+			case "(prefers-color-scheme:dark)":
+				schemeTokensIn(body, false, inDark, l, d)
+			case "(prefers-color-scheme:light)":
+				schemeTokensIn(body, inLight, false, l, d)
+			}
+		case rootSelector(prelude):
+			for _, decl := range splitTop(body, ';') {
+				if decl = strings.TrimSpace(decl); strings.HasPrefix(decl, "--") {
+					if inLight {
+						*l = append(*l, decl)
+					}
+					if inDark {
+						*d = append(*d, decl)
+					}
+				}
+			}
+		}
+	}
+}
+
 // rootSelector: every selector of the list is :root or html.
 func rootSelector(prelude string) bool {
 	for _, s := range strings.Split(prelude, ",") {
