@@ -58,6 +58,13 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `widget` field's frame is the single exception (`internal/server/widget.go`:
   `script-src 'unsafe-inline'`, still no network); don't widen it, and keep
   `widget.js` accepting messages only from the field's own iframe.
+- A frame follows the page's scheme, not the OS's: app.js tells each frame
+  the colour behind it (`ask-form:backdrop {color, scheme}`), the frame takes
+  that side's tokens (`frameSchemeCSS`: theme + brand, `data-af-scheme`),
+  keeps the page's `color-scheme` (a mismatch makes Chromium paint the frame's
+  canvas opaque) and, on a dark backdrop, puts a mockup whose text it can't
+  read on a light sheet (`data-af-paper`). Check a change against the corpus
+  of past mockups (`~/.local/share/ask-form/forms/*.json`) in dark mode.
 - `/forms/` is the old prefix: it must keep answering (links already sent).
 - Embedding (`serve --embed-origins`, `Config.EmbedOrigins`,
   `docs/how-it-works.md` → "In another app's frame"): a form's own pages go

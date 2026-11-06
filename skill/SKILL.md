@@ -158,6 +158,11 @@ or a choice field takes the paperclip off. None in a `--multi` form.
   sets `"aspect"`: `"1/2"` (tall), `"1"` or `"2/1"` (wide). Draw a mockup at a
   fixed width (240–600 px): it is scaled to fill its card, and the fullscreen
   view, whole; a photo fills its card, cropped.
+- Colour an `html` block or mockup with the theme variables
+  (`hsl(var(--foreground))`, `--muted-foreground`, `--card`, `--border`,
+  `--primary`…) and it follows the page into dark mode. One painted with fixed
+  colours (`color:#333`, `background:#eee`) is drawn as written, on a light
+  sheet, when the page is dark.
 - Put your recommendation in `default` and say why in `help`, so the user can
   accept it in one tap.
 

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/GabrielVidal1/ask-form/internal/brand"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/web"
 )
@@ -44,9 +45,47 @@ import (
 // grow the frame. It also sends the height the body takes at a printed page's
 // width (A4 and Letter, the larger), which the page gives the frame while it
 // prints.
-const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribute("data-fit"),last="",nat=-1,` +
+//
+// Legibility: an agent writes a mockup for the page it pictures — most often
+// a light one, color:#333 here and background:#eee there — while the page may
+// be dark (the OS, or a hub's theme in a frame of its own), and a brand may
+// have no dark palette at all. The page tells each frame what is behind it
+// (`ask-form:backdrop`: the colour it paints there and its colour scheme,
+// app.js). The frame takes the palette of that side — the theme's and the
+// brand's tokens for it, data-af-scheme (frameSchemeCSS) — and keeps the
+// page's colour scheme, without which Chromium paints the frame's canvas
+// opaque. Then, on a dark backdrop, it checks every piece of text against
+// what is drawn under it: when some is unreadable (contrast under 3:1) and
+// the mockup drawn as written, on the light palette and a light sheet of its
+// own (data-af-paper), leaves less of it unreadable, it is drawn that way.
+// Without a word from the page (a snapshot, an older relay's app.js) the
+// backdrop is taken to be the frame's own background, or the canvas for a
+// frame open in a tab of its own. The first word from the page also has the
+// frame report its size again: a report sent before the page's script was
+// listening is lost, and the frame only reports a size that changed.
+const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribute("data-fit"),last="",nat=-1,B=null,O="",S="light",` +
 	`LEAF=/^(SVG|IMG|CANVAS|VIDEO|IFRAME|SELECT|TEXTAREA)$/,SOLID=/^(SVG|IMG|CANVAS|VIDEO|IFRAME|SELECT|TEXTAREA|INPUT|BUTTON|HR|PROGRESS|METER)$/;` +
-	`try{if(matchMedia("(prefers-color-scheme: dark)").matches)d.classList.add("dark")}catch(e){}` +
+	`try{if(matchMedia("(prefers-color-scheme: dark)").matches){S="dark";d.classList.add("dark")}}catch(e){}` +
+	`function col(s){var m=/^rgba?\(([^)]*)\)$/.exec(s||""),v;if(!m)return null;v=m[1].split(/[\s,\/]+/).map(Number);` +
+	`return v.length>2&&v.length<5&&v.every(isFinite)?[v[0],v[1],v[2],v.length>3?v[3]:1]:null}` +
+	`function over(a,b){var k=a[3];return[a[0]*k+b[0]*(1-k),a[1]*k+b[1]*(1-k),a[2]*k+b[2]*(1-k),1]}` +
+	`function lum(c){var s=0,i,v;for(i=0;i<3;i++){v=c[i]/255;s+=[.2126,.7152,.0722][i]*(v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4))}return s}` +
+	`function under(e,c){var L=[],s,g;for(;e&&e.nodeType===1;e=e.parentNode){s=getComputedStyle(e);` +
+	`if(s.backgroundImage!=="none"||!(g=col(s.backgroundColor)))return null;if(g[3]>0){L.push(g);if(g[3]>=1)break}}` +
+	`while(L.length)c=over(L.pop(),c);return c}` +
+	`function unread(c){var n=0,g=document.createRange();(function walk(e){for(var k=e.firstChild,s,t,u,a,b,r;k;k=k.nextSibling){` +
+	`if(k.nodeType===3){if(!/\S/.test(k.data))continue;g.selectNodeContents(k);r=g.getBoundingClientRect();s=getComputedStyle(e);` +
+	`if(!r.width||!r.height||s.visibility==="hidden"||!(t=col(s.color))||!(u=under(e,c)))continue;t=over(t,u);a=lum(t);b=lum(u);` +
+	`if((Math.max(a,b)+.05)/(Math.min(a,b)+.05)<3)n+=k.data.trim().length}` +
+	`else if(k.nodeType===1&&!LEAF.test(k.tagName.toUpperCase())&&getComputedStyle(k).display!=="none")walk(k)}})(document.body);return n}` +
+	`function sheet(on){if(on)d.setAttribute("data-af-paper","");else d.removeAttribute("data-af-paper");` +
+	`d.classList.toggle("dark",!on&&S==="dark");d.style.colorScheme=on?"light":O;if(window.askForm)askForm.theme=on?"light":S}` +
+	`function own(){var p,c;if(parent===window)return/dark/.test(getComputedStyle(d).colorScheme)?[18,18,18,1]:[255,255,255,1];` +
+	`p=document.createElement("i");p.style.color="hsl(var(--background))";d.appendChild(p);c=col(getComputedStyle(p).color);d.removeChild(p);return c}` +
+	`function legible(){var c,a;if(!document.body)return;sheet(0);c=B||own();if(!c||lum(c)>=.2||!(a=unread(c)))return;sheet(1);if(unread(c)>=a)sheet(0)}` +
+	`addEventListener("message",function(e){var m=e.data,c;if(e.source!==parent||parent===window||!m||m.type!=="ask-form:backdrop"||!(c=col(m.color)))return;` +
+	`if(!B)last="";B=[c[0],c[1],c[2],1];S=lum(B)<.2?"dark":"light";O=m.scheme==="dark"||m.scheme==="light"?m.scheme:"";` +
+	`d.setAttribute("data-af-scheme",S);legible();place()});` +
 	`function send(m){var k=JSON.stringify(m);if(k!==last){last=k;m.type="ask-form:frame";parent.postMessage(m,"*")}}` +
 	`function high(b){return Math.ceil(Math.max(b.scrollHeight,b.getBoundingClientRect().height))}` +
 	`function paper(b){var w=b.style.width,h=0;[700,724].forEach(function(x){b.style.width=x+"px";h=Math.max(h,high(b))});b.style.width=w;return h}` +
@@ -77,9 +116,9 @@ const frameScript = `(function(){var d=document.documentElement,fit=d.hasAttribu
 	`send(nat?{w:nat,h:H}:{w:vw,h:h0,fluid:1})}` +
 	`function again(){nat=-1;place()}` +
 	`if(!fit&&window.ResizeObserver)new ResizeObserver(function(){place()}).observe(d);` +
-	`addEventListener("load",again);addEventListener("resize",function(){place()});` +
+	`addEventListener("load",function(){again();legible()});addEventListener("resize",function(){place()});` +
 	`if(fit&&document.fonts&&document.fonts.ready)document.fonts.ready.then(again);` +
-	`if(!fit)setInterval(place,1500);place()})();`
+	`if(!fit)setInterval(place,1500);place();legible()})();`
 
 var (
 	frameScriptHash = func() string {
@@ -98,6 +137,21 @@ var (
 	htmlRe = regexp.MustCompile(`(?i)<html[^>]*>`)
 	bodyRe = regexp.MustCompile(`(?i)</body\s*>`)
 )
+
+// frameSchemeCSS is what the frame script switches between (see Legibility
+// above): the theme's and the brand's tokens for the side of the page the
+// frame sits on, whatever the OS prefers (data-af-scheme), and the light
+// "paper" a mockup written for a light page is drawn on when the page is
+// dark (data-af-paper). An attribute selector weighs what :root does: these
+// beat the theme's and the brand's rules by coming after them, and a full
+// document's own :root rules, further down, still beat these. On paper
+// (print) a frame is light whatever the screen was.
+func frameSchemeCSS(brandCSS string) string {
+	light, dark := brand.SchemeTokens(themeCSS + brandCSS)
+	return `[data-af-scheme="light"]{` + light + `}[data-af-scheme="dark"]{` + dark + `}` +
+		`[data-af-paper]{` + light + `;color-scheme:light;background:hsl(var(--background))}` +
+		`@media print{:root{` + light + `;color-scheme:light!important}}`
+}
 
 // frameCSP is a frame document's policy.
 func frameCSP() string {
@@ -127,7 +181,7 @@ func frameDocWith(st store.State, prefix, markup string, fit bool, sdk, brandCSS
 		}
 	}
 	head := `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-		`<style>` + themeCSS + frameBaseCSS + brandCSS + `</style>` + sdk
+		`<style>` + themeCSS + frameBaseCSS + brandCSS + frameSchemeCSS(brandCSS) + `</style>` + sdk
 	script := `<script>` + frameScript + `</script>`
 	attr := ""
 	if fit {

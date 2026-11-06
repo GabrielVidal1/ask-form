@@ -107,6 +107,26 @@ body { --not-this: 1; background: red }
 	}
 }
 
+func TestSchemeTokens(t *testing.T) {
+	css := `:root { --bg: white; --fg: black; color-scheme: light }
+@media (prefers-color-scheme: dark) { :root { --bg: black; --fg: white } .x { --no: 1 } }
+@media print { :root { --bg: paper } }
+@media screen and (prefers-color-scheme: light) { html { --accent: blue } }
+/* a light-only brand after the theme: its tokens hold in dark too */
+:root { --fg: navy }
+@media (min-width: 900px) { :root { --wide: 1 } }`
+	light, dark := SchemeTokens(css)
+	if want := "--bg: white;--fg: navy;--accent: blue"; light != want {
+		t.Errorf("light %q, want %q", light, want)
+	}
+	if want := "--bg: black;--fg: navy"; dark != want {
+		t.Errorf("dark %q, want %q", dark, want)
+	}
+	if l, d := SchemeTokens(""); l != "" || d != "" {
+		t.Error("tokens out of nothing")
+	}
+}
+
 func TestParseColor(t *testing.T) {
 	for in, want := range map[string]string{"#F97316": "#f97316", "f97316": "#f97316", "#fa0": "#ffaa00", " #123abc ": "#123abc"} {
 		if got, err := ParseColor(in); err != nil || got != want {

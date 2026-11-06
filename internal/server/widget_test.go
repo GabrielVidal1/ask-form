@@ -99,7 +99,7 @@ func TestWidgetFlow(t *testing.T) {
 
 	res, doc = get("/f/" + id + "/frame/note")
 	csp = res.Header.Get("Content-Security-Policy")
-	if strings.Contains(csp, "unsafe-inline'; base-uri") || !strings.Contains(csp, "script-src 'sha256-") || strings.Contains(doc, "window.askForm") {
+	if strings.Contains(csp, "unsafe-inline'; base-uri") || !strings.Contains(csp, "script-src 'sha256-") || strings.Contains(doc, "window.askForm={") {
 		t.Errorf("an html block stays script-free: %s", csp)
 	}
 
