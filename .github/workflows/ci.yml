@@ -39,6 +39,10 @@ jobs:
         run: make dist
       - name: Smoke test
         run: ./dist/ask-form-linux-amd64 version && ./dist/ask-form-relay-linux-amd64 version
+      # The relay's image copies the source folder by folder: a package it
+      # misses only shows here (v0.17.0's skill/).
+      - name: Relay image
+        run: docker build -q --build-arg VERSION=ci -t ask-form-relay:ci . && docker run --rm ask-form-relay:ci version
       - uses: actions/upload-artifact@v7
         with:
           name: ask-form-${{ github.sha }}

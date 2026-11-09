@@ -7,6 +7,7 @@ COPY internal ./internal
 COPY web ./web
 COPY landing ./landing
 COPY examples ./examples
+COPY skill ./skill
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X github.com/GabrielVidal1/ask-form/internal/server.Version=${VERSION}" \
