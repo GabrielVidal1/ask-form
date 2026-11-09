@@ -6,6 +6,9 @@
 //	ask-form-relay machine add <name>   print a new machine token (shown once)
 //	ask-form-relay machine rm <name>
 //	ask-form-relay machine ls
+//	ask-form-relay key add <name>       print a new registration key (shown once)
+//	ask-form-relay key rm <name>
+//	ask-form-relay key ls
 package main
 
 import (
@@ -34,10 +37,16 @@ const usage = `ask-form-relay — public relay for ask-form
 
   ask-form-relay serve [--listen :8080] [--machine-listen :8081] [--machines FILE] [--client-ip-header X-Real-Ip]
                        [--register open|closed] [--max-forms 50] [--register-per-ip 5] [--forget-after 2160h]
+                       [--keys FILE] [--register-per-key 20] [--forget-ephemeral 48h] [--web-keys-per-ip 3]
                        [--public-url https://ask-form.xyz] [--trust-cloudflare]
   ask-form-relay machine add <name>     mint a machine token (printed once; only its hash is kept)
   ask-form-relay machine rm <name>
   ask-form-relay machine ls
+  ask-form-relay key add <name>         mint a registration key (printed once): machines that present it
+                                        register themselves past the per-IP cap, even on a closed relay —
+                                        Claude's code sandbox (ask-form start --key)
+  ask-form-relay key rm <name>
+  ask-form-relay key ls
   ask-form-relay healthcheck            exit 0 when the public listener on :8080 answers
 
 Route the --listen port from the internet (it serves /, /forms/*, /examples,
@@ -55,11 +64,17 @@ func main() {
 	if machines == "" {
 		machines = "machines.json"
 	}
+	keys := os.Getenv("ASK_FORM_RELAY_KEYS")
+	if keys == "" {
+		keys = relay.KeysFileFor(machines)
+	}
 	switch os.Args[1] {
 	case "serve":
-		os.Exit(serve(os.Args[2:], machines))
+		os.Exit(serve(os.Args[2:], machines, keys))
 	case "machine":
 		os.Exit(machine(os.Args[2:], machines))
+	case "key":
+		os.Exit(keyCmd(os.Args[2:], keys))
 	case "healthcheck":
 		// For the container's HEALTHCHECK (the image has no shell or curl).
 		res, err := http.Get("http://127.0.0.1:8080/robots.txt")
@@ -76,7 +91,7 @@ func main() {
 	}
 }
 
-func serve(args []string, machines string) int {
+func serve(args []string, machines, keys string) int {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	listen := fs.String("listen", ":8080", "public listener: / and /forms/*")
 	mlisten := fs.String("machine-listen", ":8081", "machine API listener: /_relay/* (\"\" = on the public listener)")
@@ -89,6 +104,10 @@ func serve(args []string, machines string) int {
 	perIP := fs.Int("register-per-ip", envInt("ASK_FORM_RELAY_REGISTER_PER_IP", 5), "self-registrations per address per day")
 	maxMachines := fs.Int("max-machines", envInt("ASK_FORM_RELAY_MAX_MACHINES", 1000), "self-registered machines kept at most")
 	forget := fs.Duration("forget-after", 90*24*time.Hour, "drop a self-registered machine unseen this long (negative: never)")
+	keysFile := fs.String("keys", keys, "registration keys file (name → key SHA-256)")
+	perKey := fs.Int("register-per-key", envInt("ASK_FORM_RELAY_REGISTER_PER_KEY", 20), "machines one registration key registers per day")
+	forgetEph := fs.Duration("forget-ephemeral", 48*time.Hour, "drop a machine a key registered unseen this long")
+	webKeys := fs.Int("web-keys-per-ip", envInt("ASK_FORM_RELAY_WEB_KEYS_PER_IP", 3), "keys an open relay hands a visitor per day (the landing's claude.ai skill)")
 	fs.Parse(args)
 	if *register != "open" && *register != "closed" {
 		log.Fatalf("--register %q: use open or closed", *register)
@@ -99,11 +118,12 @@ func serve(args []string, machines string) int {
 		log.Fatalf("examples: %v", err)
 	}
 	r, err := relay.New(relay.Config{
-		MachinesFile: *file, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
+		MachinesFile: *file, KeysFile: *keysFile, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
 		Landing: landing.Page, LandingFR: landing.PageFR, LandingAssets: landing.Assets,
 		Examples: server.ExamplesHandler(exs, *ipHeader),
 		Register: relay.Registration{
 			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,
+			PerKey: *perKey, ForgetEphemeral: *forgetEph, WebKeysPerIP: *webKeys,
 		},
 		Files: map[string]relay.File{
 			"/install.sh":    {Body: askform.InstallScript, ContentType: "text/plain; charset=utf-8"},
@@ -196,10 +216,11 @@ func machine(args []string, file string) int {
 			Self    bool   `json:"self,omitempty"`
 			Created string `json:"created,omitempty"`
 			Seen    string `json:"seen,omitempty"`
+			Key     string `json:"key,omitempty"` // the registration key that registered it (ephemeral)
 		}
 		rows := make([]row, 0, len(names))
 		for _, n := range names {
-			rows = append(rows, row{Name: n, Self: m[n].Self, Created: m[n].Created, Seen: m[n].Seen})
+			rows = append(rows, row{Name: n, Self: m[n].Self, Created: m[n].Created, Seen: m[n].Seen, Key: m[n].Key})
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -230,4 +251,58 @@ func orPublic(s string) string {
 		return "on the public listener"
 	}
 	return s
+}
+
+func keyCmd(args []string, file string) int {
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+	switch args[0] {
+	case "add":
+		if len(args) != 2 {
+			fmt.Fprintln(os.Stderr, "usage: ask-form-relay key add <name>")
+			return 2
+		}
+		key, err := relay.AddKey(file, args[1])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		json.NewEncoder(os.Stdout).Encode(map[string]string{"key": key, "name": args[1]})
+		fmt.Fprintln(os.Stderr, "Give it to `ask-form start --key` or `ask-form skill export --claude-ai --key`. It is not shown again.")
+	case "rm":
+		if len(args) != 2 {
+			fmt.Fprintln(os.Stderr, "usage: ask-form-relay key rm <name>")
+			return 2
+		}
+		if err := relay.RemoveKey(file, args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		json.NewEncoder(os.Stdout).Encode(map[string]string{"removed": args[1]})
+	case "ls":
+		k, err := relay.LoadKeys(file)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		type row struct {
+			Name    string `json:"name"`
+			By      string `json:"by"`
+			Created string `json:"created,omitempty"`
+			Seen    string `json:"seen,omitempty"`
+		}
+		rows := []row{}
+		for _, n := range relay.SortedKeys(k) {
+			rows = append(rows, row{Name: n, By: k[n].By, Created: k[n].Created, Seen: k[n].Seen})
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(map[string]any{"keys": rows})
+	default:
+		fmt.Fprint(os.Stderr, usage)
+		return 2
+	}
+	return 0
 }

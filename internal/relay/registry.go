@@ -26,6 +26,10 @@ type Machine struct {
 	Self    bool   `json:"self,omitempty"`
 	Created string `json:"created,omitempty"` // YYYY-MM-DD
 	Seen    string `json:"seen,omitempty"`    // YYYY-MM-DD of its last poll (self machines)
+	// Ephemeral: a registration key registered it (a chat's code sandbox,
+	// keys.go); Key names that key. Forgotten after ForgetEphemeral unseen.
+	Ephemeral bool   `json:"ephemeral,omitempty"`
+	Key       string `json:"key,omitempty"`
 }
 
 // UnmarshalJSON also reads the first format, a bare hash per name.
@@ -202,8 +206,17 @@ type Registration struct {
 	// MaxForms caps the open forms of one self-registered machine (default 50).
 	MaxForms int
 	// ForgetAfter drops a self-registered machine unseen this long
-	// (default 90 days; negative = never).
+	// (default 90 days; negative = never), and a key nobody used this long.
 	ForgetAfter time.Duration
+	// PerKey caps the machines one registration key registers a day
+	// (default 20; keys.go).
+	PerKey int
+	// ForgetEphemeral drops a machine a key registered once unseen this long
+	// (default 48 h): a sandbox that's gone never comes back.
+	ForgetEphemeral time.Duration
+	// WebKeysPerIP caps the keys an open relay mints per visitor per day
+	// (POST /claude-ai/skill, default 3).
+	WebKeysPerIP int
 }
 
 func (c *Registration) defaults() {
@@ -219,19 +232,48 @@ func (c *Registration) defaults() {
 	if c.ForgetAfter == 0 {
 		c.ForgetAfter = 90 * 24 * time.Hour
 	}
+	if c.PerKey <= 0 {
+		c.PerKey = 20
+	}
+	if c.ForgetEphemeral <= 0 {
+		c.ForgetEphemeral = 48 * time.Hour
+	}
+	if c.WebKeysPerIP <= 0 {
+		c.WebKeysPerIP = 3
+	}
 }
 
 var hintRe = regexp.MustCompile(`[^a-z0-9-]+`)
 
+// KeyHeader carries a registration key (keys.go) on POST /_relay/v1/register.
+const KeyHeader = "X-Ask-Register-Key"
+
 func (r *Relay) register(w http.ResponseWriter, req *http.Request) {
-	if !r.cfg.Register.Open {
-		apiErr(w, http.StatusNotFound, "this relay doesn't register machines")
-		return
-	}
-	if !r.regLimit.hit(r.clientIP(req)) {
-		w.Header().Set("Retry-After", "86400")
-		apiErr(w, http.StatusTooManyRequests, "too many registrations from this address today")
-		return
+	// A key: open or closed relay, no per-IP cap, an ephemeral machine.
+	keyName := ""
+	if key := req.Header.Get(KeyHeader); key != "" {
+		r.mu.Lock()
+		keyName = r.keyOf(key)
+		r.mu.Unlock()
+		if keyName == "" {
+			apiErr(w, http.StatusUnauthorized, "unknown registration key")
+			return
+		}
+		if !r.keyLimit.hit(keyName) {
+			w.Header().Set("Retry-After", "86400")
+			apiErr(w, http.StatusTooManyRequests, "this key registered too many machines today")
+			return
+		}
+	} else {
+		if !r.cfg.Register.Open {
+			apiErr(w, http.StatusNotFound, "this relay doesn't register machines")
+			return
+		}
+		if !r.regLimit.hit(r.clientIP(req)) {
+			w.Header().Set("Retry-After", "86400")
+			apiErr(w, http.StatusTooManyRequests, "too many registrations from this address today")
+			return
+		}
 	}
 	var body struct {
 		Name    string `json:"name"`
@@ -274,12 +316,27 @@ func (r *Relay) register(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	d := today()
-	if err := r.save(func(m Machines) { m[name] = Machine{SHA256: sum, Self: true, Created: d, Seen: d} }); err != nil {
+	entry := Machine{SHA256: sum, Self: true, Created: d, Seen: d, Ephemeral: keyName != "", Key: keyName}
+	if err := r.save(func(m Machines) { m[name] = entry }); err != nil {
 		log.Printf("relay: register: %v", err)
 		apiErr(w, http.StatusInternalServerError, "couldn't save the machine")
 		return
 	}
-	log.Printf("relay: machine %s registered itself (%s, ip=%s)", name, clip(body.Version, 40), r.clientIP(req))
+	if keyName != "" {
+		if e, ok := r.keyEntries[keyName]; ok && e.Seen != d {
+			if err := r.saveKeysWith(func(k Keys) {
+				if e, ok := k[keyName]; ok {
+					e.Seen = d
+					k[keyName] = e
+				}
+			}); err != nil {
+				log.Printf("relay: keys file: %v", err)
+			}
+		}
+		log.Printf("relay: machine %s registered with key %s (%s, ip=%s)", name, keyName, clip(body.Version, 40), r.clientIP(req))
+	} else {
+		log.Printf("relay: machine %s registered itself (%s, ip=%s)", name, clip(body.Version, 40), r.clientIP(req))
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(map[string]string{"machine": name, "token": token})
@@ -317,15 +374,23 @@ func randSuffix() string {
 // forgetIdle records when self-registered machines were last seen and drops
 // those unseen for longer than ForgetAfter (r.mu held).
 func (r *Relay) forgetIdle(now time.Time) {
-	if r.cfg.Register.ForgetAfter < 0 {
-		return
-	}
 	if err := r.loadTokens(false); err != nil {
 		log.Printf("relay: machines file: %v", err)
 		return
 	}
 	d := now.UTC().Format("2006-01-02")
-	cutoff := now.Add(-r.cfg.Register.ForgetAfter).UTC().Format("2006-01-02")
+	cutoff := "" // ForgetAfter < 0: never (no date is before "")
+	if r.cfg.Register.ForgetAfter >= 0 {
+		cutoff = now.Add(-r.cfg.Register.ForgetAfter).UTC().Format("2006-01-02")
+	}
+	ephCutoff := now.Add(-r.cfg.Register.ForgetEphemeral).UTC().Format("2006-01-02")
+	cutoffOf := func(e Machine) string {
+		if e.Ephemeral {
+			return ephCutoff
+		}
+		return cutoff
+	}
+	defer r.forgetKeys(cutoff) // after the machines: a gone machine's key goes too
 	changed := false
 	for name, e := range r.entries {
 		if !e.Self {
@@ -333,7 +398,7 @@ func (r *Relay) forgetIdle(now time.Time) {
 		}
 		if m := r.machines[name]; m != nil && now.Sub(m.lastPoll) < onlineAfter && e.Seen != d {
 			changed = true
-		} else if last := maxStr(e.Seen, e.Created); last != "" && last < cutoff {
+		} else if last := maxStr(e.Seen, e.Created); last != "" && last < cutoffOf(e) {
 			changed = true
 		}
 	}
@@ -348,9 +413,10 @@ func (r *Relay) forgetIdle(now time.Time) {
 			if mm := r.machines[name]; mm != nil && now.Sub(mm.lastPoll) < onlineAfter {
 				e.Seen = d
 				m[name] = e
-			} else if last := maxStr(e.Seen, e.Created); last != "" && last < cutoff {
+			} else if last := maxStr(e.Seen, e.Created); last != "" && last < cutoffOf(e) {
 				log.Printf("relay: forgetting machine %s (unseen since %s)", name, last)
 				delete(m, name)
+				delete(r.machines, name)
 			}
 		}
 	})

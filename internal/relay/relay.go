@@ -49,6 +49,9 @@ type Config struct {
 	// MachinesFile maps machine names to their token's SHA-256 (hex), as JSON.
 	// Re-read when it changes, so `ask-form-relay machine add` needs no restart.
 	MachinesFile string
+	// KeysFile holds the registration keys' hashes (keys.go), re-read the
+	// same way; "" = keys.json next to MachinesFile.
+	KeysFile string
 	// ClientIPHeader names the header(s) the proxy in front sets to the
 	// visitor's address, comma-separated, first present wins (Cloudflare:
 	// Cf-Connecting-Ip, Traefik: X-Real-Ip). Empty: the socket peer.
@@ -103,20 +106,25 @@ type pending struct {
 
 // Relay routes visitors to machines.
 type Relay struct {
-	cfg      Config
-	mu       sync.Mutex
-	machines map[string]*machine
-	claims   map[string]*claim
-	inflight map[string]*pending
-	tokens   map[[32]byte]string // sha256(token) → name
-	entries  Machines
-	tokFi    os.FileInfo
-	general  *ipLimiter
-	regLimit *ipLimiter
-	uploads  *ipLimiter    // upload chunks per visitor
-	upSlots  chan struct{} // upload chunks held in memory at once
-	landing  landingPage   // at /
-	landFR   landingPage   // at /fr
+	cfg        Config
+	mu         sync.Mutex
+	machines   map[string]*machine
+	claims     map[string]*claim
+	inflight   map[string]*pending
+	tokens     map[[32]byte]string // sha256(token) → name
+	entries    Machines
+	tokFi      os.FileInfo
+	keySums    map[[32]byte]string // sha256(registration key) → name
+	keyEntries Keys
+	keyFi      os.FileInfo
+	general    *ipLimiter
+	regLimit   *ipLimiter
+	keyLimit   *ipLimiter    // registrations per key name
+	webKeys    *ipLimiter    // keys minted per visitor (the landing's button)
+	uploads    *ipLimiter    // upload chunks per visitor
+	upSlots    chan struct{} // upload chunks held in memory at once
+	landing    landingPage   // at /
+	landFR     landingPage   // at /fr
 }
 
 // landingPage is a landing page and the CSP computed from its own bytes.
@@ -135,9 +143,14 @@ func New(cfg Config) (*Relay, error) {
 		inflight: map[string]*pending{}, general: newIPLimiter(600, time.Minute),
 		landing: newLandingPage(cfg.Landing), landFR: newLandingPage(cfg.LandingFR),
 		regLimit: newIPLimiter(cfg.Register.PerIP, 24*time.Hour),
+		keyLimit: newIPLimiter(cfg.Register.PerKey, 24*time.Hour),
+		webKeys:  newIPLimiter(cfg.Register.WebKeysPerIP, 24*time.Hour),
 		uploads:  newIPLimiter(120, time.Minute), upSlots: make(chan struct{}, maxUploadsInFlight),
 	}
 	if err := r.loadTokens(true); err != nil {
+		return nil, err
+	}
+	if err := r.loadKeys(true); err != nil {
 		return nil, err
 	}
 	go r.prune()
@@ -152,6 +165,7 @@ func (r *Relay) MachineAPI() http.Handler {
 	mux.HandleFunc("POST /_relay/v1/poll", r.poll)
 	mux.HandleFunc("POST /_relay/v1/respond/{rid}", r.respond)
 	mux.HandleFunc("POST /_relay/v1/claim", r.claim)
+	mux.HandleFunc("POST /_relay/v1/key", r.machineKey)
 	mux.HandleFunc("GET /_relay/v1/health", r.health)
 	mux.HandleFunc("DELETE /_relay/v1/machine", r.unregister)
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -380,6 +394,7 @@ func (r *Relay) Public() http.Handler {
 	if r.cfg.LandingAssets != nil {
 		mux.HandleFunc("GET /assets/{file}", r.serveLandingAsset)
 	}
+	mux.HandleFunc("POST /claude-ai/skill", r.webSkill)
 	mux.Handle("GET /f/_static/{file}", server.StaticHandler())
 	mux.Handle("GET /forms/_static/{file}", server.StaticHandler())
 	for p, f := range r.cfg.Files {
@@ -488,18 +503,23 @@ func (r *Relay) serveLandingAsset(w http.ResponseWriter, req *http.Request) {
 // withOrigin fills the {{ORIGIN}} and {{HOST}} placeholders of the landing
 // page and the plain files: the configured public URL, else this request's
 // host.
+// origin is the relay's public origin: --public-url, else the request's host.
+func (r *Relay) origin(req *http.Request) string {
+	if r.cfg.PublicURL != "" {
+		return strings.TrimRight(r.cfg.PublicURL, "/")
+	}
+	host := req.Host
+	if !hostRe.MatchString(host) {
+		host = "localhost"
+	}
+	return "https://" + host
+}
+
 func (r *Relay) withOrigin(b []byte, req *http.Request) []byte {
 	if !bytes.Contains(b, []byte("{{ORIGIN}}")) && !bytes.Contains(b, []byte("{{HOST}}")) {
 		return b
 	}
-	origin := r.cfg.PublicURL
-	if origin == "" {
-		host := req.Host
-		if !hostRe.MatchString(host) {
-			host = "localhost"
-		}
-		origin = "https://" + host
-	}
+	origin := r.origin(req)
 	b = bytes.ReplaceAll(b, []byte("{{ORIGIN}}"), []byte(origin))
 	host := strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://")
 	return bytes.ReplaceAll(b, []byte("{{HOST}}"), []byte(host))
@@ -527,7 +547,7 @@ func landingCSP(page []byte) string {
 	scripts := inlineHashes(string(page), "<script>", "</script>")
 	return "default-src 'none'; style-src " + strings.Join(append(styles, "'self'"), " ") +
 		"; style-src-attr 'unsafe-inline'; script-src " + strings.Join(append(scripts, "'self'"), " ") +
-		"; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		"; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 }
 
 // inlineHashes lists the CSP hashes of every open…close block in s.
