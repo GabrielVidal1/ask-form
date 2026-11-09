@@ -37,6 +37,14 @@ A relay runs with `--register closed` (the default) or `--register open`.
   Registrations are capped per address per day (`--register-per-ip`, 5) and
   in total (`--max-machines`, 1000). The machine API must then be reachable
   from the internet; `--machine-listen ""` serves it on the public port.
+- **with a registration key**, open or closed: a machine that presents one
+  (`ask-form start --key`) registers past the per-IP cap, up to
+  `--register-per-key` a day (20), and is forgotten after
+  `--forget-ephemeral` unseen (48 h). That is Claude's code sandbox, next
+  section. Keys come from the relay's owner (`ask-form-relay key add`), from a
+  connected machine for itself (`ask-form skill export --claude-ai`), or, on
+  an open relay, from the landing page's download button (3 a day per
+  address). The relay keeps their SHA-256 only, in `keys.json`.
 
 Behind a Cloudflare-proxied domain, `--trust-cloudflare` takes the visitor
 from `Cf-Connecting-Ip`, but only when the request comes from one of
@@ -45,6 +53,37 @@ forged header on another route is ignored. `--public-url` is the origin the
 relay announces: machines set up without an explicit one use it for their
 links, and the landing page, `/install.sh` and `/agent-install` name it.
 Setting one up, with proxy configs: [running your own relay](self-hosting.md).
+
+## In Claude's code sandbox
+
+claude.ai and the Claude apps run code in a sandbox: a container for the
+chat, whose network reaches package managers and the domains its settings
+allow, and which goes away after a while. ask-form runs there for one chat:
+
+1. The user uploads a skill once (Customize → Skills): the landing page's
+   *Download the skill*, or `ask-form skill export --claude-ai` on a computer
+   with ask-form. It is a zip with `ask-form/SKILL.md`, which tells Claude how
+   to run ask-form there, `reference.md` (the field types), and a
+   registration key.
+2. Claude installs ask-form from npm (`npm install -g ask-form`: the launcher
+   plus the Go binary for the sandbox's platform, the same build as the
+   GitHub release) and runs `ask-form start --key …`. That registers an
+   ephemeral machine (see above), starts `serve` as a detached process with
+   no local listener (every link goes through the relay), no service and no
+   self-upgrade, and returns once the relay connection is up. Run again, it
+   does nothing while serve runs, and brings it back after the sandbox was
+   paused.
+3. Claude creates the form, puts the link in its reply, then waits in the
+   same turn (`ask-form wait --timeout 4m`, three times). Unanswered by then,
+   it ends its turn; the user says when they've answered and Claude reads the
+   answers with `ask-form get`.
+
+The sandbox must reach the relay: its settings (Settings → Capabilities →
+Code execution → "Allow network egress", set to package managers and specific
+domains) list the relay's host; on a Team or Enterprise plan the organization
+owner sets them. The forms and answers live in the sandbox, as on any machine:
+once it is gone, so are they, and a link then shows "offline". Secret fields
+don't fit there (the value would land in the chat), and the skill says so.
 
 ## Languages
 
@@ -181,6 +220,12 @@ release), `minor` (minor and patch releases only; a new major waits for
 every 6 hours. Dev builds and pre-releases never upgrade by themselves.
 Each release also carries a build provenance attestation:
 `gh attestation verify ask-form-linux-amd64 -R GabrielVidal1/ask-form`.
+
+The same binaries go to npm with each release (`ask-form`, plus
+`ask-form-<os>-<arch>` per platform, published with provenance). A binary npm
+installed leaves upgrades to npm: `ask-form upgrade` says to run
+`npm install -g ask-form@latest`, and serve's auto-upgrade defaults to
+`notify` there.
 
 ## In another app's frame
 

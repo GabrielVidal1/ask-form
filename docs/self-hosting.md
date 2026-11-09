@@ -18,8 +18,9 @@ open at `https://forms.example.com`.
 - It forwards every `/f/<id>…` request to the machine that created that
   form. Machines connect to its machine API (`/_relay/v1/…`) and long-poll
   for requests, so nothing listens on them.
-- It stores one file, `machines.json`: each machine's name, the SHA-256 of its
-  token, when it was created and when it was last seen. Forms, answers and
+- It stores `machines.json`: each machine's name, the SHA-256 of its
+  token, when it was created and when it was last seen; and `keys.json` next
+  to it, the SHA-256 of each [registration key](#registration-keys-claudes-code-sandbox). Forms, answers and
   uploads stay on the machines. A restart loses only the requests in flight,
   and machines reconnect by themselves.
 - It is a single process holding the live polls in memory: run one instance,
@@ -274,6 +275,41 @@ Machines you added with `machine add` keep no form limit and are never
 forgotten. Going back to `--register closed` stops new registrations and
 keeps every machine the relay already knows.
 
+### Registration keys: Claude's code sandbox
+
+A machine can also register with a **registration key**, on an open or a
+closed relay: `ask-form start --key …` presents it. That is how Claude's code
+sandbox (claude.ai, the Claude apps) gets a machine for one chat: the sandbox
+installs ask-form from npm, and the skill it was given carries the key. Every
+sandbox leaves through the same few addresses, so the per-IP cap would refuse
+them all; a key skips it and has a cap of its own. A machine a key registered
+is *ephemeral*: forgotten once unseen for `--forget-ephemeral` (a sandbox that's
+gone never comes back), and it can't mint keys itself.
+
+Keys come from three places:
+
+- you: `ask-form-relay key add sandboxes` prints one (shown once; `key rm`,
+  `key ls`). On a closed relay it is the only way in for a sandbox;
+- a machine connected to the relay, for itself: `ask-form skill export
+  --claude-ai` asks for one (`POST /_relay/v1/key`) and writes it into the
+  claude.ai skill. A new export replaces the machine's key; the key goes
+  when the machine is forgotten;
+- a visitor of an open relay: the landing page's *Download the skill* button
+  (`POST /claude-ai/skill`) mints one and answers with the skill zip, a few a
+  day per address.
+
+| flag | env | default |
+|------|-----|---------|
+| `--keys` | `ASK_FORM_RELAY_KEYS` | `keys.json` next to the machines file |
+| `--register-per-key` | `ASK_FORM_RELAY_REGISTER_PER_KEY` | 20 machines per key per day |
+| `--forget-ephemeral` | | 48h |
+| `--web-keys-per-ip` | `ASK_FORM_RELAY_WEB_KEYS_PER_IP` | 3 skill downloads per address per day |
+
+A key nobody used for `--forget-after` is forgotten, except the ones you added.
+The sandbox must reach your relay: its owner adds the relay's host to Claude's
+allowed domains (Settings → Capabilities → Code execution → "Allow network
+egress").
+
 ### The machine API on a private network
 
 With `--register closed` you can keep the machine API off the internet:
@@ -387,8 +423,10 @@ the relay needs.
 | `--trust-cloudflare` | `ASK_FORM_RELAY_TRUST_CLOUDFLARE=1` | off | take `Cf-Connecting-Ip` from Cloudflare's edges |
 | `--register` | `ASK_FORM_RELAY_REGISTER` | `closed` | `open`: machines register themselves |
 | `--max-forms`, `--register-per-ip`, `--max-machines`, `--forget-after` | see [Open](#open-machines-register-themselves) | | limits on self-registered machines |
+| `--keys`, `--register-per-key`, `--forget-ephemeral`, `--web-keys-per-ip` | see [Registration keys](#registration-keys-claudes-code-sandbox) | | machines registered with a key |
 
 Other commands: `ask-form-relay machine add|rm <name>`, `machine ls`,
+`key add|rm <name>`, `key ls`,
 `healthcheck` (exit 0 when `127.0.0.1:8080` answers; for the image, which has
 no shell), `version`. How the relay and the machines keep forms private is in
 [how it works](how-it-works.md).

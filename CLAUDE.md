@@ -16,11 +16,16 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
 ## Layout
 
 - `cmd/ask-form`: CLI, `serve`, `setup`/`uninstall` (service units, skill),
-  `upgrade` and the auto-upgrade loop. `cmd/ask-form-relay`: the relay.
+  `upgrade` and the auto-upgrade loop, `start` (`start.go`: serve for one
+  session — Claude's code sandbox — registered with a key, detached, no local
+  listener, no self-upgrade) and `skill export --claude-ai`.
+  `cmd/ask-form-relay`: the relay (`machine` and `key` commands).
 - `internal/form` (spec, answers, markdown), `internal/store` (files),
   `internal/server` (answer pages under `/f/`, admin API, security),
   `internal/tunnel` (relay ⇄ machine long-poll), `internal/relay` (public
-  side, machine API, open registration in `registry.go`), `internal/update`
+  side, machine API, open registration in `registry.go`, registration keys
+  and the ephemeral machines they register in `keys.go`, with the landing's
+  `POST /claude-ai/skill`), `internal/update`
   (releases: latest tag, download, checksum, atomic swap), `internal/webhook`
   (`serve --events-url`: every form event POSTed to one URL — the ai-agent
   hub's feed; `Server.Events`, `AnnounceExpiries`), `internal/brand` (the
@@ -35,7 +40,13 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
   `install.sh`
   (root, embedded via `assets.go`, served at `/install.sh`), `skill/`,
-  `examples/` (demo forms served at `/examples`).
+  `examples/` (demo forms served at `/examples`). `skill/claude-ai.md`: the
+  skill for Claude's code sandbox (a template: relay, host, key, version;
+  zipped by `skill.ClaudeAIZip` with `reference.md` = the main skill's body).
+  `npm/` + `scripts/npm-packages.sh`/`npm-publish.sh`: the npm packages
+  (`ask-form` launcher + `ask-form-<os>-<arch>`), published by `release.yml`
+  (trusted publishing, else `NPM_TOKEN`); the first publish of a new package
+  is by hand (`npm login && scripts/npm-publish.sh vX.Y.Z --trust`).
 
 ## Working on it
 

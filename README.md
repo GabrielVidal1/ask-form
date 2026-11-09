@@ -17,16 +17,34 @@ curl -fsSL https://ask-form.xyz/install.sh | sh
 This puts the binary in `~/.local/bin`, connects the machine to the relay at
 ask-form.xyz, starts `ask-form serve` as a background service, and adds
 the Claude Code skill. Or let your agent do it: paste this into Claude Code, or
-any coding agent on your computer. A chat app's sandbox (the Claude app,
-ChatGPT) can't keep ask-form running.
+any coding agent on your computer. In claude.ai or the Claude apps, use
+[the skill](#in-claudeai-and-the-claude-apps) instead.
 
 > Fetch https://ask-form.xyz/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: *what you want to be asked*
 
-Other ways: `go install github.com/GabrielVidal1/ask-form/cmd/ask-form@latest`
-then `ask-form setup`, or a binary from
+Other ways: `npm install -g ask-form` or `go install
+github.com/GabrielVidal1/ask-form/cmd/ask-form@latest`, then `ask-form setup`;
+or a binary from
 [Releases](https://github.com/GabrielVidal1/ask-form/releases).
 `ask-form setup --local` skips the relay; forms are then answered on the same
 machine only.
+
+## In claude.ai and the Claude apps
+
+Claude's code sandbox can't run the installer, but it reaches npm: ask-form
+runs there for the length of a chat, from a skill you add once.
+
+1. Download the skill at [ask-form.xyz](https://ask-form.xyz/#claude-ai), or run
+   `ask-form skill export --claude-ai` on a computer with ask-form.
+2. In Claude: Customize → Skills → Add, and pick the zip.
+3. Let the sandbox reach `ask-form.xyz`: Settings → Capabilities → Code
+   execution → "Allow network egress", package managers and specific domains,
+   with `ask-form.xyz` added. On a Team or Enterprise plan, the organization
+   owner sets it.
+
+Claude then installs ask-form with npm, starts it (`ask-form start`), sends you
+the link and waits for your answers. Forms live in the chat's sandbox: answer
+while the chat is open. Details in [how it works](docs/how-it-works.md#in-claudes-code-sandbox).
 
 ## Use
 
