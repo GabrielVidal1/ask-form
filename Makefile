@@ -4,7 +4,7 @@ MODULE    := $(shell $(GO) list -m 2>/dev/null)
 LDFLAGS   := -s -w -X $(MODULE)/internal/server.Version=$(VERSION)
 PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-.PHONY: build test install dist relay-image
+.PHONY: build test install dist npm relay-image
 
 build:                      ## both binaries into bin/
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
@@ -25,6 +25,9 @@ dist:                       ## release binaries for $(PLATFORMS) + checksums.txt
 	  done; \
 	done
 	cd dist && sha256sum ask-form* > checksums.txt
+
+npm: dist                   ## the npm packages (ask-form + one per platform) into dist/npm/
+	scripts/npm-packages.sh $(VERSION) dist dist/npm
 
 relay-image:                ## the relay's container image
 	docker build --build-arg VERSION=$(VERSION) -t ask-form-relay:local .
