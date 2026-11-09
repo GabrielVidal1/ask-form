@@ -26,6 +26,12 @@ func cmdUpgrade(args []string) int {
 	if pos := interleaved(fs, args); len(pos) > 0 {
 		return fail(exitUsage, "upgrade takes no positional argument (got %q)", pos[0])
 	}
+	// npm owns a binary it installed (no GitHub lookup: a sandbox can't reach it).
+	if exe, err := update.Executable(); err == nil && update.NPMManaged(exe) && !*force && !*check {
+		printJSON(map[string]any{"current": server.Version, "upgraded": false,
+			"reason": "installed by npm: run `npm install -g ask-form@latest` (or pass --force)"})
+		return exitOK
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	tag := *want

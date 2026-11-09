@@ -187,7 +187,7 @@ func cmdSetup(args []string) int {
 		case saved != "":
 			// Keep it; checked below.
 		default:
-			machine, tok, err := register(base, *name)
+			machine, tok, err := register(base, *name, "")
 			if err != nil {
 				return fail(exitErr, "%v", err)
 			}
@@ -260,8 +260,9 @@ func writeSecret(path, v string) error {
 
 var nameHintRe = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// register asks the relay for a machine token of our own.
-func register(base, hint string) (string, string, error) {
+// register asks the relay for a machine token of our own; with a
+// registration key (`ask-form start --key`), past the per-IP cap.
+func register(base, hint, key string) (string, string, error) {
 	if hint == "" {
 		hint, _ = os.Hostname()
 	}
@@ -274,6 +275,9 @@ func register(base, hint string) (string, string, error) {
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/_relay/v1/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if key != "" {
+		req.Header.Set("X-Ask-Register-Key", key)
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("register with %s: %v", base, err)
@@ -287,6 +291,8 @@ func register(base, hint string) (string, string, error) {
 	switch {
 	case res.StatusCode == http.StatusOK && out.Token != "":
 		return out.Machine, out.Token, nil
+	case key != "" && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusTooManyRequests):
+		return "", "", fmt.Errorf("register with %s: %s — get a new skill or key (`ask-form skill export --claude-ai` on a computer with ask-form, or %s/#claude-ai)", base, out.Error, base)
 	case res.StatusCode == http.StatusNotFound || res.StatusCode == http.StatusForbidden:
 		msg := out.Error
 		if msg == "" {
@@ -302,12 +308,17 @@ func register(base, hint string) (string, string, error) {
 	}
 }
 
+var (
+	errNoToken      = errors.New("no relay token yet")
+	errUnknownToken = errors.New("the relay doesn't know this machine's token")
+)
+
 // relayWhoami checks the token against the relay and returns the machine
 // name and the public origin the relay announces.
 func relayWhoami(base, tokPath string) (string, string, error) {
 	tok, err := secretFile(tokPath, false)
-	if err != nil {
-		return "", "", err
+	if err != nil || tok == "" {
+		return "", "", fmt.Errorf("%w (%s)", errNoToken, tokPath)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -319,7 +330,7 @@ func relayWhoami(base, tokPath string) (string, string, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusUnauthorized {
-		return "", "", fmt.Errorf("%s doesn't know this machine's token (%s) — delete that file and run setup again to register anew", base, tokPath)
+		return "", "", fmt.Errorf("%s: %w (%s) — delete that file and run setup again to register anew", base, errUnknownToken, tokPath)
 	}
 	if res.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("%s machine API: HTTP %d", base, res.StatusCode)
@@ -585,12 +596,17 @@ func installSkill(force, onlyRefresh bool) string {
 func refreshSkill() { installSkill(false, true) }
 
 func cmdSkill(args []string) int {
+	const use = "usage: ask-form skill install [--force] | print [--body] | refresh | export --claude-ai [-o FILE] [--key KEY]"
 	if len(args) == 0 {
-		return fail(exitUsage, "usage: ask-form skill install [--force] | print [--body] | refresh")
+		return fail(exitUsage, use)
 	}
 	fs := flag.NewFlagSet("skill", flag.ExitOnError)
 	force := fs.Bool("force", false, "overwrite a SKILL.md that ask-form didn't write")
 	body := fs.Bool("body", false, "print without the frontmatter (for AGENTS.md and other agents)")
+	claudeAI := fs.Bool("claude-ai", false, "export: the skill for Claude's code sandbox (claude.ai, the Claude apps)")
+	out := fs.String("o", "ask-form-skill.zip", "export: the zip to write")
+	key := fs.String("key", "", "export: this registration key (default: a new one from the relay, for this machine)")
+	relayFlag := fs.String("relay", "", "export: the relay the sandbox connects to (default: this machine's)")
 	interleaved(fs, args[1:])
 	switch args[0] {
 	case "install":
@@ -603,10 +619,81 @@ func cmdSkill(args []string) int {
 		} else {
 			fmt.Print(skill.Markdown)
 		}
+	case "export":
+		if !*claudeAI {
+			return fail(exitUsage, "skill export: pass --claude-ai (the only target so far)")
+		}
+		return exportClaudeAI(*out, *key, *relayFlag)
 	default:
-		return fail(exitUsage, "usage: ask-form skill install [--force] | print [--body] | refresh")
+		return fail(exitUsage, use)
 	}
 	return exitOK
+}
+
+// exportClaudeAI writes the claude.ai skill: a zip to upload in Claude's
+// settings, holding a registration key so the sandbox's `ask-form start`
+// registers past the relay's per-IP cap. Without --key, this machine asks its
+// relay for its own key (a new one each time: the last export's stops working).
+func exportClaudeAI(out, key, relayURL string) int {
+	base := strings.TrimRight(relayURL, "/")
+	if base == "" {
+		base = strings.TrimRight(os.Getenv("ASK_FORM_RELAY"), "/")
+	}
+	if base == "" {
+		return fail(exitErr, "no relay: this machine runs without one (`ask-form setup --local`). Pass --relay and --key, or download the skill at %s/#claude-ai", defaultRelay)
+	}
+	keyName := "given with --key"
+	if key == "" {
+		tok, err := secretFile(filepath.Join(configDir(), "relay-token"), false)
+		if err != nil || tok == "" {
+			return fail(exitErr, "no relay token on this machine: run `ask-form setup` first, or pass --key")
+		}
+		var minted struct{ Name, Key, Error string }
+		if err := relayCall(base, tok, http.MethodPost, "/_relay/v1/key", &minted); err != nil {
+			return fail(exitErr, "get a registration key from %s: %v", base, err)
+		}
+		key, keyName = minted.Key, minted.Name
+	}
+	zip, err := skill.ClaudeAIZip(base, key, server.Version)
+	if err != nil {
+		return fail(exitErr, "build the skill: %v", err)
+	}
+	if err := os.WriteFile(out, zip, 0o600); err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	abs, _ := filepath.Abs(out)
+	printJSON(map[string]any{"file": abs, "relay": base, "key": keyName, "bytes": len(zip)})
+	fmt.Fprintf(os.Stderr, "\nUpload %s in Claude: Customize → Skills (claude.ai/customize/skills) → Add.\n", abs)
+	fmt.Fprintf(os.Stderr, "Its code sandbox must reach registry.npmjs.org and %s: Settings → Capabilities → Code execution → Allow network egress\n(\"package managers and specific domains\", add %s; on a Team or Enterprise plan the organization owner sets it).\n",
+		strings.TrimPrefix(strings.TrimPrefix(base, "https://"), "http://"), strings.TrimPrefix(strings.TrimPrefix(base, "https://"), "http://"))
+	fmt.Fprintln(os.Stderr, "The zip holds a registration key: keep it to yourself. Exporting again replaces the key (the old zip stops registering).")
+	return exitOK
+}
+
+// relayCall is one machine-API call with this machine's token.
+func relayCall(base, tok, method, path string, out any) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, method, base+path, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
+	if res.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("this relay is older than v0.17 (no registration keys)")
+	}
+	if res.StatusCode != http.StatusOK {
+		var e struct{ Error string }
+		json.Unmarshal(b, &e)
+		if e.Error == "" {
+			e.Error = strings.TrimSpace(string(b))
+		}
+		return fmt.Errorf("HTTP %d %s", res.StatusCode, e.Error)
+	}
+	return json.Unmarshal(b, out)
 }
 
 // ── uninstall ────────────────────────────────────────────────────────────────

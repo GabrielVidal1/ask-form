@@ -221,6 +221,14 @@ func Executable() (string, error) {
 	return filepath.EvalSymlinks(exe)
 }
 
+// NPMManaged: exe came from npm (the `ask-form` package's per-platform
+// package, under node_modules). npm owns that file: upgrading it in place
+// would leave npm's records behind, so `npm install -g ask-form@latest` does.
+func NPMManaged(exe string) bool {
+	sep := string(filepath.Separator)
+	return strings.Contains(exe, sep+"node_modules"+sep+"ask-form-")
+}
+
 // Install replaces the binary at exe with bin, after checking that bin runs
 // here and reports the expected version (want; "" skips that check).
 func Install(exe string, bin []byte, want string) error {

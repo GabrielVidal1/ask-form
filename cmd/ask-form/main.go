@@ -7,6 +7,7 @@
 //	ask-form get <id> | list | revoke <id> | close <id> | status
 //	ask-form secret <id> <key> --env FILE VAR | --file PATH | --stdout
 //	ask-form setup                         connect to a relay, start serve as a service, install the skill
+//	ask-form start --key K                 serve for this session only (Claude's code sandbox)
 //	ask-form upgrade [--check]             install the latest release
 //
 // Every client command prints JSON on stdout; diagnostics go to stderr.
@@ -39,6 +40,7 @@ import (
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
+	"github.com/GabrielVidal1/ask-form/internal/update"
 	"github.com/GabrielVidal1/ask-form/internal/webhook"
 )
 
@@ -51,7 +53,13 @@ Setup (once per machine):
                  [--events-url URL] [--lang en|fr] [--no-snapshots] [--embed-origins ORIGINS]
   ask-form upgrade [--check] [--version vX.Y.Z] [--force]
   ask-form skill install | print [--body] | refresh
+  ask-form skill export --claude-ai [-o FILE] [--key KEY]   the skill for Claude's code sandbox (claude.ai):
+                 a zip to upload, holding a registration key this machine gets from its relay
   ask-form uninstall [--purge]
+
+For this session only (Claude's code sandbox, a container, CI):
+  ask-form start [--key KEY] [--relay URL] [--lang en|fr]   register (a key skips the relay's per-IP cap),
+                 run serve detached with every link through the relay; again: no-op while it runs
 
 Branding (once per machine; every form it serves):
   ask-form brand set [FILE.css | -] [--name TEXT] [--logo IMAGE] [--primary COLOR] [--font FONT]
@@ -126,6 +134,8 @@ func main() {
 		code = cmdSecret(args)
 	case "status":
 		code = cmdStatus(args)
+	case "start":
+		code = cmdStart(args)
 	case "setup":
 		code = cmdSetup(args)
 	case "uninstall":
@@ -217,12 +227,19 @@ func cmdServe(args []string) int {
 	relayURL := fs.String("relay", os.Getenv("ASK_FORM_RELAY"), "relay machine API, e.g. http://127.0.0.1:7470 (empty: no relay)")
 	relayTok := fs.String("relay-token-file", "", "this machine's relay token (default <config>/relay-token)")
 	ipHeader := fs.String("client-ip-header", os.Getenv("ASK_FORM_CLIENT_IP_HEADER"), "header a trusted proxy in front of --listen sets to the visitor IP")
-	autoMode := fs.String("auto-upgrade", envOr("ASK_FORM_AUTO_UPGRADE", defaultAutoUpgrade), "install new releases by itself: minor (minor+patch), all (majors too), notify (only report), off")
+	autoDefault := defaultAutoUpgrade
+	if exe, err := update.Executable(); err == nil && update.NPMManaged(exe) {
+		autoDefault = "notify" // npm owns the binary: `npm install -g ask-form@latest` upgrades it
+	}
+	autoMode := fs.String("auto-upgrade", envOr("ASK_FORM_AUTO_UPGRADE", autoDefault), "install new releases by itself: minor (minor+patch), all (majors too), notify (only report), off")
 	eventsURL := fs.String("events-url", os.Getenv("ASK_FORM_EVENTS_URL"), "POST every form event (created, submitted, …) to this URL (empty: off)")
 	langFlag := fs.String("lang", os.Getenv("ASK_FORM_LANG"), "language of the pages of a form created without --lang: "+strings.Join(i18n.Langs, ", ")+" (empty: en)")
 	noSnapshots := fs.Bool("no-snapshots", snapshotsOff(os.Getenv("ASK_FORM_SNAPSHOTS")), "keep no page of the forms that close (default: one per form, in <data>/snapshots/)")
 	embedFlag := fs.String("embed-origins", os.Getenv("ASK_FORM_EMBED_ORIGINS"), "sites that may show the answer pages in a frame, https://host[:port] split on spaces or commas (empty: none)")
 	fs.Parse(args)
+	if *listen == "none" || *listen == "off" { // serve.env can't say "" (envOr): `ask-form start` writes none
+		*listen = ""
+	}
 	if !validAutoMode(*autoMode) {
 		log.Fatalf("--auto-upgrade %q: use minor, all, notify or off", *autoMode)
 	}
