@@ -32,6 +32,10 @@ import (
 // visitor of an open relay (POST /claude-ai/skill: the landing's button,
 // a few a day per address). Only their SHA-256 is kept, in the keys file.
 
+// maxWebKeys caps the keys the landing's button has minted and nobody has
+// forgotten yet, whatever the addresses asking: keys.json stays small.
+const maxWebKeys = 5000
+
 // Key is one entry of the keys file.
 type Key struct {
 	SHA256  string `json:"sha256"`         // of the key, hex
@@ -246,6 +250,18 @@ func (r *Relay) webSkill(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	r.mu.Lock()
+	web := 0
+	for _, e := range r.keyEntries {
+		if e.By == "web" {
+			web++
+		}
+	}
+	if web >= maxWebKeys {
+		r.mu.Unlock()
+		w.Header().Set("Retry-After", "86400")
+		page(w, http.StatusServiceUnavailable, tooManyKeysPage)
+		return
+	}
 	var name string
 	for {
 		name = "w-" + randSuffix()
