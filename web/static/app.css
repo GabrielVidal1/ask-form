@@ -269,6 +269,9 @@ html:not(.js) .widget-frame { display: none; }
   .js .paged .group-title { display: none; }
 }
 .nav { display: flex; gap: 10px; justify-content: space-between; margin: 4px 0 8px; }
+/* Back stays on the left and Next on the right, even when the other one is
+   hidden (first / last page) and Next is alone in the row. */
+.nav > :last-child { margin-inline-start: auto; }
 .label .pending-dot { position: relative; display: inline-block; top: -2px; right: auto; margin-left: 6px; }
 @keyframes ping { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .pager-seg.pending::after, .pending-dot { animation: none; } }
