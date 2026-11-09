@@ -39,11 +39,15 @@ if [ -z "$dist" ]; then
   mkdir -p "$dist"
   base="https://github.com/$gh_repo/releases/download/$tag"
   echo "Downloading the $tag binaries from GitHub…" >&2
-  curl -fsSL "$base/checksums.txt" -o "$dist/checksums.txt"
+  # GitHub's release CDN answers a 5xx now and then: retry those.
+  get() { curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors "$1" -o "$2"; }
+  get "$base/checksums.txt" "$dist/checksums.txt"
   for a in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do
-    curl -fsSL "$base/ask-form-$a" -o "$dist/ask-form-$a"
+    get "$base/ask-form-$a" "$dist/ask-form-$a"
   done
-  (cd "$dist" && grep -E ' ask-form-(linux|darwin)-(amd64|arm64)$' checksums.txt | sha256sum -c --quiet -)
+  if command -v sha256sum >/dev/null 2>&1; then sum="sha256sum"; else sum="shasum -a 256"; fi # macOS: shasum
+  # shellcheck disable=SC2086 # sum is a word list
+  (cd "$dist" && grep -E ' ask-form-(linux|darwin)-(amd64|arm64)$' checksums.txt | $sum -c --quiet -)
 fi
 
 "$here/scripts/npm-packages.sh" "$tag" "$dist" "$work/npm"
