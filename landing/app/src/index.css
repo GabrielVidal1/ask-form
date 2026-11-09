@@ -297,6 +297,17 @@
 .copy pre.mono { font: 14px/1.55 var(--font-mono); }
 .copy .ph { color: var(--muted-fg); font-style: italic; }
 .copy-btn { position: absolute; top: 8px; right: 8px; border: 1px solid var(--line) !important; background: var(--card) !important; }
+.claude-ai { padding: 22px; scroll-margin-top: 24px; }
+.claude-ai h3 { margin: 0 0 6px; font-size: 20px; display: flex; gap: 10px; align-items: center; }
+.claude-ai > p { margin: 0 0 14px; color: var(--muted-fg); font-size: 16px; }
+.claude-ai .steps { list-style: none; counter-reset: step; margin: 0; padding: 0; display: grid; gap: 14px; }
+.claude-ai .steps li { counter-increment: step; position: relative; padding-left: 40px; display: grid; gap: 4px; justify-items: start; }
+.claude-ai .steps li::before { content: counter(step); position: absolute; left: 0; top: -1px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.claude-ai .steps strong { font-size: 16.5px; }
+.claude-ai .steps span { color: var(--muted-fg); font-size: 15.5px; }
+.claude-ai .steps form { margin: 6px 0 0; }
+.claude-ai > .small { margin-top: 18px; }
+.claude-ai code, details.more code { overflow-wrap: anywhere; }
 details.more { padding: 0; }
 details.more > summary { cursor: pointer; padding: 15px 20px; font-weight: 650; list-style: none; display: flex; align-items: center; gap: 10px; }
 details.more > summary::-webkit-details-marker { display: none; }

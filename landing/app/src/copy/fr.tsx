@@ -95,7 +95,7 @@ export const fr: Copy = {
     ),
     paste: 'Collez ceci dans votre agent de code',
     pasteNote:
-      "Complétez la phrase avec ce que vous voulez qu'il vous demande. Pas dans une app de chat : son bac à sable ne peut pas faire tourner ask-form en continu.",
+      "Complétez la phrase avec ce que vous voulez qu'il vous demande. Dans claude.ai ou les apps Claude, prenez plutôt le skill ci-dessous.",
     prompt: (origin: string) =>
       `Lisez ${origin}/agent-install et suivez ses instructions pour installer le skill ask-form et le configurer, puis servez-vous-en pour me demander : `,
     placeholder: "ce que vous voulez qu'il vous demande",
@@ -125,6 +125,40 @@ export const fr: Copy = {
         AGENTS.md : <code>ask-form skill print --body &gt;&gt; AGENTS.md</code>.
       </>
     ),
+  },
+  claude: {
+    title: 'Dans claude.ai et les apps Claude',
+    intro:
+      "Le bac à sable de code de Claude fait tourner ask-form le temps d'une conversation. Ajoutez le skill une fois, et Claude vous envoie des formulaires sur le web, l'app de bureau et votre téléphone.",
+    download: 'Télécharger le skill',
+    steps: (host: string) => [
+      { title: 'Téléchargez le skill', text: 'Un zip avec les instructions et une clé à lui pour ce relais.' as ReactNode },
+      {
+        title: 'Ajoutez-le à Claude',
+        text: (
+          <>
+            <b>Personnaliser → Skills → Ajouter</b> (Customize → Skills → Add), puis choisissez le zip.
+          </>
+        ) as ReactNode,
+      },
+      {
+        title: `Laissez le bac à sable joindre ${host}`,
+        text: (
+          <>
+            <b>Paramètres → Capacités → Exécution de code</b> (Settings → Capabilities → Code execution), accès réseau
+            sortant : gestionnaires de paquets et domaines choisis, en ajoutant <code>{host}</code>. Sur un forfait Team
+            ou Enterprise, c'est le propriétaire de l'organisation qui le règle.
+          </>
+        ) as ReactNode,
+      },
+    ],
+    note: (
+      <>
+        Demandez ensuite à Claude quelque chose qui demande votre avis : il vous envoie un formulaire et attend. Les
+        formulaires vivent dans le bac à sable de la conversation : répondez tant qu'elle est ouverte. Avec ask-form sur
+        un ordinateur, <code>ask-form skill export --claude-ai</code> produit le même zip.
+      </>
+    ) as ReactNode,
   },
   privacy: {
     eyebrow: 'Privé dès la conception',

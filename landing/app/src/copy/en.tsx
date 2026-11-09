@@ -93,8 +93,7 @@ export const en = {
       </>
     ) as ReactNode,
     paste: 'Paste this into your coding agent',
-    pasteNote:
-      'Finish the sentence with what you want to be asked. Not a chat app such as claude.ai or ChatGPT: its sandbox can’t keep ask-form running.',
+    pasteNote: 'Finish the sentence with what you want to be asked. In claude.ai or the Claude apps, take the skill below instead.',
     /** The prompt the visitor copies and finishes. */
     prompt: (origin: string) =>
       `Fetch ${origin}/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: `,
@@ -123,6 +122,40 @@ export const en = {
         The service installs new releases by itself (<code>ASK_FORM_AUTO_UPGRADE=notify</code> or <code>off</code> stops
         that). <code>ask-form uninstall</code> removes the service and the skill. Other agents than Claude Code:{' '}
         <code>ask-form skill print --body &gt;&gt; AGENTS.md</code>.
+      </>
+    ) as ReactNode,
+  },
+  /** The claude.ai panel of the install section (#claude-ai). */
+  claude: {
+    title: 'In claude.ai and the Claude apps',
+    intro:
+      'Claude’s code sandbox runs ask-form for the length of a chat. Add the skill once, and Claude sends you forms on the web, the desktop app and your phone.',
+    download: 'Download the skill',
+    steps: (host: string) => [
+      { title: 'Download the skill', text: 'A zip with the instructions and a key of its own for this relay.' as ReactNode },
+      {
+        title: 'Add it to Claude',
+        text: (
+          <>
+            <b>Customize → Skills → Add</b>, then pick the zip.
+          </>
+        ) as ReactNode,
+      },
+      {
+        title: `Let the sandbox reach ${host}`,
+        text: (
+          <>
+            <b>Settings → Capabilities → Code execution</b>, “Allow network egress”: package managers and specific domains,
+            with <code>{host}</code> added. On a Team or Enterprise plan, the organization owner sets it.
+          </>
+        ) as ReactNode,
+      },
+    ],
+    note: (
+      <>
+        Then ask Claude for something that needs your input: it sends a form and waits. Forms live in the chat’s sandbox,
+        so answer while the chat is open. With ask-form on a computer, <code>ask-form skill export --claude-ai</code> makes
+        the same zip.
       </>
     ) as ReactNode,
   },

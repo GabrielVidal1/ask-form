@@ -6,10 +6,12 @@ import {
   ChevronRight,
   Clock,
   Code,
+  Download,
   Github,
   Image,
   ListChecks,
   MapPin,
+  MessageSquare,
   Rocket,
   Server,
   ShieldCheck,
@@ -205,6 +207,30 @@ function Page({ origin, lang }: { origin: Origin; lang: Lang }) {
               </pre>
               <CopyButton value={promptLine} label={t.copy.copy} className="copy-btn" />
             </div>
+          </div>
+          <div className="panel claude-ai reveal" id="claude-ai">
+            <h3>
+              <MessageSquare size={20} /> {t.claude.title}
+            </h3>
+            <p>{t.claude.intro}</p>
+            <ol className="steps">
+              {t.claude.steps(origin.host).map((step, i) => (
+                <li key={i}>
+                  <strong>{step.title}</strong>
+                  <span>{step.text}</span>
+                  {i === 0 && (
+                    // A plain form: the relay mints a key and answers with the zip
+                    // (POST /claude-ai/skill), JavaScript or not.
+                    <form method="post" action="/claude-ai/skill">
+                      <button type="submit" className="btn btn-primary btn-sm">
+                        <Download size={16} /> {t.claude.download}
+                      </button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ol>
+            <p className="small">{t.claude.note}</p>
           </div>
           <details className="panel more reveal">
             <summary>
