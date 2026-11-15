@@ -17,6 +17,9 @@
   *out* to it and long-poll for requests, so nothing listens on them. Several
   machines can share one relay, and each form id is claimed by one machine.
   The relay stores only the SHA-256 hashes of the machines' tokens.
+- With `--hosted`, the relay also runs the chat-app connector (MCP at `/mcp`)
+  and keeps the forms of the accounts that chose it, for a bounded time:
+  [in chat apps](#in-chat-apps).
 - No relay at all also works: point a reverse proxy or `cloudflared` at
   `serve --listen` and set `--public-url`, or `ask-form setup --local` to
   answer on the same machine only.
@@ -84,6 +87,60 @@ domains) list the relay's host; on a Team or Enterprise plan the organization
 owner sets them. The forms and answers live in the sandbox, as on any machine:
 once it is gone, so are they, and a link then shows "offline". Secret fields
 don't fit there (the value would land in the chat), and the skill says so.
+
+## In chat apps
+
+Claude, ChatGPT and other chat apps reach ask-form through a connector: an MCP
+server the relay runs at `/mcp` (`ask-form-relay serve --hosted DIR`). The
+app's servers call it, not the chat's sandbox, so it works where nothing can
+be installed.
+
+```
+ Claude / ChatGPT servers ──/mcp (Bearer token)──▶ ask-form-relay ──┬─ cloud forms (in the relay, DIR/forms)
+                                                                    └─ your machine (tunnel, after `ask-form link`)
+```
+
+- **Tools**: `create_form` (the spec as `fields`, pictures as base64
+  `assets`), `get_answers` (waits up to 90 s a call; Cloudflare cuts a
+  request at 100), `close_form`, `list_forms`. Where the app shows MCP Apps,
+  `create_form`'s result renders a card (`ui://ask-form/card-v1.html`): the
+  form's status, live; *Open form* (the link, through the app's own
+  confirmation); once answered, *Continue with my answers*, which posts them
+  to the conversation as the user's message (the app asks first), and the
+  answers in the model's context for its next turn.
+- **Sign-in** is OAuth 2.1 (`internal/accounts`): discovery documents,
+  dynamic client registration, PKCE S256, refresh tokens rotated with a 60 s
+  grace. The consent page creates an **anonymous account**, no email or
+  password, capped per address per day (the user's browser makes that
+  request, so the cap counts people). Tokens are opaque; the relay keeps
+  their SHA-256 only, in `DIR/accounts/accounts.json`. Each sign-in is a new
+  account: two apps, or a reconnect, don't share forms.
+- **Where the forms live** is the account's choice on that page:
+  - **cloud**: the relay's own forms server keeps them. A form and its answers
+    are deleted `--cloud-retention` (24 h) after it closes; it stays open 7
+    days at most; an account has at most 20 forms waiting and creates 100 a
+    day. No snapshot is kept, no file can be added to it, and its link is
+    routed like a machine's (the same answer pages, the same tokens).
+  - **my computer**: the page shows a code; `ask-form link CODE` on a machine
+    running `serve` through this relay tells the relay that the account's
+    calls go there. They travel through the machine's tunnel to its **account
+    API** (`server.AccountAPI`, `/_mcp/v1/`), which `serve` answers only while
+    the machine is linked (`<config>/chat-link`; `ask-form link --off` removes
+    it). The forms are the machine's like any other: its store, its
+    snapshots, its events (the hub's push). An offline machine is a tool error
+    telling the user to start it.
+- **What a chat can't ask**: `secret` fields (the value would be in the
+  conversation) and `file` fields (the files would sit where the chat can't
+  read them) are refused with a sentence the model can act on.
+- **Accounts see only their own forms**: the account API scopes every call
+  to the forms created with its account (`meta.account`); another id is a
+  404, the same as an unknown one.
+- **The plugin**: `plugins/ask-form/` holds one folder both Claude and OpenAI
+  read (`.claude-plugin/plugin.json` + `.mcp.json`, `plugin.json` +
+  `mcp.json`, the skill in `skills/ask-form/`). The repository's
+  `.claude-plugin/marketplace.json` lists it for Claude's *Add marketplace*;
+  the relay serves it zipped at `/plugin/ask-form.zip`, with its own origin as
+  the connector's address.
 
 ## Languages
 

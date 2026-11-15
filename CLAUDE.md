@@ -36,6 +36,21 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   written at close and by `SnapshotSweep`, read at `GET /v1/forms/{id}/snapshot`.
   `internal/server/answers.go`: the respondent's `GET /f/{id}/answers` (the
   closed page's "View the full form"), the same read-only page drawn live.
+- Chat apps (`docs/how-it-works.md` → "In chat apps"): `internal/mcp` (the
+  MCP server at `/mcp`: JSON-RPC over Streamable HTTP, stateless; the tools
+  and their field reference; `card.html`, the MCP App card), `internal/accounts`
+  (OAuth 2.1 with anonymous accounts, the consent page, link codes),
+  `internal/hosted` (the mcp.Backend: an account's calls to the relay's cloud
+  forms or through the tunnel to its linked machine; the end-to-end test),
+  `internal/server/account_api.go` (`/_mcp/v1/`: one account's forms; the
+  cloud policy and retention), `internal/server/link.go` (`ask-form link`),
+  `internal/relay/hosted.go` (cloud forms' routing, `CallMachine`,
+  `/_relay/v1/link`), `cmd/ask-form-relay/hosted.go` (`--hosted` wiring).
+  `plugins/ask-form/` is the Claude + ChatGPT plugin (one folder, both
+  manifests; bump both versions on a release), listed by
+  `.claude-plugin/marketplace.json` and zipped by `skill.PluginZip`. A tool's
+  name, arguments and the card's messages are a contract with chat apps and
+  the plugin's skill: change them together.
 - `web/` (templates, CSS, JS, embedded), `landing/` (the relay's `/` and
   `/agent-install`; `{{ORIGIN}}` and `{{HOST}}` are filled in by the relay),
   `install.sh`

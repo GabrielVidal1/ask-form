@@ -17,8 +17,8 @@ curl -fsSL https://ask-form.xyz/install.sh | sh
 This puts the binary in `~/.local/bin`, connects the machine to the relay at
 ask-form.xyz, starts `ask-form serve` as a background service, and adds
 the Claude Code skill. Or let your agent do it: paste this into Claude Code, or
-any coding agent on your computer. In claude.ai or the Claude apps, use
-[the skill](#in-claudeai-and-the-claude-apps) instead.
+any coding agent on your computer. In Claude, ChatGPT or another chat app,
+add [the connector](#in-claude-chatgpt-and-other-chat-apps) instead.
 
 > Fetch https://ask-form.xyz/agent-install and follow it to install the ask-form skill and set it up, then ask me with it: *what you want to be asked*
 
@@ -29,13 +29,48 @@ or a binary from
 `ask-form setup --local` skips the relay; forms are then answered on the same
 machine only.
 
-## In claude.ai and the Claude apps
+## In Claude, ChatGPT and other chat apps
 
-Claude's code sandbox can't run the installer, but it reaches npm: ask-form
-runs there for the length of a chat, from a skill you add once.
+Add ask-form as a connector: the chat app's servers call
+`https://ask-form.xyz/mcp` (an MCP server), so nothing runs in the chat and no
+sandbox setting is needed. The assistant creates the form, a card in the
+conversation shows it (where the app shows MCP Apps: Claude, ChatGPT…) and
+follows it live, and *Continue with my answers* hands them back.
 
-1. Download the skill at [ask-form.xyz](https://ask-form.xyz/#claude-ai), or run
-   `ask-form skill export --claude-ai` on a computer with ask-form.
+- **Claude** (claude.ai, desktop, mobile): Customize → Connectors → Add custom
+  connector, URL `https://ask-form.xyz/mcp`, then Connect. Or the plugin, which
+  adds a skill on how to write good forms: Customize → Plugins → Add
+  marketplace `GabrielVidal1/ask-form`, or *Upload plugin* with
+  [ask-form.xyz/plugin/ask-form.zip](https://ask-form.xyz/plugin/ask-form.zip).
+  On a Team or Enterprise plan, an Owner adds it in Organization settings →
+  Connectors.
+- **ChatGPT**: Plugins → + → Add custom MCP server with the same URL (paid
+  plans; on Business and Enterprise, an admin), or upload the same zip.
+- **Claude Code**: `claude mcp add --transport http ask-form https://ask-form.xyz/mcp`,
+  then `/mcp` to sign in. (On your own computer, [installing
+  ask-form](#install) keeps the forms there with nothing else to set up.)
+- **Cursor, VS Code, Le Chat, any MCP client with OAuth**: the same URL.
+
+Signing in creates an anonymous account (no email, no password) and asks
+where its forms live:
+
+- **on ask-form.xyz**: a form and its answers are deleted 24 hours after it
+  closes; nobody but the link's holder opens it;
+- **on your computer**: run `ask-form link CODE` there with the code the
+  sign-in page shows. The forms stay on that machine like any other (they
+  only pass through the relay, as answers always do); it must be on and
+  running `ask-form serve` when the assistant asks.
+
+No `secret` or `file` fields from a chat: a secret would land in the
+conversation. Details in [how it works](docs/how-it-works.md#in-chat-apps).
+
+### No connectors allowed? Claude's code sandbox
+
+Where an organization allows no custom connector, Claude's code sandbox can
+run ask-form for the length of a chat, from a skill you add once:
+
+1. Run `ask-form skill export --claude-ai` on a computer with ask-form (or
+   `curl -X POST https://ask-form.xyz/claude-ai/skill -o ask-form.zip`).
 2. In Claude: Customize → Skills → Add, and pick the zip.
 3. Let the sandbox reach `ask-form.xyz`: Settings → Capabilities → Code
    execution → "Allow network egress", package managers and specific domains,

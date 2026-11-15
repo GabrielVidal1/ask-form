@@ -250,6 +250,7 @@ question required while its condition holds. A condition looks at questions
 | `ask-form status` | is the local server up, connected to its relay, up to date? |
 | `ask-form upgrade` | install the latest release |
 | `ask-form brand show` | the look this machine's forms wear (the user sets it with `ask-form brand set`) |
+| `ask-form link CODE` | the user connected a chat app (Claude, ChatGPT…) to ask-form and picked "my computer": the code from its sign-in page lets that chat's forms live on this machine (`--off` undoes it) |
 
 Every command prints JSON on stdout; an error is `{"error":"…"}` with exit 1.
 If a command says the server is unreachable, run `ask-form setup` (it starts

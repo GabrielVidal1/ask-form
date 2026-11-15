@@ -23,6 +23,9 @@ open at `https://forms.example.com`.
   to it, the SHA-256 of each [registration key](#registration-keys-claudes-code-sandbox). Forms, answers and
   uploads stay on the machines. A restart loses only the requests in flight,
   and machines reconnect by themselves.
+- With `--hosted DIR` it also runs the [chat-app connector](#chat-apps-the-connector):
+  then it keeps, in `DIR`, the anonymous accounts' token hashes and the cloud
+  forms with their answers, each deleted 24 h after it closes.
 - It is a single process holding the live polls in memory: run one instance,
   not several behind a load balancer. It is small: ask-form.xyz runs on a
   Raspberry Pi 5 in 128 MB.
@@ -411,6 +414,28 @@ A domain proxied by Cloudflare (orange cloud) works, with a few settings:
 Cloudflare's 100 s proxy timeout and its upload limit are both well above what
 the relay needs.
 
+## Chat apps: the connector
+
+`--hosted DIR` (with `--public-url`) turns on the MCP server Claude, ChatGPT
+and other chat apps connect to, at `<public-url>/mcp`, with its OAuth
+sign-in (`/.well-known/oauth-*`, `/oauth/…`) and the plugin zip
+(`/plugin/ask-form.zip`). How it works: [in chat apps](how-it-works.md#in-chat-apps).
+
+- `DIR/accounts/` holds `accounts.json` (anonymous accounts, the SHA-256 of
+  their tokens, registered clients) and `oauth-key`; `DIR/forms/` the cloud
+  forms and `DIR/forms-key`. Back `DIR` up with `machines.json`; losing it
+  signs every connector out.
+- `/mcp`, `/oauth/token`, `/oauth/register` and `/.well-known/` skip the
+  per-address limit (a chat app's servers share a few addresses); they meter
+  per account and overall themselves. `/oauth/authorize` is the user's own
+  browser and keeps it.
+- `get_answers` holds a request up to 90 s: give your proxy a response
+  timeout above that (Caddy and Traefik have none by default; nginx:
+  `proxy_read_timeout 120s` on `/mcp`). Cloudflare cuts at 100 s.
+- Accounts that pick "my computer" reach a machine through this relay: the
+  machine must run `serve` connected here, and its owner runs `ask-form link
+  CODE` once.
+
 ## `ask-form-relay serve` reference
 
 | flag | env | default | |
@@ -424,6 +449,9 @@ the relay needs.
 | `--register` | `ASK_FORM_RELAY_REGISTER` | `closed` | `open`: machines register themselves |
 | `--max-forms`, `--register-per-ip`, `--max-machines`, `--forget-after` | see [Open](#open-machines-register-themselves) | | limits on self-registered machines |
 | `--keys`, `--register-per-key`, `--forget-ephemeral`, `--web-keys-per-ip` | see [Registration keys](#registration-keys-claudes-code-sandbox) | | machines registered with a key |
+| `--hosted` | `ASK_FORM_RELAY_HOSTED` | off | run the [chat-app connector](#chat-apps-the-connector) with its data in this directory |
+| `--cloud-retention` | `ASK_FORM_RELAY_CLOUD_RETENTION` | `24h` | delete a cloud form this long after it closes |
+| `--cloud-max-open`, `--cloud-per-day` | `ASK_FORM_RELAY_CLOUD_MAX_OPEN`, `…_PER_DAY` | `20`, `100` | pending cloud forms per account; forms an account creates a day |
 
 Other commands: `ask-form-relay machine add|rm <name>`, `machine ls`,
 `key add|rm <name>`, `key ls`,
