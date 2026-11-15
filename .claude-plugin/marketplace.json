@@ -1,0 +1,12 @@
+{
+  "name": "ask-form",
+  "owner": { "name": "Gabriel Vidal", "url": "https://ask-form.xyz" },
+  "metadata": { "description": "ask-form for Claude: questions as a private web form, answered from any browser or phone." },
+  "plugins": [
+    {
+      "name": "ask-form",
+      "source": "./plugins/ask-form",
+      "description": "Ask the user structured questions in a private web form (choices, mockups, sliders, dates, tables) and read the answers back in the chat."
+    }
+  ]
+}

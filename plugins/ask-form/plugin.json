@@ -1,0 +1,28 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ask-form",
+  "version": "0.18.0",
+  "description": "Ask the user structured questions in a private web form they answer from any browser or phone (choices, mockups, sliders, dates, tables), and read the answers back in the chat.",
+  "author": { "name": "Gabriel Vidal", "url": "https://ask-form.xyz" },
+  "homepage": "https://ask-form.xyz",
+  "repository": "https://github.com/GabrielVidal1/ask-form",
+  "license": "MIT",
+  "keywords": ["forms", "questions", "survey", "mockups", "human-in-the-loop"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "ask-form",
+        "shortDescription": "Questions as a private web form",
+        "longDescription": "When a task needs several decisions or values from you, or a visual pick between mockups, the assistant puts its questions in a private web form instead of a wall of text. You answer in the chat's card or on your phone, and the answers come back as JSON. Forms live on ask-form.xyz and are deleted 24 hours after they close — or, if you choose so when you connect, on your own computer.",
+        "developerName": "Gabriel Vidal",
+        "category": "Productivity",
+        "capabilities": ["Write"],
+        "websiteURL": "https://ask-form.xyz",
+        "defaultPrompt": [
+          "Use ask-form to ask me what you need before you start.",
+          "Use ask-form to show me three layout mockups and let me pick one."
+        ]
+      }
+    }
+  }
+}

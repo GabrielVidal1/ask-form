@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "ask-form": { "type": "http", "url": "https://ask-form.xyz/mcp" }
+  }
+}
