@@ -5,7 +5,8 @@
 // machines keep open (internal/tunnel). Two listeners: the public one
 // (landing + /f/*, the only thing the edge routes) and the machine API
 // (/_relay/*, tailnet or loopback only). It stores nothing on disk but the
-// machines' token hashes.
+// machines' token hashes — unless it runs the chat-app connector
+// (Config.Cloud, hosted.go), whose cloud forms it keeps for a bounded time.
 package relay
 
 import (
@@ -78,6 +79,20 @@ type Config struct {
 	// Register opens POST /_relay/v1/register (machines minting their own
 	// token) and sets the limits on such machines.
 	Register Registration
+	// Cloud is a forms server the relay hosts itself (chat apps' cloud
+	// forms, hosted.go): its forms' links route to it and no machine may
+	// claim their ids. Nil: the relay keeps no forms.
+	Cloud *server.Server
+	// Link takes `ask-form link CODE` from a machine (POST /_relay/v1/link):
+	// the chat-app account behind code now lives on that machine. Nil = 404.
+	Link func(code, machine string) error
+	// Routes are more public handlers, by ServeMux pattern (the MCP server
+	// at /mcp, its OAuth endpoints).
+	Routes map[string]http.Handler
+	// Unmetered: path prefixes the general per-IP limit skips — a chat
+	// app's servers call from a few shared addresses; those handlers meter
+	// per account themselves.
+	Unmetered []string
 }
 
 // File is a static file of the relay.
@@ -106,25 +121,26 @@ type pending struct {
 
 // Relay routes visitors to machines.
 type Relay struct {
-	cfg        Config
-	mu         sync.Mutex
-	machines   map[string]*machine
-	claims     map[string]*claim
-	inflight   map[string]*pending
-	tokens     map[[32]byte]string // sha256(token) → name
-	entries    Machines
-	tokFi      os.FileInfo
-	keySums    map[[32]byte]string // sha256(registration key) → name
-	keyEntries Keys
-	keyFi      os.FileInfo
-	general    *ipLimiter
-	regLimit   *ipLimiter
-	keyLimit   *ipLimiter    // registrations per key name
-	webKeys    *ipLimiter    // keys minted per visitor (the landing's button)
-	uploads    *ipLimiter    // upload chunks per visitor
-	upSlots    chan struct{} // upload chunks held in memory at once
-	landing    landingPage   // at /
-	landFR     landingPage   // at /fr
+	cfg         Config
+	mu          sync.Mutex
+	machines    map[string]*machine
+	claims      map[string]*claim
+	inflight    map[string]*pending
+	tokens      map[[32]byte]string // sha256(token) → name
+	entries     Machines
+	tokFi       os.FileInfo
+	keySums     map[[32]byte]string // sha256(registration key) → name
+	keyEntries  Keys
+	keyFi       os.FileInfo
+	general     *ipLimiter
+	regLimit    *ipLimiter
+	keyLimit    *ipLimiter    // registrations per key name
+	webKeys     *ipLimiter    // keys minted per visitor (the landing's button)
+	uploads     *ipLimiter    // upload chunks per visitor
+	upSlots     chan struct{} // upload chunks held in memory at once
+	landing     landingPage   // at /
+	landFR      landingPage   // at /fr
+	cloudPublic http.Handler  // Cloud's answer pages, nil without
 }
 
 // landingPage is a landing page and the CSP computed from its own bytes.
@@ -147,6 +163,9 @@ func New(cfg Config) (*Relay, error) {
 		webKeys:  newIPLimiter(cfg.Register.WebKeysPerIP, 24*time.Hour),
 		uploads:  newIPLimiter(120, time.Minute), upSlots: make(chan struct{}, maxUploadsInFlight),
 	}
+	if cfg.Cloud != nil {
+		r.cloudPublic = cfg.Cloud.Public()
+	}
 	if err := r.loadTokens(true); err != nil {
 		return nil, err
 	}
@@ -168,6 +187,7 @@ func (r *Relay) MachineAPI() http.Handler {
 	mux.HandleFunc("POST /_relay/v1/key", r.machineKey)
 	mux.HandleFunc("GET /_relay/v1/health", r.health)
 	mux.HandleFunc("DELETE /_relay/v1/machine", r.unregister)
+	mux.HandleFunc("POST /_relay/v1/link", r.link)
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/_relay/v1/register" && req.Method == http.MethodPost {
 			r.register(w, req)
@@ -271,7 +291,7 @@ func (r *Relay) claim(w http.ResponseWriter, req *http.Request) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c := r.claims[cr.ID]
-	if c != nil && c.machine != name {
+	if (c != nil && c.machine != name) || r.cloudHas(cr.ID) {
 		http.Error(w, "taken", http.StatusConflict)
 		return
 	}
@@ -413,12 +433,15 @@ func (r *Relay) Public() http.Handler {
 	mux.HandleFunc("/f/{id}/", r.forward)
 	mux.HandleFunc("/forms/{id}", r.forward) // links made before /f/
 	mux.HandleFunc("/forms/{id}/", r.forward)
+	for p, h := range r.cfg.Routes {
+		mux.Handle(p, h)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { server.NotFound(w) })
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		ip := r.clientIP(req)
 		sw := &statusWriter{ResponseWriter: w}
-		if !r.general.hit(ip) {
+		if !r.unmetered(req.URL.Path) && !r.general.hit(ip) {
 			sw.Header().Set("Retry-After", "60")
 			http.Error(sw, "Too many requests", http.StatusTooManyRequests)
 		} else {
@@ -580,6 +603,10 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 		server.NotFound(w)
 		return
 	}
+	if r.cloudHas(id) {
+		r.serveCloud(w, req)
+		return
+	}
 	r.mu.Lock()
 	c := r.claims[id]
 	var m *machine
@@ -703,6 +730,10 @@ type statusWriter struct {
 	http.ResponseWriter
 	status int
 }
+
+// Unwrap lets http.ResponseController reach the connection (a long MCP call
+// moves its write deadline).
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *statusWriter) WriteHeader(code int) {
 	if w.status == 0 {

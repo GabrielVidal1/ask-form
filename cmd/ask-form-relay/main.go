@@ -39,6 +39,7 @@ const usage = `ask-form-relay — public relay for ask-form
                        [--register open|closed] [--max-forms 50] [--register-per-ip 5] [--forget-after 2160h]
                        [--keys FILE] [--register-per-key 20] [--forget-ephemeral 48h] [--web-keys-per-ip 3]
                        [--public-url https://ask-form.xyz] [--trust-cloudflare]
+                       [--hosted DIR [--cloud-retention 24h] [--cloud-max-open 20] [--cloud-per-day 100]]
   ask-form-relay machine add <name>     mint a machine token (printed once; only its hash is kept)
   ask-form-relay machine rm <name>
   ask-form-relay machine ls
@@ -108,6 +109,10 @@ func serve(args []string, machines, keys string) int {
 	perKey := fs.Int("register-per-key", envInt("ASK_FORM_RELAY_REGISTER_PER_KEY", 20), "machines one registration key registers per day")
 	forgetEph := fs.Duration("forget-ephemeral", 48*time.Hour, "drop a machine a key registered unseen this long")
 	webKeys := fs.Int("web-keys-per-ip", envInt("ASK_FORM_RELAY_WEB_KEYS_PER_IP", 3), "keys an open relay hands a visitor per day (the landing's claude.ai skill)")
+	hostedDir := fs.String("hosted", os.Getenv("ASK_FORM_RELAY_HOSTED"), "run the chat-app connector (<public-url>/mcp, its sign-in, cloud forms) with its data in this directory (\"\" = off)")
+	retention := fs.Duration("cloud-retention", envDuration("ASK_FORM_RELAY_CLOUD_RETENTION", server.DefaultCloud.Retention), "delete a cloud form this long after it closes")
+	cloudOpen := fs.Int("cloud-max-open", envInt("ASK_FORM_RELAY_CLOUD_MAX_OPEN", server.DefaultCloud.MaxOpen), "pending cloud forms per account")
+	cloudDay := fs.Int("cloud-per-day", envInt("ASK_FORM_RELAY_CLOUD_PER_DAY", server.DefaultCloud.MaxPerDay), "cloud forms an account creates per day")
 	fs.Parse(args)
 	if *register != "open" && *register != "closed" {
 		log.Fatalf("--register %q: use open or closed", *register)
@@ -117,7 +122,18 @@ func serve(args []string, machines, keys string) int {
 	if err != nil {
 		log.Fatalf("examples: %v", err)
 	}
-	r, err := relay.New(relay.Config{
+	var r *relay.Relay
+	var hp *hostedParts
+	var routes map[string]http.Handler
+	if *hostedDir != "" {
+		policy := server.DefaultCloud
+		policy.Retention, policy.MaxOpen, policy.MaxPerDay = *retention, *cloudOpen, *cloudDay
+		hp, routes, err = setupHosted(*hostedDir, strings.TrimRight(*publicURL, "/"), policy, func() *relay.Relay { return r })
+		if err != nil {
+			log.Fatalf("--hosted: %v", err)
+		}
+	}
+	cfg := relay.Config{
 		MachinesFile: *file, KeysFile: *keysFile, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
 		Landing: landing.Page, LandingFR: landing.PageFR, LandingAssets: landing.Assets,
 		Examples: server.ExamplesHandler(exs, *ipHeader),
@@ -129,7 +145,11 @@ func serve(args []string, machines, keys string) int {
 			"/install.sh":    {Body: askform.InstallScript, ContentType: "text/plain; charset=utf-8"},
 			"/agent-install": {Body: landing.AgentInstall, ContentType: "text/plain; charset=utf-8"},
 		},
-	})
+	}
+	if hp != nil {
+		cfg.Cloud, cfg.Link, cfg.Routes, cfg.Unmetered = hp.cloud, hp.acc.Link, routes, unmeteredPaths
+	}
+	r, err = relay.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -157,6 +177,11 @@ func serve(args []string, machines, keys string) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if hp != nil {
+		hp.start(ctx, r)
+		log.Printf("chat-app connector at %s/mcp, data in %s (cloud forms deleted %s after they close)",
+			strings.TrimRight(*publicURL, "/"), *hostedDir, *retention)
+	}
 	select {
 	case err := <-errc:
 		log.Printf("listener: %v", err)
@@ -305,4 +330,11 @@ func keyCmd(args []string, file string) int {
 		return 2
 	}
 	return 0
+}
+
+func envDuration(k string, def time.Duration) time.Duration {
+	if d, err := time.ParseDuration(os.Getenv(k)); err == nil {
+		return d
+	}
+	return def
 }
