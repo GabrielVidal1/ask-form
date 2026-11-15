@@ -29,6 +29,15 @@ type Request struct {
 	RemoteIP string      `json:"remoteIp"`
 }
 
+// BridgePrefix starts the paths of the relay's own calls to a machine (a
+// chat app's connector on a linked machine: Agent.Bridge), never a visitor's.
+const BridgePrefix = "/_mcp/"
+
+// LinkRequest is `ask-form link CODE` reaching the relay.
+type LinkRequest struct {
+	Code string `json:"code"`
+}
+
 // Response is what the machine answered.
 type Response struct {
 	Status int         `json:"status"`
@@ -57,6 +66,7 @@ var (
 	RequestHeaders = []string{
 		"Cookie", "Content-Type", "Accept", "Accept-Language", "User-Agent",
 		"Origin", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-Dest",
+		"X-Ask-Account", // the relay's own bridge calls (BridgePrefix)
 	}
 	ResponseHeaders = []string{
 		"Content-Type", "Location", "Set-Cookie", "Cache-Control", "Pragma",

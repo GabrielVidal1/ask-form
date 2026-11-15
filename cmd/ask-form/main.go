@@ -82,6 +82,8 @@ Client (JSON on stdout):
   ask-form close <id>                  a multi form stops taking answers, keeps the ones it has
   ask-form secret <id> <key> (--env FILE VAR | --file PATH | --stdout) [--forget]
   ask-form status
+  ask-form link CODE | --off           let a chat app's connector (Claude, ChatGPT… at <relay>/mcp) keep its
+                                       forms on this machine: CODE is the one its sign-in page shows
 
 Environment: ASK_FORM_ADMIN_URL (default http://127.0.0.1:7461), ASK_FORM_ADMIN_TOKEN
 (default: the admin-token file 'serve' writes), ASK_FORM_NOTIFY_CMD, ASK_FORM_PUBLIC_URL, ASK_FORM_EVENTS_URL,
@@ -132,6 +134,8 @@ func main() {
 		code = cmdClose(args)
 	case "secret":
 		code = cmdSecret(args)
+	case "link":
+		code = cmdLink(args)
 	case "status":
 		code = cmdStatus(args)
 	case "start":
@@ -326,11 +330,13 @@ func cmdServe(args []string) int {
 		if err != nil || tok == "" {
 			log.Fatalf("relay token %s: %v (mint one with `ask-form-relay machine add <name>`)", path, err)
 		}
+		link := &server.Link{File: filepath.Join(*conf, "chat-link")}
 		agent := &tunnel.Agent{
 			RelayURL: *relayURL, Token: tok, Handler: srv.Public(), Forms: st.RoutableIDs,
-			Version: server.Version,
+			Version: server.Version, Bridge: srv.AccountAPI(), BridgeOn: link.On,
 		}
-		srv.Relay = agent
+		link.Relay = agent.Link
+		srv.Relay, srv.Link = agent, link
 		go agent.Run(work)
 	}
 
@@ -763,6 +769,41 @@ func closeCmd(args []string, what string) int {
 	}
 	if err != nil {
 		return fail(exitErr, "%v", err)
+	}
+	printJSON(out)
+	return exitOK
+}
+
+// cmdLink links this machine to a chat app's account (the sign-in page of
+// the relay's connector shows the code), or unlinks it with --off.
+func cmdLink(args []string) int {
+	fs := flag.NewFlagSet("link", flag.ExitOnError)
+	off := fs.Bool("off", false, "stop taking chat apps' calls on this machine")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: ask-form link CODE | ask-form link --off")
+	}
+	fs.Parse(args)
+	if *off == (fs.NArg() == 1) || fs.NArg() > 1 {
+		fs.Usage()
+		return exitUsage
+	}
+	c, err := newClient()
+	if err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	var out map[string]any
+	if *off {
+		_, err = c.do(context.Background(), http.MethodDelete, "/v1/link", nil, &out)
+	} else {
+		_, err = c.do(context.Background(), http.MethodPost, "/v1/link", map[string]any{"code": fs.Arg(0)}, &out)
+	}
+	if err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	if *off {
+		fmt.Fprintln(os.Stderr, "Unlinked: chat apps can't reach this machine's forms any more.")
+	} else {
+		fmt.Fprintln(os.Stderr, "Linked. Back on the sign-in page, continue: the forms that chat creates will live on this machine.")
 	}
 	printJSON(out)
 	return exitOK

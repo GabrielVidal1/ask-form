@@ -60,6 +60,10 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		uploadFail(w, http.StatusForbidden, i18n.T(st.Lang, "Reload the page and try again."))
 		return
 	}
+	if NoUploads(st.Meta) {
+		notFound(w)
+		return
+	}
 	fld, ok := form.UploadTarget(st.Fields, r.PathValue("key"))
 	if !ok || st.Multi {
 		notFound(w)

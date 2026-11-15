@@ -120,6 +120,8 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("POST /v1/forms/{id}/secret", s.adminSecret)
 	mux.HandleFunc("GET /v1/forms/{id}/snapshot", s.adminSnapshot)
 	mux.HandleFunc("POST /v1/restart", s.adminRestart)
+	mux.HandleFunc("POST /v1/link", s.adminLink)
+	mux.HandleFunc("DELETE /v1/link", s.adminLink)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Loopback only, and never a browser: a page could otherwise reach it
 		// (DNS rebinding, a form POST to localhost).
@@ -168,6 +170,9 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 	if len(s.cfg.EmbedOrigins) > 0 {
 		out["embedOrigins"] = s.cfg.EmbedOrigins // who may frame the pages
 	}
+	if s.Link.On() {
+		out["linked"] = true // a chat app's connector reaches this machine (ask-form link)
+	}
 	apiJSON(w, http.StatusOK, out)
 }
 
@@ -188,38 +193,59 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "body: "+err.Error())
 		return
 	}
+	out, err := s.createForm(r.Context(), req, createOpts{public: req.Public})
+	if err != nil {
+		apiError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	apiJSON(w, http.StatusCreated, out)
+}
+
+// createOpts: what a caller other than the CLI changes about a new form.
+type createOpts struct {
+	public bool                     // link the relay even for one person
+	maxTTL time.Duration            // 0 = the store's own cap
+	vet    func([]form.Field) error // refuse fields this caller can't take
+}
+
+// createForm checks a request and stores the form: the admin API's create,
+// and the account API's (account_api.go).
+func (s *Server) createForm(ctx context.Context, req createReq, o createOpts) (FormJSON, error) {
 	lang, err := i18n.Parse(req.Lang)
 	if err != nil {
-		apiError(w, http.StatusBadRequest, "lang: "+err.Error())
-		return
+		return FormJSON{}, errors.New("lang: " + err.Error())
 	}
 	if lang == "" {
 		lang = i18n.Of(s.cfg.Lang)
 	}
 	fields, err := form.NormalizeIn(req.Fields, lang)
 	if err != nil {
-		apiError(w, http.StatusBadRequest, err.Error())
-		return
+		return FormJSON{}, err
+	}
+	if o.vet != nil {
+		if err := o.vet(fields); err != nil {
+			return FormJSON{}, err
+		}
 	}
 	ttl := 24 * time.Hour
 	if req.TTL != "" {
 		if ttl, err = time.ParseDuration(req.TTL); err != nil || ttl <= 0 {
-			apiError(w, http.StatusBadRequest, "ttl: a duration like 30m, 24h or 72h")
-			return
+			return FormJSON{}, errors.New("ttl: a duration like 30m, 24h or 72h")
 		}
+	}
+	if o.maxTTL > 0 && ttl > o.maxTTL {
+		return FormJSON{}, fmt.Errorf("ttl: at most %s here", o.maxTTL)
 	}
 	assets := map[string][]byte{}
 	for _, a := range req.Assets {
 		b, err := base64.StdEncoding.DecodeString(a.Data)
 		if err != nil {
-			apiError(w, http.StatusBadRequest, fmt.Sprintf("asset %q: data is not base64", a.Name))
-			return
+			return FormJSON{}, fmt.Errorf("asset %q: data is not base64", a.Name)
 		}
 		assets[a.Name] = b
 	}
 	if err := checkImages(fields, assets); err != nil {
-		apiError(w, http.StatusBadRequest, err.Error())
-		return
+		return FormJSON{}, err
 	}
 	params := store.CreateParams{
 		Name: req.Name, Title: req.Title, Description: req.Description,
@@ -229,13 +255,14 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.Relay != nil {
 		params.Claim = s.Relay.Claim
+	} else if s.Claim != nil {
+		params.Claim = s.Claim
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	st, token, err := s.store.Create(ctx, params)
 	if err != nil {
-		apiError(w, http.StatusBadRequest, err.Error())
-		return
+		return FormJSON{}, err
 	}
 	if s.Relay != nil {
 		s.Relay.Refresh()
@@ -245,7 +272,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	// One person: the local link opens straight away on this computer, the
 	// public one goes along for their phone. Several people: the public one.
 	out.URL = link(s.publicURL())
-	if local := strings.TrimRight(s.cfg.LocalURL, "/"); local != "" && local != s.publicURL() && !req.Multi && !req.Public {
+	if local := strings.TrimRight(s.cfg.LocalURL, "/"); local != "" && local != s.publicURL() && !req.Multi && !o.public {
 		out.URL, out.PublicURL = link(local), out.URL
 	}
 	if s.Relay != nil && !s.Relay.Connected() {
@@ -254,7 +281,7 @@ func (s *Server) adminCreate(w http.ResponseWriter, r *http.Request) {
 	// The one event that carries the link: a listener (the ai-agent hub) can
 	// push it to the user's phone. Never stored anywhere else.
 	s.notify("created", out)
-	apiJSON(w, http.StatusCreated, out)
+	return out, nil
 }
 
 // checkImages: a picture option must be one of the form's own assets — no

@@ -173,7 +173,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 			}
 			pf.FileHint = fileHint(lang, f)
 		}
-		if f.Attachable() && strings.HasPrefix(base, Prefix) && !st.Multi {
+		if f.Attachable() && strings.HasPrefix(base, Prefix) && !st.Multi && !NoUploads(st.Meta) {
 			pf.AttachName, pf.AttachURL = form.AttachName(f.Key), fmt.Sprintf("%s/upload/%s", base, f.Key)
 			pf.AttachRefs = values.Get(pf.AttachName)
 			pf.AttachBytes, pf.AttachFiles = form.AttachMaxMB*1_000_000, form.AttachMaxFiles
@@ -236,7 +236,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 func declineNote(st store.State, base string, values url.Values, errs map[string]string) *pageField {
 	f := form.DeclineNote(st.Fields)
 	pf := &pageField{Field: f, Name: form.InputName(f.Key), DOMID: "decline-note", Error: errs[f.Key], Value: values.Get(form.InputName(f.Key))}
-	if strings.HasPrefix(base, Prefix) {
+	if strings.HasPrefix(base, Prefix) && !NoUploads(st.Meta) {
 		pf.AttachName, pf.AttachURL = form.AttachName(f.Key), fmt.Sprintf("%s/upload/%s", base, f.Key)
 		pf.AttachRefs = values.Get(pf.AttachName)
 		pf.AttachBytes, pf.AttachFiles = form.AttachMaxMB*1_000_000, form.AttachMaxFiles

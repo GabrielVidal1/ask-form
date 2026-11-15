@@ -47,6 +47,9 @@ type Config struct {
 	// app.js tells the embedder when the form is answered and takes its
 	// theme. Empty: no site may frame them.
 	EmbedOrigins []string
+	// Cloud: this server keeps forms for anonymous accounts on a hosted
+	// relay (account_api.go); nil on a machine.
+	Cloud *CloudPolicy
 }
 
 // RelayLink is the machine's connection to a relay (internal/tunnel).
@@ -92,6 +95,11 @@ type Server struct {
 	submits  *limiter // POSTs
 	uploads  *limiter // upload chunks
 	Relay    RelayLink
+	// Claim reserves a form id beyond this store when there is no RelayLink:
+	// a relay hosting forms itself (cloud forms) checks its machines' claims.
+	Claim func(ctx context.Context, id string) error
+	// Link: chat apps' accounts this machine took (`ask-form link`); nil = none.
+	Link *Link
 	// Restart asks `serve` to re-exec itself (POST /v1/restart, after
 	// `ask-form upgrade` swapped the binary); nil = not supported.
 	Restart func()

@@ -26,6 +26,12 @@ type Agent struct {
 	RelayURL string       // the relay's machine API, e.g. http://127.0.0.1:7470
 	Token    string       // this machine's token
 	Handler  http.Handler // the public handler requests are served by
+	// Bridge serves the relay's calls under BridgePrefix (a chat app's
+	// connector working on this machine's forms: server.AccountAPI), while
+	// BridgeOn says the owner linked the machine (`ask-form link`). Nil, or
+	// off: those calls get 404 and nothing else changes.
+	Bridge   http.Handler
+	BridgeOn func() bool
 	Forms    func() []string
 	Pollers  int
 	Version  string
@@ -166,7 +172,11 @@ func (a *Agent) serve(ctx context.Context, fr *Request) {
 		r.RemoteAddr = net.JoinHostPort(fr.RemoteIP, "0")
 		r.ContentLength = int64(len(fr.Body))
 		rec := &recorder{header: http.Header{}}
-		a.Handler.ServeHTTP(rec, r)
+		h := a.Handler
+		if strings.HasPrefix(fr.Path, BridgePrefix) {
+			h = a.bridge()
+		}
+		h.ServeHTTP(rec, r)
 		resp = Response{Status: rec.code(), Header: Filter(rec.header, ResponseHeaders), Body: rec.body.Bytes()}
 		if rec.body.Len() > MaxResponseBody {
 			resp = Response{Status: http.StatusBadGateway, Header: http.Header{}}
@@ -180,6 +190,34 @@ func (a *Agent) serve(ctx context.Context, fr *Request) {
 	}
 	io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
 	res.Body.Close()
+}
+
+// bridge is the handler for a BridgePrefix call: the account API when the
+// machine is linked, else a 404 saying how to link it.
+func (a *Agent) bridge() http.Handler {
+	if a.Bridge != nil && a.BridgeOn != nil && a.BridgeOn() {
+		return a.Bridge
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"this computer isn't linked to a chat app any more: run ask-form link again"}`))
+	})
+}
+
+// Link tells the relay this machine takes the chat-app account behind code
+// (the code the relay's sign-in page showed: `ask-form link CODE`).
+func (a *Agent) Link(ctx context.Context, code string) error {
+	res, err := a.call(ctx, http.MethodPost, "/_relay/v1/link", LinkRequest{Code: code}, 15*time.Second)
+	if err != nil {
+		return fmt.Errorf("relay unreachable: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		return fmt.Errorf("relay: %s", strings.TrimSpace(string(b)))
+	}
+	return nil
 }
 
 // Claim reserves id on the relay.
