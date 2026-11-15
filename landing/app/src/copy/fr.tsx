@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react'
 
 import { examples } from '../examples/data.fr'
-import type { Copy } from './en'
+import { connector, MARKETPLACE, pluginZip, type ChatApp, type Copy } from './en'
 
 export const fr: Copy = {
   lang: 'fr',
@@ -21,8 +21,10 @@ export const fr: Copy = {
     line2: "Vous répondez d'où vous voulez.",
     lede: "Votre agent pose ses questions dans de vrais formulaires, maquettes et code compris. N'importe qui y répond, de n'importe où.",
     tryNow: 'Essayer maintenant',
+    chat: 'Ajouter à votre chat',
     see: 'Voir la démo',
-    agents: "Fonctionne avec n'importe quel agent de code capable de lancer une commande shell.",
+    agents:
+      "Fonctionne avec n'importe quel agent de code capable de lancer une commande shell, et dans les apps de chat grâce à un connecteur.",
   },
   copy: { copy: 'Copier', copied: 'Copié' },
   demo: {
@@ -95,7 +97,7 @@ export const fr: Copy = {
     ),
     paste: 'Collez ceci dans votre agent de code',
     pasteNote:
-      "Complétez la phrase avec ce que vous voulez qu'il vous demande. Dans claude.ai ou les apps Claude, prenez plutôt le skill ci-dessous.",
+      "Complétez la phrase avec ce que vous voulez qu'il vous demande. Dans une app de chat (claude.ai, ChatGPT…), ajoutez plutôt le connecteur ci-dessous.",
     prompt: (origin: string) =>
       `Lisez ${origin}/agent-install et suivez ses instructions pour installer le skill ask-form et le configurer, puis servez-vous-en pour me demander : `,
     placeholder: "ce que vous voulez qu'il vous demande",
@@ -126,45 +128,180 @@ export const fr: Copy = {
       </>
     ),
   },
-  claude: {
-    title: 'Dans claude.ai et les apps Claude',
+  chat: {
+    title: 'Ajoutez-le à votre chat',
     intro:
-      "Le bac à sable de code de Claude fait tourner ask-form le temps d'une conversation. Ajoutez le skill une fois, et Claude vous envoie des formulaires sur le web, l'app de bureau et votre téléphone.",
-    download: 'Télécharger le skill',
-    steps: (host: string) => [
-      { title: 'Téléchargez le skill', text: 'Un zip avec les instructions et une clé à lui pour ce relais.' as ReactNode },
+      "Claude, ChatGPT et d'autres apps de chat accèdent à ask-form par un connecteur : une URL, une connexion en un clic, rien à installer. Demandez ensuite quelque chose qui demande votre avis, et le formulaire apparaît sous forme de carte dans la conversation.",
+    url: 'URL du connecteur',
+    apps: 'Apps de chat',
+    signin: "La page de connexion ne demande aucun compte : seulement où vivent vos formulaires (voir plus bas).",
+    tabs: (origin: string): ChatApp[] => [
       {
-        title: 'Ajoutez-le à Claude',
-        text: (
-          <>
-            <b>Personnaliser → Skills → Ajouter</b> (Customize → Skills → Add), puis choisissez le zip.
-          </>
-        ) as ReactNode,
+        id: 'claude',
+        name: 'Claude',
+        steps: [
+          {
+            text: (
+              <>
+                Dans <b>Personnaliser → Connecteurs</b> (Customize → Connectors), choisissez{' '}
+                <b>Ajouter un connecteur personnalisé</b> et collez l'URL. Sur un forfait Team ou Enterprise, un
+                propriétaire l'ajoute une fois dans <b>Paramètres de l'organisation → Connecteurs</b>, puis chacun se
+                connecte.
+              </>
+            ),
+          },
+          {
+            text: (
+              <>
+                Cliquez sur <b>Connecter</b> et identifiez-vous. Ça marche sur le web, dans l'app de bureau et sur votre
+                téléphone.
+              </>
+            ),
+          },
+          {
+            text: (
+              <>
+                Ou prenez le plugin, le connecteur plus un skill qui apprend à Claude à écrire de bons formulaires :{' '}
+                <b>Personnaliser → Plugins → Ajouter une marketplace</b> avec <code>{MARKETPLACE}</code>, ou{' '}
+                <b>Importer un plugin</b> avec <a href={pluginZip(origin)}>le zip du plugin</a>.
+              </>
+            ),
+          },
+        ],
       },
       {
-        title: `Laissez le bac à sable joindre ${host}`,
-        text: (
-          <>
-            <b>Paramètres → Capacités → Exécution de code</b> (Settings → Capabilities → Code execution), accès réseau
-            sortant : gestionnaires de paquets et domaines choisis, en ajoutant <code>{host}</code>. Sur un forfait Team
-            ou Enterprise, c'est le propriétaire de l'organisation qui le règle.
-          </>
-        ) as ReactNode,
+        id: 'chatgpt',
+        name: 'ChatGPT',
+        steps: [
+          {
+            text: (
+              <>
+                Dans <b>Plugins</b>, appuyez sur <b>+</b>, puis <b>Add custom MCP server</b>, et collez l'URL. Sur les
+                forfaits payants ; en Business et Enterprise, c'est un administrateur de l'espace de travail qui l'ajoute.
+              </>
+            ),
+          },
+          { text: <>Identifiez-vous, puis tapez <b>@</b> dans une conversation et choisissez ask-form.</> },
+          {
+            text: (
+              <>
+                Ou importez <a href={pluginZip(origin)}>le zip du plugin</a> : le même connecteur, avec un skill pour
+                écrire de bons formulaires.
+              </>
+            ),
+          },
+        ],
+      },
+      {
+        id: 'claude-code',
+        name: 'Claude Code',
+        steps: [
+          { text: 'Ajoutez le connecteur depuis un terminal :', code: `claude mcp add --transport http ask-form ${connector(origin)}` },
+          { text: <>Dans Claude Code, lancez <code>/mcp</code> et connectez-vous à ask-form.</> },
+          {
+            text: (
+              <>
+                Ou le plugin : <code>/plugin marketplace add {MARKETPLACE}</code>, puis{' '}
+                <code>/plugin install ask-form@ask-form</code>. Sur votre propre ordinateur, l'installation ci-dessus marche
+                aussi, sans connexion.
+              </>
+            ),
+          },
+        ],
+      },
+      {
+        id: 'editors',
+        name: 'Cursor / VS Code',
+        steps: [
+          {
+            text: (
+              <>
+                Cursor : <b>Settings → MCP</b>, ou <code>~/.cursor/mcp.json</code> :
+              </>
+            ),
+            code: `{\n  "mcpServers": {\n    "ask-form": { "url": "${connector(origin)}" }\n  }\n}`,
+          },
+          {
+            text: (
+              <>
+                VS Code : <b>MCP: Add Server → HTTP</b> et collez l'URL, ou <code>.vscode/mcp.json</code> :
+              </>
+            ),
+            code: `{\n  "servers": {\n    "ask-form": { "type": "http", "url": "${connector(origin)}" }\n  }\n}`,
+          },
+          { text: "Connectez-vous quand l'éditeur vous le demande." },
+        ],
+      },
+      {
+        id: 'others',
+        name: 'Le Chat et les autres',
+        steps: [
+          {
+            text: (
+              <>
+                Le Chat : <b>Connecteurs</b>, puis ajoutez un <b>connecteur MCP personnalisé</b> avec l'URL.
+              </>
+            ),
+          },
+          {
+            text: "Tout client MCP qui accepte un serveur distant avec connexion OAuth (Goose, Windsurf, Zed, Gemini CLI…) : ajoutez un serveur HTTP avec l'URL.",
+          },
+        ],
       },
     ],
-    note: (
-      <>
-        Demandez ensuite à Claude quelque chose qui demande votre avis : il vous envoie un formulaire et attend. Les
-        formulaires vivent dans le bac à sable de la conversation : répondez tant qu'elle est ouverte. Avec ask-form sur
-        un ordinateur, <code>ask-form skill export --claude-ai</code> produit le même zip.
-      </>
-    ) as ReactNode,
+  },
+  where: {
+    title: 'Où vivent vos formulaires',
+    sub: 'Vous choisissez sur la page de connexion. Pour changer, reconnectez-vous.',
+    cloud: {
+      title: (host: string) => `Sur ${host}`,
+      points: (host: string): ReactNode[] => [
+        "Un compte anonyme : pas d'inscription, pas d'e-mail.",
+        `Un formulaire et ses réponses sont effacés de ${host} 24 heures après sa fermeture.`,
+        'Seule la personne qui a son lien privé peut l’ouvrir.',
+      ],
+    },
+    computer: {
+      title: 'Sur votre ordinateur',
+      points: (host: string): ReactNode[] => [
+        <>
+          Lancez <code>ask-form link CODE</code> sur une machine où tourne ask-form (l'installation ci-dessus).
+        </>,
+        `Formulaires et réponses y restent, jamais stockés sur ${host}.`,
+        "L'ordinateur doit être allumé quand la conversation pose ses questions et lit les réponses.",
+      ],
+    },
+  },
+  chatDemo: {
+    title: 'Dans une conversation, le formulaire arrive sous forme de carte.',
+    sub: "Répondez dans la conversation ou sur votre téléphone, puis renvoyez les réponses d'un geste.",
+    window: 'Une conversation qui utilise le connecteur ask-form',
+    bar: 'Nouvelle conversation',
+    user: 'Organise un week-end à Lisbonne pour nous deux, mi-mars.',
+    intro: "Avec plaisir. Quelques choix d'abord, réunis dans un seul formulaire :",
+    tool: 'ask-form · create_form',
+    card: {
+      title: 'Week-end à Lisbonne',
+      meta: '4 questions · ouvert jusqu’à dimanche 18 h',
+      waiting: 'En attente de vos réponses',
+      answered: 'Répondu',
+      open: 'Ouvrir le formulaire',
+      cont: 'Continuer avec mes réponses',
+      hint: 'Le lien marche sur tout appareil, téléphone compris.',
+    },
+    sent: 'J’ai répondu au formulaire « Week-end à Lisbonne ».',
+    reply:
+      'Merci ! Deux nuits dans l’Alfama, le tram 28 samedi matin, et une table pour un fado le soir. Voici le programme, jour par jour…',
+    composer: 'Répondre…',
   },
   privacy: {
     eyebrow: 'Privé dès la conception',
-    title: 'Vos formulaires ne quittent jamais votre machine.',
+    title: 'Vos formulaires restent là où vous le choisissez.',
     facts: [
-      { title: 'Les formulaires restent chez vous', text: 'Le relais ne fait que transmettre les requêtes des pages. Il ne garde ni formulaire ni réponse.' },
+      {
+        title: 'Les formulaires restent chez vous',
+        text: "Le relais ne fait que transmettre les requêtes des pages. Il ne garde ni formulaire ni réponse, sauf ceux d'une conversation que vous avez choisi d'y laisser, effacés 24 heures après leur fermeture.",
+      },
       {
         title: 'Un lien privé par formulaire',
         text: "Un jeton de 256 bits. Une réponse et c'est fermé, ou ouvert à toute votre équipe jusqu'à ce que vous le fermiez. Chaque formulaire expire.",

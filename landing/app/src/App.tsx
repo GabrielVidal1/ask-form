@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Clock,
   Code,
-  Download,
   Github,
   Image,
   ListChecks,
@@ -23,6 +22,8 @@ import {
 import { copies, type Lang } from './copy'
 import { CopyProvider } from './copy/context'
 import { CopyButton } from './components/CopyButton'
+import { ChatDemo } from './components/ChatDemo'
+import { ChatPanel, WhereForms } from './components/ChatPanel'
 import { Demo } from './components/Demo'
 import type { Origin } from './lib-origin'
 
@@ -145,6 +146,9 @@ function Page({ origin, lang }: { origin: Origin; lang: Lang }) {
           <a className="btn btn-primary" href="#install">
             <Rocket size={17} /> {t.hero.tryNow}
           </a>
+          <a className="btn btn-ghost" href="#chat">
+            <MessageSquare size={17} /> {t.hero.chat}
+          </a>
           <a className="btn btn-ghost" href="#examples">
             {t.hero.see} <ArrowDown size={17} />
           </a>
@@ -155,6 +159,7 @@ function Page({ origin, lang }: { origin: Origin; lang: Lang }) {
       </header>
 
       <Demo host={origin.host} installLine={installLine} />
+      <ChatDemo />
 
       <section className="section wrap">
         <div className="reveal">
@@ -208,30 +213,8 @@ function Page({ origin, lang }: { origin: Origin; lang: Lang }) {
               <CopyButton value={promptLine} label={t.copy.copy} className="copy-btn" />
             </div>
           </div>
-          <div className="panel claude-ai reveal" id="claude-ai">
-            <h3>
-              <MessageSquare size={20} /> {t.claude.title}
-            </h3>
-            <p>{t.claude.intro}</p>
-            <ol className="steps">
-              {t.claude.steps(origin.host).map((step, i) => (
-                <li key={i}>
-                  <strong>{step.title}</strong>
-                  <span>{step.text}</span>
-                  {i === 0 && (
-                    // A plain form: the relay mints a key and answers with the zip
-                    // (POST /claude-ai/skill), JavaScript or not.
-                    <form method="post" action="/claude-ai/skill">
-                      <button type="submit" className="btn btn-primary btn-sm">
-                        <Download size={16} /> {t.claude.download}
-                      </button>
-                    </form>
-                  )}
-                </li>
-              ))}
-            </ol>
-            <p className="small">{t.claude.note}</p>
-          </div>
+          <ChatPanel origin={origin} />
+          <WhereForms origin={origin} />
           <details className="panel more reveal">
             <summary>
               <ChevronRight size={16} className="chev" /> {t.install.manual}
