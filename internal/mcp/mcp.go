@@ -44,10 +44,23 @@ type Config struct {
 	Authenticate        func(r *http.Request) (Account, bool)
 	ResourceMetadataURL string // named in WWW-Authenticate on a 401
 	Backend             Backend
+	Limits              Limits // per-account and global request limits (zero: the defaults)
 }
 
 // MaxBody caps one POST /mcp: a form with a few pictures (base64 assets).
 const MaxBody = 4 << 20
+
+// MaxBatch caps a JSON-RPC batch. MCP 2025-06-18 dropped batching; older
+// clients send a few messages at most.
+const MaxBatch = 10
+
+// MaxResponse caps the JSON one POST gets back. Nothing legitimate comes
+// near it (the card is ~20 KB, answers are bounded by the forms server).
+const MaxResponse = 8 << 20
+
+// codeBusy is the JSON-RPC error of a request turned away by a limit
+// (HTTP 429 with Retry-After).
+const codeBusy = -32000
 
 // Protocol versions this server speaks; initialize echoes the client's when
 // it is one of them, else the latest.
@@ -66,8 +79,10 @@ const (
 )
 
 type handler struct {
-	cfg Config
-	// now and sleep are swapped by tests.
+	cfg     Config
+	limiter *limiter
+	maxResp int // MaxResponse; tests lower it
+	// now is swapped by tests.
 	now func() time.Time
 }
 
@@ -75,7 +90,9 @@ type handler struct {
 // and no server-sent stream.
 func Handler(cfg Config) http.Handler {
 	cfg.PublicURL = strings.TrimRight(cfg.PublicURL, "/")
-	return &handler{cfg: cfg, now: time.Now}
+	h := &handler{cfg: cfg, maxResp: MaxResponse, now: time.Now}
+	h.limiter = newLimiter(cfg.Limits, func() time.Time { return h.now() })
+	return h
 }
 
 type rpcRequest struct {
@@ -115,9 +132,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		acct, ok = h.cfg.Authenticate(r)
 	}
 	if !ok {
+		// Before the body: a caller without a token costs no read.
 		h.unauthorized(w, r)
 		return
 	}
+	release, retry, ok := h.limiter.acquire(acct.ID)
+	if !ok {
+		h.tooMany(w, retry)
+		return
+	}
+	defer release()
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBody))
 	if err != nil {
 		writeJSON(w, http.StatusRequestEntityTooLarge, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"),
@@ -131,22 +155,40 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, parseError(err))
 			return
 		}
-		if len(batch) == 0 {
+		if len(batch) == 0 || len(batch) > MaxBatch {
 			writeJSON(w, http.StatusBadRequest, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"),
-				Error: &rpcError{Code: codeInvalidRequest, Message: "empty batch"}})
+				Error: &rpcError{Code: codeInvalidRequest, Message: fmt.Sprintf("a batch holds 1 to %d messages", MaxBatch)}})
 			return
 		}
-		var out []rpcResponse
+		// Every message of a batch counts as a request; the first one was
+		// taken at the door.
+		if retry, ok := h.limiter.charge(acct.ID, len(batch)-1); !ok {
+			h.tooMany(w, retry)
+			return
+		}
+		var out []json.RawMessage
+		size := 2
 		for _, m := range batch {
-			if resp, reply := h.one(r.Context(), acct, m); reply {
-				out = append(out, resp)
+			resp, reply := h.one(r.Context(), acct, m)
+			if !reply {
+				continue
 			}
+			b, err := json.Marshal(resp)
+			if err != nil {
+				b, _ = json.Marshal(internalError(resp.ID))
+			}
+			if size += len(b) + 1; size > h.maxResp {
+				h.writeResponse(w, http.StatusOK, internalErrorMsg(json.RawMessage("null"), "response too large"))
+				return
+			}
+			out = append(out, b)
 		}
 		if len(out) == 0 {
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		writeJSON(w, http.StatusOK, out)
+		b, _ := json.Marshal(out)
+		writeBytes(w, http.StatusOK, b)
 		return
 	}
 	resp, reply := h.one(r.Context(), acct, body)
@@ -158,7 +200,40 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if resp.Error != nil && resp.Error.Code == codeParse {
 		status = http.StatusBadRequest
 	}
-	writeJSON(w, status, resp)
+	h.writeResponse(w, status, resp)
+}
+
+// writeResponse writes one JSON-RPC response, or an error in its place when
+// it would be larger than the cap.
+func (h *handler) writeResponse(w http.ResponseWriter, status int, resp rpcResponse) {
+	b, err := json.Marshal(resp)
+	if err == nil && len(b) > h.maxResp {
+		b, err = json.Marshal(internalErrorMsg(resp.ID, "response too large"))
+	}
+	if err != nil {
+		b, _ = json.Marshal(internalError(resp.ID))
+	}
+	writeBytes(w, status, b)
+}
+
+func internalError(id json.RawMessage) rpcResponse { return internalErrorMsg(id, "internal error") }
+
+func internalErrorMsg(id json.RawMessage, msg string) rpcResponse {
+	if len(id) == 0 {
+		id = json.RawMessage("null")
+	}
+	return rpcResponse{JSONRPC: "2.0", ID: id, Error: &rpcError{Code: codeInternal, Message: msg}}
+}
+
+// tooMany turns a request away: HTTP 429, Retry-After, a JSON-RPC error.
+func (h *handler) tooMany(w http.ResponseWriter, retry time.Duration) {
+	secs := int((retry + time.Second - 1) / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("Retry-After", fmt.Sprint(secs))
+	writeJSON(w, http.StatusTooManyRequests, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"),
+		Error: &rpcError{Code: codeBusy, Message: fmt.Sprintf("too many requests: try again in %d s", secs)}})
 }
 
 // unauthorized points the client at the OAuth metadata (RFC 9728), which is
@@ -277,6 +352,10 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	writeBytes(w, code, b)
+}
+
+func writeBytes(w http.ResponseWriter, code int, b []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(b)

@@ -49,6 +49,10 @@ const (
 	backendWait = 20 * time.Second
 )
 
+// machineAssets caps the base64 pictures of a form kept on the user's
+// computer: the create call crosses the relay's tunnel, which carries 2 MB.
+const machineAssets = 1_400_000
+
 // CardURI is the card's ui:// resource. The version is in the name: hosts
 // cache a template by its URI.
 const CardURI = "ui://ask-form/card-v1.html"
@@ -285,8 +289,15 @@ func (h *handler) createForm(ctx context.Context, acct Account, raw json.RawMess
 		Assets      []asset           `json:"assets,omitempty"`
 	}{Title: a.Title, Description: a.Description, Fields: fields, Lang: a.Lang, TTL: a.TTL,
 		Multi: a.Multi, MaxAnswers: a.MaxAnswers, HideCount: a.HideCount}
+	assetBytes := 0
 	for _, x := range a.Assets {
 		body.Assets = append(body.Assets, asset{Name: x.Name, Data: x.Data})
+		assetBytes += len(x.Data)
+	}
+	if acct.Machine != "" && assetBytes > machineAssets {
+		return toolError("The pictures are too big for a form kept on the user's computer: it travels through the relay's "+
+			"tunnel, which carries at most 2 MB, so the assets may hold %.1f MB of base64 in all (these hold %.1f MB). "+
+			"Send fewer or smaller pictures (a 1200 px JPEG is plenty).", float64(machineAssets)/1e6, float64(assetBytes)/1e6)
 	}
 	b, _ := json.Marshal(body)
 	status, resp, terr := h.do(ctx, acct, http.MethodPost, "/_mcp/v1/forms", b)
