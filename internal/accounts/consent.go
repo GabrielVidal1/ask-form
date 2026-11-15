@@ -10,7 +10,8 @@ import (
 )
 
 // The consent pages: plain HTML forms that work with JavaScript off (the
-// link page's script only saves a click), ask-form's look, a strict CSP.
+// link page's script only shows the linked state sooner — it never submits),
+// ask-form's look, a strict CSP.
 
 type consentPage struct {
 	Client       string // the client's self-given name ("" = none)
@@ -20,11 +21,15 @@ type consentPage struct {
 	Host         string // the relay's host, e.g. ask-form.xyz
 	Error        string
 	Nonce        string
+	// FormAction is the redirect_uri's origin as a CSP source (cspOrigin).
+	FormAction string
 }
 
 type linkPage struct {
 	consentPage
-	Code string
+	Code   string
+	Linked string // the machine the code is linked to ("" = not yet)
+	Online string // "online" | "offline" | "" (unknown)
 }
 
 type errorPage struct {
@@ -95,33 +100,53 @@ form.inline{display:inline}
 
 {{define "link"}}{{template "head" "Link your computer"}}{{template "style" .Nonce}}</head><body><main>
 <div class="brand"><i></i>ask-form</div>
+{{if .Linked}}
+<h1>Is this your computer?</h1>
+<p class="status ok" role="status">Linked to “{{.Linked}}”{{if eq .Online "offline"}} (offline right now: forms work once ask-form serve runs there){{end}}.</p>
+<p>Continue only if you ran <code>ask-form link {{.Code}}</code> yourself, on “{{.Linked}}”. Your forms and their answers will go to that computer. If you don't know it, cancel.</p>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="req" value="{{.Req}}">
+<input type="hidden" name="choice" value="machine">
+<input type="hidden" name="link" value="{{.Code}}">
+<input type="hidden" name="confirm" value="{{.Linked}}">
+<div class="actions"><button class="primary" type="submit" name="action" value="allow">Yes, that's my computer</button></div>
+</form>
+{{else}}
 <h1>Link your computer</h1>
 <p>On the computer that should keep your forms, run:</p>
 <pre class="cmd">ask-form link {{.Code}}</pre>
 <p class="muted small">It needs ask-form 0.18 or later (<code>ask-form upgrade</code>). Not installed yet: <code>curl -fsSL {{.Install}} | sh</code>, then the command above. The code works for 15 minutes.</p>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 <p class="status" id="status" role="status">Waiting for your computer…</p>
-<form method="post" action="/oauth/authorize" id="go">
+<p class="small" id="ask" hidden>Continue only if you ran the command yourself, on that computer. If you don't know it, cancel.</p>
+<form method="post" action="/oauth/authorize">
 <input type="hidden" name="req" value="{{.Req}}">
 <input type="hidden" name="choice" value="machine">
 <input type="hidden" name="link" value="{{.Code}}">
-<div class="actions"><button class="primary" type="submit" name="action" value="allow">Continue</button></div>
+<input type="hidden" name="confirm" value="" id="confirm">
+<div class="actions"><button class="primary" type="submit" name="action" value="allow" id="go">Continue</button></div>
 </form>
+{{end}}
 <p class="small muted or">Or:</p>
 <div class="actions">
-<form class="inline" method="post" action="/oauth/authorize"><input type="hidden" name="req" value="{{.Req}}"><input type="hidden" name="choice" value="cloud"><button type="submit" name="action" value="allow">Use {{.Host}} instead</button></form>
+<form class="inline" method="post" action="/oauth/authorize"><input type="hidden" name="req" value="{{.Req}}"><input type="hidden" name="choice" value="cloud"><button type="submit" name="action" value="allow">Keep them on {{.Host}} instead</button></form>
 <form class="inline" method="post" action="/oauth/authorize"><input type="hidden" name="req" value="{{.Req}}"><button type="submit" name="action" value="deny">Cancel</button></form>
 </div>
-<script nonce="{{.Nonce}}">
+{{if not .Linked}}<script nonce="{{.Nonce}}">
 (function(){
-  var code={{.Code}}, st=document.getElementById("status"), go=document.getElementById("go"), until=Date.now()+15*60*1000;
+  // Shows the linked state as soon as the computer links. It never submits:
+  // the user says it is their computer.
+  var code={{.Code}}, st=document.getElementById("status"), ask=document.getElementById("ask"),
+      confirm=document.getElementById("confirm"), go=document.getElementById("go"), until=Date.now()+15*60*1000;
   function poll(){
     if(Date.now()>until) return;
-    fetch("/oauth/link/"+encodeURIComponent(code),{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){
+    fetch("/oauth/link?code="+encodeURIComponent(code),{cache:"no-store",credentials:"same-origin"}).then(function(r){return r.json()}).then(function(d){
       if(d.linked){
         st.className="status ok";
-        st.textContent="Linked to “"+d.machine+"”"+(d.online===false?" (offline right now — forms work once ask-form serve runs)":"")+". Continuing…";
-        setTimeout(function(){go.submit()},700);
+        st.textContent="Linked to “"+d.machine+"”"+(d.online===false?" (offline right now: forms work once ask-form serve runs there)":"")+". Is that your computer?";
+        confirm.value=d.machine;
+        go.textContent="Yes, that's my computer";
+        ask.hidden=false;
         return;
       }
       setTimeout(poll,2000);
@@ -129,7 +154,7 @@ form.inline{display:inline}
   }
   setTimeout(poll,1500);
 })();
-</script>
+</script>{{end}}
 </main></body></html>{{end}}
 
 {{define "error"}}{{template "head" .Title}}{{template "style" .Nonce}}</head><body><main>
@@ -150,13 +175,22 @@ func (s *Service) render(w http.ResponseWriter, status int, page any) {
 	}
 	var name string
 	var data any
+	formAction := "'none'"
 	switch p := page.(type) {
 	case consentPage:
 		p.Nonce, p.Host = nonce, host
 		name, data = "consent", p
+		formAction = "'self'"
+		if p.FormAction != "" {
+			formAction += " " + p.FormAction
+		}
 	case linkPage:
 		p.Nonce, p.Host = nonce, host
 		name, data = "link", p
+		formAction = "'self'"
+		if p.FormAction != "" {
+			formAction += " " + p.FormAction
+		}
 	case errorPage:
 		p.Nonce = nonce
 		name, data = "error", p
@@ -172,7 +206,7 @@ func (s *Service) render(w http.ResponseWriter, status int, page any) {
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	h.Set("Cache-Control", "no-store")
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'nonce-"+nonce+"'; script-src 'nonce-"+nonce+"'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'nonce-"+nonce+"'; script-src 'nonce-"+nonce+"'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action "+formAction)
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("X-Content-Type-Options", "nosniff")

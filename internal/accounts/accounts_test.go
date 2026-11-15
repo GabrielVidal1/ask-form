@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -35,6 +37,7 @@ func newEnv(t *testing.T, mod func(*Config)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { s.Close() })
 	e.s, e.h = s, s.Handler()
 	return e
 }
@@ -238,12 +241,19 @@ func TestAuthorizeValidation(t *testing.T) {
 		"plain PKCE":     {func(q url.Values) { q.Set("code_challenge_method", "plain") }, "invalid_request"},
 		"token flow":     {func(q url.Values) { q.Set("response_type", "token") }, "unsupported_response_type"},
 		"other resource": {func(q url.Values) { q.Set("resource", "https://other.example/mcp") }, "invalid_target"},
+		"resource below": {func(q url.Values) { q.Set("resource", pub+"/mcp/other") }, "invalid_target"},
+		"lookalike host": {func(q url.Values) { q.Set("resource", pub+".evil.example/mcp") }, "invalid_target"},
 	} {
 		w := try(c.mod)
 		u, _ := url.Parse(w.Header().Get("Location"))
 		if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), redirect) ||
 			u.Query().Get("error") != c.want || u.Query().Get("state") != "s" {
 			t.Errorf("%s: %d %q", name, w.Code, w.Header().Get("Location"))
+		}
+	}
+	for _, res := range []string{pub, pub + "/mcp"} {
+		if w := try(func(q url.Values) { q.Set("resource", res) }); w.Code != http.StatusOK {
+			t.Errorf("resource %s: %d", res, w.Code)
 		}
 	}
 	// Loopback redirects match on any port (RFC 8252).
@@ -325,95 +335,6 @@ func TestConfidentialClient(t *testing.T) {
 	}
 }
 
-func TestRefresh(t *testing.T) {
-	e := newEnv(t, nil)
-	client, tok := e.signIn()
-	r1 := tok["refresh_token"].(string)
-	refresh := func(rt, cl string) (int, map[string]any) {
-		return e.token(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {rt}, "client_id": {cl}})
-	}
-	st, t2 := refresh(r1, client)
-	if st != 200 || t2["refresh_token"] == r1 {
-		t.Fatalf("refresh: %d %v", st, t2)
-	}
-	if _, ok := e.auth(t2["access_token"].(string)); !ok {
-		t.Fatal("refreshed access token doesn't authenticate")
-	}
-	// The response may have been lost: the old one works for a minute.
-	if st, _ := refresh(r1, client); st != 200 {
-		t.Fatalf("grace: %d", st)
-	}
-	e.s.mu.Lock()
-	e.s.db.Tokens[hashHex(r1)].RotatedAt = time.Now().Add(-2 * refreshGrace)
-	e.s.mu.Unlock()
-	if st, out := refresh(r1, client); st != http.StatusBadRequest || out["error"] != "invalid_grant" {
-		t.Fatalf("after grace: %d %v", st, out)
-	}
-	other := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
-	if st, _ := refresh(t2["refresh_token"].(string), other); st != http.StatusBadRequest {
-		t.Fatalf("another client's refresh token: %d", st)
-	}
-	if st, _ := refresh(t2["refresh_token"].(string), client); st != 200 {
-		t.Fatalf("second rotation: %d", st)
-	}
-}
-
-var linkRe = regexp.MustCompile(`ask-form link ([A-Z0-9]{4}-[A-Z0-9]{4})`)
-
-func TestMachineFlow(t *testing.T) {
-	online := map[string]bool{"laptop": true}
-	e := newEnv(t, func(c *Config) { c.MachineOnline = func(n string) bool { return online[n] } })
-	client := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
-	v, c := pkce()
-	req, ck := e.consent(client, redirect, c, "m")
-	w := e.post(url.Values{"req": {req}, "choice": {"machine"}, "action": {"allow"}}, ck)
-	m := linkRe.FindStringSubmatch(w.Body.String())
-	if w.Code != 200 || m == nil {
-		t.Fatalf("link page: %d %s", w.Code, w.Body)
-	}
-	code := m[1]
-	status := func() map[string]any {
-		w := e.do("GET", "/oauth/link/"+code, "", nil)
-		var s map[string]any
-		json.Unmarshal(w.Body.Bytes(), &s)
-		return s
-	}
-	if s := status(); s["known"] != true || s["linked"] != false {
-		t.Fatalf("status before: %v", s)
-	}
-	// Continue before the computer linked: the same page again, with a note.
-	cont := url.Values{"req": {req}, "choice": {"machine"}, "link": {code}, "action": {"allow"}}
-	w = e.post(cont, ck)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "linked yet") || !strings.Contains(w.Body.String(), code) {
-		t.Fatalf("early continue: %d %s", w.Code, w.Body)
-	}
-	if err := e.s.Link("nope-nope", "laptop"); err != ErrUnknownCode {
-		t.Fatalf("unknown code: %v", err)
-	}
-	if err := e.s.Link(strings.ToLower(strings.ReplaceAll(code, "-", " ")), "laptop"); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.s.Link(code, "desktop"); err == nil {
-		t.Fatal("a code linked twice to different computers")
-	}
-	if s := status(); s["linked"] != true || s["machine"] != "laptop" || s["online"] != true {
-		t.Fatalf("status after: %v", s)
-	}
-	auth := codeFrom(t, e.post(cont, ck), "m")
-	st, tok := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {auth}, "client_id": {client}, "code_verifier": {v}})
-	if st != 200 {
-		t.Fatalf("token: %d %v", st, tok)
-	}
-	a, ok := e.auth(tok["access_token"].(string))
-	if !ok || a.Machine != "laptop" {
-		t.Fatalf("account: %v %v", a, ok)
-	}
-	// The code is spent.
-	if s := status(); s["known"] != false {
-		t.Fatalf("status after use: %v", s)
-	}
-}
-
 func TestCSRFAndDeny(t *testing.T) {
 	e := newEnv(t, nil)
 	client := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
@@ -457,13 +378,351 @@ func TestAccountsPerIP(t *testing.T) {
 	}
 }
 
-func TestPersistence(t *testing.T) {
+func TestNormalizeLinkCode(t *testing.T) {
+	for in, want := range map[string]string{"abcd-efgh": "ABCD-EFGH", "ABCDEFGH": "ABCD-EFGH", " ab cd ef gh ": "ABCD-EFGH"} {
+		if got := normalizeLinkCode(in); got != want {
+			t.Errorf("%q → %q", in, got)
+		}
+	}
+	for i := 0; i < 50; i++ {
+		c := newLinkCode()
+		if normalizeLinkCode(c) != c || strings.ContainsAny(c, "01IOL") {
+			t.Fatalf("bad code %q", c)
+		}
+	}
+}
+
+func TestRefresh(t *testing.T) {
 	e := newEnv(t, nil)
 	client, tok := e.signIn()
+	a1, r1 := tok["access_token"].(string), tok["refresh_token"].(string)
+	refresh := func(rt, cl string) (int, map[string]any) {
+		return e.token(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {rt}, "client_id": {cl}})
+	}
+	st, t2 := refresh(r1, client)
+	if st != 200 || t2["refresh_token"] == r1 {
+		t.Fatalf("refresh: %d %v", st, t2)
+	}
+	a2, r2 := t2["access_token"].(string), t2["refresh_token"].(string)
+	if _, ok := e.auth(a2); !ok {
+		t.Fatal("refreshed access token doesn't authenticate")
+	}
+	if _, ok := e.auth(a1); ok {
+		t.Fatal("the old access token still works after a refresh")
+	}
+	// The answer may have been lost: within a minute, the same pair again.
+	st, again := refresh(r1, client)
+	if st != 200 || again["access_token"] != a2 || again["refresh_token"] != r2 {
+		t.Fatalf("grace: %d %v", st, again)
+	}
+	other := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	if st, _ := refresh(r2, other); st != http.StatusBadRequest {
+		t.Fatalf("another client's refresh token: %d", st)
+	}
+	// After the grace a replay ends the whole grant.
+	e.s.mu.Lock()
+	e.s.db.Tokens[hashHex(r1)].RotatedAt = time.Now().Add(-2 * refreshGrace)
+	e.s.mu.Unlock()
+	if st, out := refresh(r1, client); st != http.StatusBadRequest || out["error"] != "invalid_grant" {
+		t.Fatalf("replay: %d %v", st, out)
+	}
+	if _, ok := e.auth(a2); ok {
+		t.Fatal("a replayed refresh token left the grant's access token alive")
+	}
+	if st, _ := refresh(r2, client); st != http.StatusBadRequest {
+		t.Fatalf("a replayed refresh token left the grant's refresh token alive: %d", st)
+	}
+}
+
+func TestRefreshSecondGrantUntouched(t *testing.T) {
+	e := newEnv(t, nil)
+	client, tokA := e.signIn()
+	_, tokB := e.signIn()
+	refresh := func(rt, cl string) (int, map[string]any) {
+		return e.token(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {rt}, "client_id": {cl}})
+	}
+	rA := tokA["refresh_token"].(string)
+	if st, _ := refresh(rA, client); st != 200 {
+		t.Fatal(st)
+	}
+	e.s.mu.Lock()
+	e.s.db.Tokens[hashHex(rA)].RotatedAt = time.Now().Add(-2 * refreshGrace)
+	e.s.mu.Unlock()
+	refresh(rA, client)
+	if _, ok := e.auth(tokB["access_token"].(string)); !ok {
+		t.Fatal("revoking one grant took another with it")
+	}
+}
+
+func TestTokenRateLimit(t *testing.T) {
+	e := newEnv(t, nil)
+	client := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {"nope"}, "client_id": {client}, "code_verifier": {strings.Repeat("v", 50)}}
+	for i := 0; i < tokensPerMin; i++ {
+		if st, _ := e.token(form); st != http.StatusBadRequest {
+			t.Fatalf("request %d: %d", i, st)
+		}
+	}
+	w := e.do("POST", "/oauth/token", form.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded"})
+	var out map[string]any
+	json.Unmarshal(w.Body.Bytes(), &out)
+	if w.Code != http.StatusTooManyRequests || out["error"] != "temporarily_unavailable" || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("over the limit: %d %v", w.Code, out)
+	}
+	// Another client isn't slowed down.
+	other := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	form.Set("client_id", other)
+	if st, _ := e.token(form); st != http.StatusBadRequest {
+		t.Fatalf("another client: %d", st)
+	}
+}
+
+var linkRe = regexp.MustCompile(`ask-form link ([A-Z0-9]{4}-[A-Z0-9]{4})`)
+
+// startLink opens a consent page and asks for a link code.
+func (e *env) startLink(client string) (req, cookie, code, verifier string) {
+	e.t.Helper()
+	verifier, c := pkce()
+	req, cookie = e.consent(client, redirect, c, "m")
+	w := e.post(url.Values{"req": {req}, "choice": {"machine"}, "action": {"allow"}}, cookie)
+	m := linkRe.FindStringSubmatch(w.Body.String())
+	if w.Code != 200 || m == nil {
+		e.t.Fatalf("link page: %d %s", w.Code, w.Body)
+	}
+	return req, cookie, m[1], verifier
+}
+
+func (e *env) linkStatus(code, cookie string) map[string]any {
+	e.t.Helper()
+	h := map[string]string{}
+	if cookie != "" {
+		h["Cookie"] = csrfCookie + "=" + cookie
+	}
+	w := e.do("GET", "/oauth/link?code="+code, "", h)
+	var s map[string]any
+	json.Unmarshal(w.Body.Bytes(), &s)
+	return s
+}
+
+func TestMachineFlow(t *testing.T) {
+	online := map[string]bool{"laptop": true}
+	e := newEnv(t, func(c *Config) { c.MachineOnline = func(n string) bool { return online[n] } })
+	client := e.register(`{"redirect_uris":["` + redirect + `"],"client_name":"Claude"}`)["client_id"].(string)
+	req, ck, code, v := e.startLink(client)
+	if s := e.linkStatus(code, ck); s["known"] != true || s["linked"] != false {
+		t.Fatalf("status before: %v", s)
+	}
+	// Continue before the computer linked: the same page again, with a note.
+	cont := url.Values{"req": {req}, "choice": {"machine"}, "link": {code}, "action": {"allow"}}
+	w := e.post(cont, ck)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "linked yet") || !strings.Contains(w.Body.String(), code) {
+		t.Fatalf("early continue: %d %s", w.Code, w.Body)
+	}
+	if _, err := e.s.Link("nope-nope", "laptop"); err != ErrUnknownCode {
+		t.Fatalf("unknown code: %v", err)
+	}
+	info, err := e.s.Link(strings.ToLower(strings.ReplaceAll(code, "-", " ")), "laptop")
+	if err != nil || !strings.HasPrefix(info.Account, accountPrefix) || info.Client != "Claude" {
+		t.Fatalf("link: %v %v", info, err)
+	}
+	if _, err := e.s.Link(code, "desktop"); err == nil {
+		t.Fatal("a code linked twice to different computers")
+	}
+	if s := e.linkStatus(code, ck); s["linked"] != true || s["machine"] != "laptop" || s["online"] != true {
+		t.Fatalf("status after: %v", s)
+	}
+	// Linked, but nothing happens until the user says it's their computer.
+	for _, confirm := range []string{"", "desktop"} {
+		c := url.Values{}
+		for k, x := range cont {
+			c[k] = x
+		}
+		if confirm != "" {
+			c.Set("confirm", confirm)
+		}
+		w = e.post(c, ck)
+		if w.Code != 200 || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "Is this your computer?") ||
+			!strings.Contains(w.Body.String(), "“laptop”") {
+			t.Fatalf("confirm %q: %d %s", confirm, w.Code, w.Body)
+		}
+	}
+	cont.Set("confirm", "laptop")
+	auth := codeFrom(t, e.post(cont, ck), "m")
+	st, tok := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {auth}, "client_id": {client}, "code_verifier": {v}})
+	if st != 200 {
+		t.Fatalf("token: %d %v", st, tok)
+	}
+	a, ok := e.auth(tok["access_token"].(string))
+	if !ok || a.Machine != "laptop" || a.ID != info.Account {
+		t.Fatalf("account %v %v, linked for %s", a, ok, info.Account)
+	}
+	// The code is spent.
+	if s := e.linkStatus(code, ck); s["known"] != false {
+		t.Fatalf("status after use: %v", s)
+	}
+}
+
+func TestLinkCodeBoundToSession(t *testing.T) {
+	e := newEnv(t, nil)
+	client := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	_, ckA, code, _ := e.startLink(client)
+	if _, err := e.s.Link(code, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+	// Another browser, its own consent page, someone else's code.
+	_, c := pkce()
+	reqB, ckB := e.consent(client, redirect, c, "b")
+	if ckB == ckA {
+		t.Fatal("two browsers share a cookie")
+	}
+	w := e.post(url.Values{"req": {reqB}, "choice": {"machine"}, "link": {code}, "confirm": {"laptop"}, "action": {"allow"}}, ckB)
+	if w.Code != http.StatusBadRequest || w.Header().Get("Location") != "" {
+		t.Fatalf("another session continued with the code: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if s := e.linkStatus(code, ckB); s["known"] != false || s["machine"] != nil {
+		t.Fatalf("another session reads the code's state: %v", s)
+	}
+	if s := e.linkStatus(code, ""); s["known"] != false {
+		t.Fatalf("no cookie reads the code's state: %v", s)
+	}
+	if s := e.linkStatus(code, ckA); s["linked"] != true {
+		t.Fatalf("its own session: %v", s)
+	}
+}
+
+func TestIPv6Per64(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.AccountsPerIP = 2 })
+	client := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	try := func(ip string) int {
+		e.ip = ip
+		_, c := pkce()
+		req, ck := e.consent(client, redirect, c, "s")
+		return e.post(url.Values{"req": {req}, "choice": {"cloud"}}, ck).Code
+	}
+	for i, ip := range []string{"2001:db8:1:2::1", "2001:db8:1:2:aaaa::2"} {
+		if st := try(ip); st != http.StatusSeeOther {
+			t.Fatalf("account %d: %d", i, st)
+		}
+	}
+	if st := try("2001:db8:1:2:ffff:ffff:ffff:fffe"); st != http.StatusTooManyRequests {
+		t.Fatalf("same /64: %d", st)
+	}
+	if st := try("2001:db8:1:3::1"); st != http.StatusSeeOther {
+		t.Fatalf("next /64: %d", st)
+	}
+	if ipKey("203.0.113.9") != "203.0.113.9" || ipKey("::ffff:203.0.113.9") != "203.0.113.9" {
+		t.Fatal("IPv4 keys")
+	}
+}
+
+func TestRegisterNotCappedPerIP(t *testing.T) {
+	e := newEnv(t, nil)
+	for i := 0; i < 300; i++ {
+		e.register(`{"redirect_uris":["` + redirect + `"]}`)
+	}
+}
+
+func TestMaxClientsEvictsUnused(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.MaxClients = 2 })
+	used, _ := e.signIn()
+	b := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	c := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	e.s.mu.Lock()
+	gotB, gotUsed, gotC := e.s.db.Clients[b] != nil, e.s.db.Clients[used] != nil, e.s.db.Clients[c] != nil
+	e.s.db.Clients[c].LastUsed = time.Now()
+	e.s.mu.Unlock()
+	if gotB || !gotUsed || !gotC {
+		t.Fatalf("eviction: b=%v used=%v c=%v", gotB, gotUsed, gotC)
+	}
+	if w := e.do("POST", "/oauth/register", `{"redirect_uris":["`+redirect+`"]}`, nil); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("full of used clients: %d", w.Code)
+	}
+}
+
+func TestMaxAccountsEvictsUnused(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.MaxAccounts = 2 })
+	client, _ := e.signIn() // account 1, activated
+	consent := func() (code, verifier string, status int) {
+		verifier, c := pkce()
+		req, ck := e.consent(client, redirect, c, "s")
+		w := e.post(url.Values{"req": {req}, "choice": {"cloud"}}, ck)
+		if w.Code != http.StatusSeeOther {
+			return "", "", w.Code
+		}
+		return codeFrom(t, w, "s"), verifier, w.Code
+	}
+	code2, v2, _ := consent() // account 2, never exchanged
+	code3, v3, st := consent()
+	if st != http.StatusSeeOther {
+		t.Fatalf("third account: %d", st)
+	}
+	if st, _ := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {code2}, "client_id": {client}, "code_verifier": {v2}}); st != http.StatusBadRequest {
+		t.Fatalf("the evicted account's code still works: %d", st)
+	}
+	if st, _ := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {code3}, "client_id": {client}, "code_verifier": {v3}}); st != 200 {
+		t.Fatalf("third account's token: %d", st)
+	}
+	if _, _, st := consent(); st != http.StatusServiceUnavailable {
+		t.Fatalf("full of used accounts: %d", st)
+	}
+}
+
+func TestConsentCSP(t *testing.T) {
+	e := newEnv(t, nil)
+	for redir, want := range map[string]string{
+		redirect: "form-action 'self' https://claude.ai",
+		"cursor://anysphere.cursor-retrieval/oauth/callback": "form-action 'self' cursor:",
+		"http://127.0.0.1:3000/callback":                     "form-action 'self' http://127.0.0.1:3000",
+	} {
+		client := e.register(`{"redirect_uris":["` + redir + `"]}`)["client_id"].(string)
+		_, c := pkce()
+		q := url.Values{"client_id": {client}, "redirect_uri": {redir}, "response_type": {"code"},
+			"code_challenge": {c}, "code_challenge_method": {"S256"}}
+		w := e.do("GET", "/oauth/authorize?"+q.Encode(), "", nil)
+		if csp := w.Header().Get("Content-Security-Policy"); !strings.HasSuffix(csp, want) {
+			t.Errorf("%s: %q", redir, csp)
+		}
+	}
+	w := e.do("GET", "/oauth/authorize?client_id=afc_nope", "", nil)
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "form-action 'none'") {
+		t.Errorf("error page: %q", csp)
+	}
+}
+
+func TestRemove(t *testing.T) {
+	e := newEnv(t, nil)
+	_, tok := e.signIn()
+	a, _ := e.auth(tok["access_token"].(string))
+	if err := e.s.Remove(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := e.auth(tok["access_token"].(string)); ok {
+		t.Fatal("a removed account's token still works")
+	}
+	if err := e.s.Remove(a.ID); err != ErrNoAccount {
+		t.Fatalf("second remove: %v", err)
+	}
 	s2, err := New(Config{Dir: e.dir, PublicURL: pub})
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s2.Close()
+	if len(s2.db.Accounts) != 0 || len(s2.db.Tokens) != 0 {
+		t.Fatal("remove wasn't written at once")
+	}
+}
+
+func TestPersistence(t *testing.T) {
+	e := newEnv(t, nil)
+	client, tok := e.signIn()
+	if err := e.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := New(Config{Dir: e.dir, PublicURL: pub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
 	r := httptest.NewRequest("POST", pub+"/mcp", nil)
 	r.Header.Set("Authorization", "Bearer "+tok["access_token"].(string))
 	if _, ok := s2.Authenticate(r); !ok {
@@ -477,48 +736,79 @@ func TestPersistence(t *testing.T) {
 	}
 }
 
-func TestPrune(t *testing.T) {
+func TestBatchedWrites(t *testing.T) {
+	old := flushEvery
+	flushEvery = 50 * time.Millisecond
 	e := newEnv(t, nil)
-	_, tok := e.signIn()
-	idle := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
-	a, _ := e.auth(tok["access_token"].(string))
-	now := time.Now()
-	e.s.mu.Lock()
-	e.s.db.Clients[idle].Created = now.Add(-31 * 24 * time.Hour)
-	e.s.mu.Unlock()
-	e.s.Prune(now)
-	if e.s.db.Clients[idle] != nil {
-		t.Fatal("a client that never got a token survived 30 days")
-	}
-	if _, ok := e.auth(tok["access_token"].(string)); !ok {
-		t.Fatal("prune dropped a live account")
-	}
-	e.s.mu.Lock()
-	e.s.db.Accounts[a.ID].LastSeen = now.Add(-91 * 24 * time.Hour)
-	e.s.mu.Unlock()
-	e.s.Prune(now)
-	if _, ok := e.auth(tok["access_token"].(string)); ok {
-		t.Fatal("an account unseen 91 days survived")
-	}
-	if n := len(e.s.db.Tokens); n != 0 {
-		t.Fatalf("%d tokens left after their account went", n)
-	}
-	s2, _ := New(Config{Dir: e.dir, PublicURL: pub})
-	if len(s2.db.Accounts) != 0 {
-		t.Fatal("prune didn't write the store")
+	flushEvery = old
+	id := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		b, _ := os.ReadFile(filepath.Join(e.dir, "accounts.json"))
+		if strings.Contains(string(b), id) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the writer never wrote the new client")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
-func TestNormalizeLinkCode(t *testing.T) {
-	for in, want := range map[string]string{"abcd-efgh": "ABCD-EFGH", "ABCDEFGH": "ABCD-EFGH", " ab cd ef gh ": "ABCD-EFGH"} {
-		if got := normalizeLinkCode(in); got != want {
-			t.Errorf("%q → %q", in, got)
+func TestPrune(t *testing.T) {
+	e := newEnv(t, nil)
+	client, tok := e.signIn()
+	idle := e.register(`{"redirect_uris":["` + redirect + `"]}`)["client_id"].(string)
+	a, _ := e.auth(tok["access_token"].(string))
+	now := time.Now()
+	// An account whose code was never exchanged.
+	_, c := pkce()
+	req, ck := e.consent(client, redirect, c, "s")
+	codeFrom(t, e.post(url.Values{"req": {req}, "choice": {"cloud"}}, ck), "s")
+	r1 := tok["refresh_token"].(string)
+	if st, _ := e.token(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {r1}, "client_id": {client}}); st != 200 {
+		t.Fatal(st)
+	}
+	e.s.mu.Lock()
+	e.s.db.Clients[idle].Created = now.Add(-2 * unusedTTL)
+	var unused string
+	for id, acc := range e.s.db.Accounts {
+		if !acc.Activated {
+			unused = id
+			acc.Created = now.Add(-2 * unusedTTL)
 		}
 	}
-	for i := 0; i < 50; i++ {
-		c := newLinkCode()
-		if normalizeLinkCode(c) != c || strings.ContainsAny(c, "01IOL") {
-			t.Fatalf("bad code %q", c)
-		}
+	e.s.mu.Unlock()
+	e.s.Prune(now)
+	e.s.mu.Lock()
+	gotIdle, gotUnused, gotTomb := e.s.db.Clients[idle] != nil, e.s.db.Accounts[unused] != nil, e.s.db.Tokens[hashHex(r1)] != nil
+	e.s.mu.Unlock()
+	if unused == "" || gotIdle || gotUnused {
+		t.Fatalf("prune kept an unused client (%v) or account %q (%v)", gotIdle, unused, gotUnused)
+	}
+	if !gotTomb {
+		t.Fatal("prune dropped a fresh refresh tombstone (replays would go unnoticed)")
+	}
+	if _, ok := e.auth(tok["access_token"].(string)); ok {
+		t.Fatal("the pre-refresh access token came back")
+	}
+	e.s.mu.Lock()
+	e.s.db.Tokens[hashHex(r1)].RotatedAt = now.Add(-tombstoneTTL - time.Hour)
+	e.s.db.Accounts[a.ID].LastSeen = now.Add(-91 * 24 * time.Hour)
+	e.s.mu.Unlock()
+	e.s.Prune(now)
+	e.s.mu.Lock()
+	n, gotA := len(e.s.db.Tokens), e.s.db.Accounts[a.ID] != nil
+	e.s.mu.Unlock()
+	if gotA || n != 0 {
+		t.Fatalf("an account unseen 91 days survived (%v) with %d tokens", gotA, n)
+	}
+	if err := e.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := New(Config{Dir: e.dir, PublicURL: pub})
+	defer s2.Close()
+	if len(s2.db.Accounts) != 0 {
+		t.Fatal("prune's result wasn't written")
 	}
 }

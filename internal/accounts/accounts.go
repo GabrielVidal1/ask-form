@@ -7,9 +7,10 @@
 // `ask-form link CODE`.
 //
 // Everything is kept in one JSON file (accounts.json, 0600) next to a signing
-// key (oauth-key). Tokens and client secrets are stored as SHA-256 hashes
-// only; authorization codes and link codes live in memory (a restart in the
-// middle of a sign-in just means signing in again).
+// key (oauth-key), written at most every 2 s (Close flushes). Tokens and
+// client secrets are stored as SHA-256 hashes only; authorization codes,
+// link codes and the pair a refresh just gave live in memory (a restart in
+// the middle of a sign-in just means signing in again).
 package accounts
 
 import (
@@ -20,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -35,6 +37,16 @@ type Account struct {
 	Machine  string    `json:"machine,omitempty"` // "" = cloud
 	Created  time.Time `json:"created"`
 	LastSeen time.Time `json:"lastSeen"`
+	// Activated: its client exchanged the code for tokens. An account that
+	// never is goes after an hour, and first when the store is full.
+	Activated bool `json:"activated,omitempty"`
+}
+
+// LinkInfo is what `ask-form link CODE` learns: the account the computer
+// will serve (it keeps an allow-list of those) and the app that asked.
+type LinkInfo struct {
+	Account string // the account id, minted with the code
+	Client  string // the app's self-given name ("" = none)
 }
 
 // Config configures the authorization server.
@@ -44,18 +56,18 @@ type Config struct {
 	// PublicURL is the issuer and the resource's origin, e.g.
 	// https://ask-form.xyz (no trailing slash).
 	PublicURL string
-	// ClientIP is the visitor's address, for the consent page's per-IP caps
-	// (nil: the socket peer).
+	// ClientIP is the visitor's address, for the consent page's per-address
+	// caps (nil: the socket peer). IPv6 addresses count per /64.
 	ClientIP func(*http.Request) string
 	// AccountsPerIP is how many accounts one address may mint a day (10).
 	AccountsPerIP int
-	// MaxAccounts caps the accounts kept at once (20000).
+	// MaxAccounts caps the accounts kept at once (20000). At the cap the
+	// oldest account that never got a token goes; if none, sign-ins wait.
 	MaxAccounts int
-	// ClientsPerDay caps client registrations a day, all callers together
-	// (2000): they come from the MCP clients' servers, whose addresses are
-	// shared, so a per-address cap would mean little.
-	ClientsPerDay int
-	// MaxClients caps the registered clients kept at once (20000).
+	// MaxClients caps the registered clients kept at once (20000). At the cap
+	// the oldest client that never got a token goes; if none, registration
+	// waits. Registration has no per-address cap: Claude and ChatGPT
+	// register every user from a few shared addresses.
 	MaxClients int
 	// MachineOnline says whether a relay machine is connected (nil: unknown).
 	// The link page shows it once the computer has linked.
@@ -68,9 +80,11 @@ const (
 	codeTTL       = 10 * time.Minute
 	linkTTL       = 15 * time.Minute
 	requestTTL    = 30 * time.Minute // a consent page's signed request
-	refreshGrace  = 60 * time.Second // a rotated refresh token still works this long
+	refreshGrace  = 60 * time.Second // a rotated refresh token gives the same pair again this long
+	tombstoneTTL  = 30 * 24 * time.Hour
 	accountIdle   = 90 * 24 * time.Hour
-	clientUnused  = 30 * 24 * time.Hour
+	unusedTTL     = time.Hour // a client or account that never got a token
+	tokensPerMin  = 30        // token requests per client a minute
 	scopeForms    = "forms"
 	accessPrefix  = "afa_"
 	refreshPrefix = "afr_"
@@ -78,6 +92,9 @@ const (
 	secretPrefix  = "afs_"
 	accountPrefix = "acct_"
 )
+
+// flushEvery is how often a changed store is written (a var for tests).
+var flushEvery = 2 * time.Second
 
 // Client is a registered OAuth client (an MCP client's install).
 type Client struct {
@@ -91,11 +108,19 @@ type Client struct {
 }
 
 type token struct {
-	Kind      string    `json:"kind"` // "access" | "refresh"
-	Account   string    `json:"account"`
-	Client    string    `json:"client"`
-	Expires   time.Time `json:"expires"`
-	RotatedAt time.Time `json:"rotatedAt,omitempty"` // a refresh token already exchanged
+	Kind    string    `json:"kind"` // "access" | "refresh"
+	Account string    `json:"account"`
+	Client  string    `json:"client"`
+	Expires time.Time `json:"expires"`
+	// Family: every token descending from one authorization code; a replayed
+	// refresh token revokes the whole family.
+	Family string `json:"family,omitempty"`
+	// Pair: on a refresh token, the hash of the access token issued with it
+	// (deleted when the refresh token is exchanged).
+	Pair string `json:"pair,omitempty"`
+	// RotatedAt: a refresh token already exchanged. It stays as a tombstone
+	// (never accepted again past the grace) so a replay is caught.
+	RotatedAt time.Time `json:"rotatedAt,omitempty"`
 }
 
 type db struct {
@@ -108,12 +133,25 @@ type authCode struct {
 	client, redirect, challenge, account string
 	expires                              time.Time
 	used                                 bool
-	issued                               []string // token hashes minted from it (revoked on reuse)
+	family                               string // set once exchanged (revoked on reuse)
 }
 
 type linkCode struct {
 	machine string
 	expires time.Time
+	// session is the consent page's CSRF cookie: only the browser that
+	// minted the code may continue with it.
+	session    string
+	account    string // the account id, minted with the code
+	client     string
+	clientName string
+}
+
+// issued is the pair a refresh token gave, kept for the grace period so a
+// client that lost the answer gets the same one again.
+type issued struct {
+	access, refresh string
+	at              time.Time
 }
 
 // Service is the authorization server.
@@ -127,14 +165,20 @@ type Service struct {
 	dirty    bool
 	codes    map[string]*authCode // code → …
 	links    map[string]*linkCode // "ABCD-EFGH" → …
+	rotated  map[string]*issued   // old refresh token hash → the pair it gave
 	acctIP   *ipLimiter
 	linkIP   *ipLimiter
-	regIP    *ipLimiter
-	regDay   *ipLimiter // one key: every registration counts
-	failures *ipLimiter // bad link codes per machine
+	tokenLim *ipLimiter // token requests per client id
+	linkTry  *ipLimiter // Link calls per machine
+
+	every     time.Duration
+	stop      chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
-// New opens (or creates) the store in cfg.Dir.
+// New opens (or creates) the store in cfg.Dir and starts its writer; call
+// Close when done.
 func New(cfg Config) (*Service, error) {
 	cfg.PublicURL = strings.TrimRight(cfg.PublicURL, "/")
 	if cfg.PublicURL == "" {
@@ -149,9 +193,6 @@ func New(cfg Config) (*Service, error) {
 	if cfg.MaxAccounts <= 0 {
 		cfg.MaxAccounts = 20000
 	}
-	if cfg.ClientsPerDay <= 0 {
-		cfg.ClientsPerDay = 2000
-	}
 	if cfg.MaxClients <= 0 {
 		cfg.MaxClients = 20000
 	}
@@ -164,16 +205,19 @@ func New(cfg Config) (*Service, error) {
 	}
 	s := &Service{
 		cfg: cfg, key: key, path: filepath.Join(cfg.Dir, "accounts.json"),
-		codes: map[string]*authCode{}, links: map[string]*linkCode{},
+		codes: map[string]*authCode{}, links: map[string]*linkCode{}, rotated: map[string]*issued{},
 		acctIP:   newIPLimiter(cfg.AccountsPerIP, 24*time.Hour),
 		linkIP:   newIPLimiter(20, time.Hour),
-		regIP:    newIPLimiter(200, 24*time.Hour),
-		regDay:   newIPLimiter(cfg.ClientsPerDay, 24*time.Hour),
-		failures: newIPLimiter(30, time.Hour),
+		tokenLim: newIPLimiter(tokensPerMin, time.Minute),
+		linkTry:  newIPLimiter(30, time.Hour),
+		every:    flushEvery,
+		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
+	go s.flusher()
 	return s, nil
 }
 
@@ -216,7 +260,49 @@ func (s *Service) load() error {
 	if s.db.Tokens == nil {
 		s.db.Tokens = map[string]*token{}
 	}
+	// An account with tokens got them (a store written before Activated).
+	for _, t := range s.db.Tokens {
+		if a := s.db.Accounts[t.Account]; a != nil {
+			a.Activated = true
+		}
+	}
 	return nil
+}
+
+// flusher writes the store when it changed, at most every s.every.
+func (s *Service) flusher() {
+	defer close(s.done)
+	t := time.NewTicker(s.every)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-t.C:
+			s.mu.Lock()
+			if s.dirty {
+				if err := s.save(); err != nil {
+					log.Printf("accounts: write %s: %v", s.path, err)
+				}
+			}
+			s.mu.Unlock()
+		}
+	}
+}
+
+// Close stops the writer and writes what changed since its last run.
+func (s *Service) Close() error {
+	var err error
+	s.closeOnce.Do(func() {
+		close(s.stop)
+		<-s.done
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.dirty {
+			err = s.save()
+		}
+	})
+	return err
 }
 
 // save writes the store; the caller holds s.mu.
@@ -270,7 +356,7 @@ func (s *Service) Authenticate(r *http.Request) (Account, bool) {
 	}
 	if now.Sub(a.LastSeen) > time.Hour {
 		a.LastSeen = now
-		s.dirty = true // written with the next change or Prune
+		s.dirty = true
 	}
 	return *a, true
 }
@@ -278,52 +364,79 @@ func (s *Service) Authenticate(r *http.Request) (Account, bool) {
 // ErrUnknownCode: Link got a code that doesn't exist or has expired.
 var ErrUnknownCode = errors.New("unknown or expired code: start again from the sign-in page")
 
+// ErrNoAccount: Remove got an account id the store doesn't have.
+var ErrNoAccount = errors.New("no such account")
+
 // Link ties a consent page's link code to a relay machine: the user ran
-// `ask-form link CODE` there. A code links once.
-func (s *Service) Link(code, machine string) error {
+// `ask-form link CODE` there. A code links once. The account the computer
+// will serve is fixed when the code is minted, so the machine can allow it
+// before the sign-in finishes.
+func (s *Service) Link(code, machine string) (LinkInfo, error) {
 	code = normalizeLinkCode(code)
 	if machine == "" {
-		return errors.New("no machine")
+		return LinkInfo{}, errors.New("no machine")
+	}
+	if !s.linkTry.hit(machine) {
+		return LinkInfo{}, errors.New("too many codes tried from this computer: wait an hour")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.failures.hit(machine + "\x00probe") {
-		return errors.New("too many codes tried from this computer: wait an hour")
-	}
 	l := s.links[code]
 	if l == nil || time.Now().After(l.expires) {
-		return ErrUnknownCode
+		return LinkInfo{}, ErrUnknownCode
 	}
 	if l.machine != "" && l.machine != machine {
-		return errors.New("this code is already linked to another computer")
+		return LinkInfo{}, errors.New("this code is already linked to another computer")
 	}
 	l.machine = machine
-	return nil
+	return LinkInfo{Account: l.account, Client: l.clientName}, nil
 }
 
-// Prune forgets accounts unseen for 90 days (and their tokens), expired
-// tokens and codes, and clients registered 30 days ago that never got a
-// token. It writes the store.
+// Remove deletes an account and every token it has (a takedown), and
+// writes the store at once.
+func (s *Service) Remove(accountID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db.Accounts[accountID] == nil {
+		return ErrNoAccount
+	}
+	delete(s.db.Accounts, accountID)
+	for h, t := range s.db.Tokens {
+		if t.Account == accountID {
+			delete(s.db.Tokens, h)
+		}
+	}
+	for c, a := range s.codes {
+		if a.account == accountID {
+			delete(s.codes, c)
+		}
+	}
+	return s.save()
+}
+
+// Prune forgets accounts unseen for 90 days and accounts that never got a
+// token within an hour (with their tokens), expired tokens and old refresh
+// tombstones, clients that never got a token within an hour, and expired
+// codes. The writer saves the result.
 func (s *Service) Prune(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	changed := s.dirty
 	for id, a := range s.db.Accounts {
 		seen := a.LastSeen
 		if seen.IsZero() {
 			seen = a.Created
 		}
-		if now.Sub(seen) > accountIdle {
+		if now.Sub(seen) > accountIdle || (!a.Activated && now.Sub(a.Created) > unusedTTL) {
 			delete(s.db.Accounts, id)
-			changed = true
+			s.dirty = true
 		}
 	}
 	for h, t := range s.db.Tokens {
 		gone := now.After(t.Expires) || s.db.Accounts[t.Account] == nil ||
-			(!t.RotatedAt.IsZero() && now.Sub(t.RotatedAt) > refreshGrace)
+			(!t.RotatedAt.IsZero() && now.Sub(t.RotatedAt) > tombstoneTTL)
 		if gone {
 			delete(s.db.Tokens, h)
-			changed = true
+			s.dirty = true
 		}
 	}
 	used := map[string]bool{}
@@ -331,9 +444,9 @@ func (s *Service) Prune(now time.Time) {
 		used[t.Client] = true
 	}
 	for id, c := range s.db.Clients {
-		if c.LastUsed.IsZero() && now.Sub(c.Created) > clientUnused && !used[id] {
+		if c.LastUsed.IsZero() && now.Sub(c.Created) > unusedTTL && !used[id] {
 			delete(s.db.Clients, id)
-			changed = true
+			s.dirty = true
 		}
 	}
 	for c, a := range s.codes {
@@ -346,32 +459,89 @@ func (s *Service) Prune(now time.Time) {
 			delete(s.links, c)
 		}
 	}
-	if changed {
-		s.save()
+	for h, p := range s.rotated {
+		if now.Sub(p.at) > refreshGrace {
+			delete(s.rotated, h)
+		}
 	}
 }
 
-// newAccount mints an account; the caller holds s.mu.
-func (s *Service) newAccount(machine string, now time.Time) (*Account, error) {
-	if len(s.db.Accounts) >= s.cfg.MaxAccounts {
-		return nil, errors.New("ask-form can't open more accounts right now: try again later")
+func newAccountID() string { return accountPrefix + randBase32(10) }
+
+// newAccount mints an account with the given id; the caller holds s.mu. At
+// the cap the oldest account that never got a token makes room.
+func (s *Service) newAccount(id, machine string, now time.Time) (*Account, error) {
+	if s.db.Accounts[id] != nil {
+		return nil, errors.New("this sign-in was already used: start again from the app")
 	}
-	a := &Account{ID: accountPrefix + randBase32(10), Machine: machine, Created: now, LastSeen: now}
+	if len(s.db.Accounts) >= s.cfg.MaxAccounts {
+		var oldest *Account
+		for _, a := range s.db.Accounts {
+			if !a.Activated && (oldest == nil || a.Created.Before(oldest.Created)) {
+				oldest = a
+			}
+		}
+		if oldest == nil {
+			return nil, errors.New("ask-form can't open more accounts right now: try again later")
+		}
+		delete(s.db.Accounts, oldest.ID)
+	}
+	a := &Account{ID: id, Machine: machine, Created: now, LastSeen: now}
 	s.db.Accounts[a.ID] = a
+	s.dirty = true
 	return a, nil
 }
 
-// issue mints an access + refresh token pair; the caller holds s.mu and saves.
-func (s *Service) issue(account, client string, now time.Time) (access, refresh string, hashes []string) {
+// addClient stores a client; the caller holds s.mu. At the cap the oldest
+// client that never got a token makes room.
+func (s *Service) addClient(c *Client) error {
+	if len(s.db.Clients) >= s.cfg.MaxClients {
+		var oldest *Client
+		for _, o := range s.db.Clients {
+			if o.LastUsed.IsZero() && (oldest == nil || o.Created.Before(oldest.Created)) {
+				oldest = o
+			}
+		}
+		if oldest == nil {
+			return errors.New("too many clients registered: try again later")
+		}
+		delete(s.db.Clients, oldest.ID)
+	}
+	s.db.Clients[c.ID] = c
+	s.dirty = true
+	return nil
+}
+
+// issue mints an access + refresh token pair in a grant family; the caller
+// holds s.mu.
+func (s *Service) issue(account, client, family string, now time.Time) (access, refresh string) {
 	access = accessPrefix + randToken()
 	refresh = refreshPrefix + randToken()
 	ha, hr := hashHex(access), hashHex(refresh)
-	s.db.Tokens[ha] = &token{Kind: "access", Account: account, Client: client, Expires: now.Add(accessTTL)}
-	s.db.Tokens[hr] = &token{Kind: "refresh", Account: account, Client: client, Expires: now.Add(refreshTTL)}
+	s.db.Tokens[ha] = &token{Kind: "access", Account: account, Client: client, Expires: now.Add(accessTTL), Family: family}
+	s.db.Tokens[hr] = &token{Kind: "refresh", Account: account, Client: client, Expires: now.Add(refreshTTL), Family: family, Pair: ha}
 	if c := s.db.Clients[client]; c != nil {
 		c.LastUsed = now
 	}
-	return access, refresh, []string{ha, hr}
+	if a := s.db.Accounts[account]; a != nil {
+		a.Activated = true
+	}
+	s.dirty = true
+	return access, refresh
+}
+
+// revokeFamily deletes every token of a grant; the caller holds s.mu.
+func (s *Service) revokeFamily(family string) {
+	if family == "" {
+		return
+	}
+	for h, t := range s.db.Tokens {
+		if t.Family == family {
+			delete(s.db.Tokens, h)
+			delete(s.rotated, h)
+		}
+	}
+	s.dirty = true
 }
 
 func (s *Service) clientIP(r *http.Request) string {
@@ -383,6 +553,19 @@ func (s *Service) clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// ipKey is what a per-address cap counts: an IPv4 address, or an IPv6 /64
+// (one subscriber's prefix, which a single user can cycle through).
+func ipKey(ip string) string {
+	p := net.ParseIP(ip)
+	if p == nil {
+		return ip
+	}
+	if v4 := p.To4(); v4 != nil {
+		return v4.String()
+	}
+	return p.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 func hashHex(s string) string {

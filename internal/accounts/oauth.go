@@ -21,7 +21,7 @@ import (
 //	POST /oauth/register                                RFC 7591
 //	GET  /oauth/authorize, POST /oauth/authorize        consent page
 //	POST /oauth/token                                   codes and refresh tokens
-//	GET  /oauth/link/{code}                             {"linked":…} for the link page
+//	GET  /oauth/link?code=…                             {"linked":…} for the link page
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", s.resourceMeta)
@@ -31,7 +31,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /oauth/authorize", s.authorizeGet)
 	mux.HandleFunc("POST /oauth/authorize", s.authorizePost)
 	mux.HandleFunc("POST /oauth/token", s.tokenEndpoint)
-	mux.HandleFunc("GET /oauth/link/{code}", s.linkStatus)
+	mux.HandleFunc("GET /oauth/link", s.linkStatus)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The machine-to-machine endpoints may be called from a browser-based
 		// MCP client (the MCP Inspector): no cookies there, so any origin.
@@ -135,11 +135,6 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	name := cleanName(req.ClientName)
-	if !s.regIP.hit(s.clientIP(r)) || !s.regDay.hit("all") {
-		w.Header().Set("Retry-After", "3600")
-		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many registrations: try again later")
-		return
-	}
 	now := time.Now()
 	c := &Client{ID: clientPrefix + randBase32(15), Name: name, RedirectURIs: req.RedirectURIs, AuthMethod: method, Created: now}
 	var secret string
@@ -148,16 +143,11 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		c.SecretHash = hashHex(secret)
 	}
 	s.mu.Lock()
-	if len(s.db.Clients) >= s.cfg.MaxClients {
-		s.mu.Unlock()
-		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "too many clients registered: try again later")
-		return
-	}
-	s.db.Clients[c.ID] = c
-	err := s.save()
+	err := s.addClient(c)
 	s.mu.Unlock()
 	if err != nil {
-		oauthError(w, http.StatusInternalServerError, "server_error", "could not save the client")
+		w.Header().Set("Retry-After", "3600")
+		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable", err.Error())
 		return
 	}
 	out := map[string]any{
@@ -288,7 +278,7 @@ func (s *Service) authorizeGet(w http.ResponseWriter, r *http.Request) {
 		fail("invalid_request", "PKCE with code_challenge_method=S256 is required")
 		return
 	}
-	if res := q.Get("resource"); res != "" && !strings.HasPrefix(strings.TrimRight(res, "/"), s.cfg.PublicURL) {
+	if res := q.Get("resource"); res != "" && res != s.resource() && res != s.cfg.PublicURL {
 		fail("invalid_target", "this server issues tokens for "+s.resource()+" only")
 		return
 	}
@@ -300,7 +290,7 @@ func (s *Service) authorizeGet(w http.ResponseWriter, r *http.Request) {
 	req := authReq{Client: c.ID, Redirect: redirect, State: state, Challenge: challenge, CSRF: csrf, Issued: time.Now().Unix()}
 	s.render(w, http.StatusOK, consentPage{
 		Client: c.Name, RedirectHost: displayHost(redirect), Req: s.sign(req),
-		Install: s.cfg.PublicURL + "/install.sh",
+		Install: s.cfg.PublicURL + "/install.sh", FormAction: cspOrigin(redirect),
 	})
 }
 
@@ -349,9 +339,10 @@ func (s *Service) authorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	ip := s.clientIP(r)
-	page := consentPage{Client: c.Name, RedirectHost: displayHost(redirect), Req: r.PostFormValue("req"), Install: s.cfg.PublicURL + "/install.sh"}
-	machine := ""
+	ip := ipKey(s.clientIP(r))
+	page := consentPage{Client: c.Name, RedirectHost: displayHost(redirect), Req: r.PostFormValue("req"),
+		Install: s.cfg.PublicURL + "/install.sh", FormAction: cspOrigin(redirect)}
+	machine, id, spent := "", newAccountID(), "" // spent: the link code, used up once the account exists
 	switch r.PostFormValue("choice") {
 	case "cloud":
 	case "machine":
@@ -362,33 +353,43 @@ func (s *Service) authorizePost(w http.ResponseWriter, r *http.Request) {
 			delete(s.links, code)
 			l = nil
 		}
+		var lc linkCode
 		if l != nil {
-			machine = l.machine
+			lc = *l
 		}
 		s.mu.Unlock()
+		if l != nil && (subtle.ConstantTimeCompare([]byte(lc.session), []byte(req.CSRF)) != 1 || lc.client != c.ID) {
+			// Someone else's code: a sign-in only continues with the code it made.
+			s.render(w, http.StatusBadRequest, errorPage{Title: "Not this sign-in's code", Text: "That link code belongs to another sign-in page. Start again from the app."})
+			return
+		}
 		if l == nil {
 			// First step: a code to run on the computer.
 			if !s.linkIP.hit(ip) {
-				page.Error = "Too many link codes from this network: wait an hour, or use ask-form.xyz instead."
+				page.Error = "Too many link codes from this network: wait an hour, or keep your forms on " + s.host() + " instead."
 				s.render(w, http.StatusTooManyRequests, page)
 				return
 			}
 			code = newLinkCode()
 			s.mu.Lock()
-			s.links[code] = &linkCode{expires: now.Add(linkTTL)}
+			s.links[code] = &linkCode{expires: now.Add(linkTTL), session: req.CSRF, account: newAccountID(), client: c.ID, clientName: c.Name}
 			s.mu.Unlock()
 			s.render(w, http.StatusOK, linkPage{consentPage: page, Code: code})
 			return
 		}
-		if machine == "" {
-			lp := linkPage{consentPage: page, Code: code}
+		lp := linkPage{consentPage: page, Code: code, Linked: lc.machine}
+		if lc.machine == "" {
 			lp.Error = "Your computer hasn't linked yet. Run the command there, then Continue."
 			s.render(w, http.StatusOK, lp)
 			return
 		}
-		s.mu.Lock()
-		delete(s.links, code)
-		s.mu.Unlock()
+		if confirm := r.PostFormValue("confirm"); confirm == "" || confirm != lc.machine {
+			// Linked: the user says it is their computer before anything is made.
+			lp.Online = s.online(lc.machine)
+			s.render(w, http.StatusOK, lp)
+			return
+		}
+		machine, id, spent = lc.machine, lc.account, code
 	default:
 		page.Error = "Pick where your forms should live."
 		s.render(w, http.StatusBadRequest, page)
@@ -400,19 +401,15 @@ func (s *Service) authorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	a, err := s.newAccount(machine, now)
+	a, err := s.newAccount(id, machine, now)
 	if err != nil {
 		s.mu.Unlock()
 		page.Error = err.Error()
 		s.render(w, http.StatusServiceUnavailable, page)
 		return
 	}
-	if err := s.save(); err != nil {
-		delete(s.db.Accounts, a.ID)
-		s.mu.Unlock()
-		page.Error = "ask-form couldn't save your account. Try again in a moment."
-		s.render(w, http.StatusInternalServerError, page)
-		return
+	if spent != "" {
+		delete(s.links, spent)
 	}
 	code := randToken()
 	s.codes[code] = &authCode{client: c.ID, redirect: redirect, challenge: req.Challenge, account: a.ID, expires: now.Add(codeTTL)}
@@ -424,12 +421,35 @@ func (s *Service) authorizePost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, withQuery(redirect, v), http.StatusSeeOther)
 }
 
+// online: "online", "offline", or "" when the relay can't tell.
+func (s *Service) online(machine string) string {
+	if s.cfg.MachineOnline == nil {
+		return ""
+	}
+	if s.cfg.MachineOnline(machine) {
+		return "online"
+	}
+	return "offline"
+}
+
+func (s *Service) host() string {
+	if u, err := url.Parse(s.cfg.PublicURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return s.cfg.PublicURL
+}
+
+// linkStatus answers the link page's poll (GET /oauth/link?code=…, the code
+// in the query so access logs don't keep it), for the browser that minted
+// the code only.
 func (s *Service) linkStatus(w http.ResponseWriter, r *http.Request) {
-	code := normalizeLinkCode(r.PathValue("code"))
+	code := normalizeLinkCode(r.URL.Query().Get("code"))
+	ck, _ := r.Cookie(csrfCookie)
 	s.mu.Lock()
 	l := s.links[code]
 	var machine string
-	known := l != nil && time.Now().Before(l.expires)
+	known := l != nil && time.Now().Before(l.expires) && ck != nil &&
+		subtle.ConstantTimeCompare([]byte(ck.Value), []byte(l.session)) == 1
 	if known {
 		machine = l.machine
 	}
@@ -437,8 +457,8 @@ func (s *Service) linkStatus(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"known": known, "linked": machine != ""}
 	if machine != "" {
 		out["machine"] = machine
-		if s.cfg.MachineOnline != nil {
-			out["online"] = s.cfg.MachineOnline(machine)
+		if o := s.online(machine); o != "" {
+			out["online"] = o == "online"
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -506,6 +526,30 @@ func displayHost(redirect string) string {
 	return u.Scheme + ":"
 }
 
+// cspOrigin is the redirect_uri's origin as a CSP source, for the consent
+// pages' form-action (Chrome applies it to the redirect after the POST):
+// https://claude.ai, http://127.0.0.1:5123, or a scheme like cursor:.
+// "" when the host has characters a CSP source can't carry.
+func cspOrigin(redirect string) string {
+	u, err := url.Parse(redirect)
+	if err != nil || u.Scheme == "" {
+		return ""
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "https" && scheme != "http" {
+		return scheme + ":"
+	}
+	for _, c := range u.Host {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune(".-:[]", c)) {
+			return ""
+		}
+	}
+	if u.Host == "" {
+		return ""
+	}
+	return scheme + "://" + u.Host
+}
+
 func withQuery(base string, v url.Values) string {
 	sep := "?"
 	if strings.Contains(base, "?") {
@@ -547,6 +591,11 @@ func (s *Service) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusUnauthorized, "invalid_client", "unknown client or wrong secret")
 		return
 	}
+	if !s.tokenLim.hit(c.ID) {
+		w.Header().Set("Retry-After", "60")
+		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many token requests for this client: try again in a minute")
+		return
+	}
 	now := time.Now()
 	switch r.PostFormValue("grant_type") {
 	case "authorization_code":
@@ -558,10 +607,7 @@ func (s *Service) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
 		}
 		if ac.used {
 			// A code used twice: someone else may hold it — revoke what it gave.
-			for _, h := range ac.issued {
-				delete(s.db.Tokens, h)
-			}
-			s.save()
+			s.revokeFamily(ac.family)
 			oauthError(w, http.StatusBadRequest, "invalid_grant", "code already used")
 			return
 		}
@@ -577,35 +623,40 @@ func (s *Service) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
 			oauthError(w, http.StatusBadRequest, "invalid_grant", "the account is gone")
 			return
 		}
-		ac.used = true
-		access, refresh, hashes := s.issue(ac.account, c.ID, now)
-		ac.issued = hashes
-		if err := s.save(); err != nil {
-			oauthError(w, http.StatusInternalServerError, "server_error", "could not save the tokens")
-			return
-		}
+		ac.used, ac.family = true, randBase32(10)
+		access, refresh := s.issue(ac.account, c.ID, ac.family, now)
 		tokenResponse(w, access, refresh)
 	case "refresh_token":
-		rt := r.PostFormValue("refresh_token")
-		h := hashHex(rt)
+		h := hashHex(r.PostFormValue("refresh_token"))
 		t := s.db.Tokens[h]
-		if t == nil || t.Kind != "refresh" || t.Client != c.ID || now.After(t.Expires) ||
-			(!t.RotatedAt.IsZero() && now.Sub(t.RotatedAt) > refreshGrace) {
-			oauthError(w, http.StatusBadRequest, "invalid_grant", "unknown, expired or already used refresh token")
+		if t == nil || t.Kind != "refresh" || t.Client != c.ID || now.After(t.Expires) {
+			oauthError(w, http.StatusBadRequest, "invalid_grant", "unknown or expired refresh token")
+			return
+		}
+		if !t.RotatedAt.IsZero() {
+			if now.Sub(t.RotatedAt) <= refreshGrace {
+				// The client lost the answer: the same pair again, nothing new.
+				if p := s.rotated[h]; p != nil {
+					tokenResponse(w, p.access, p.refresh)
+					return
+				}
+				oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token already used")
+				return
+			}
+			// A replay: whoever holds it may not be the client. End the grant.
+			s.revokeFamily(t.Family)
+			delete(s.db.Tokens, h)
+			oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token already used: this sign-in is revoked, connect again")
 			return
 		}
 		if s.db.Accounts[t.Account] == nil {
 			oauthError(w, http.StatusBadRequest, "invalid_grant", "the account is gone")
 			return
 		}
-		if t.RotatedAt.IsZero() {
-			t.RotatedAt = now
-		}
-		access, refresh, _ := s.issue(t.Account, c.ID, now)
-		if err := s.save(); err != nil {
-			oauthError(w, http.StatusInternalServerError, "server_error", "could not save the tokens")
-			return
-		}
+		t.RotatedAt = now
+		delete(s.db.Tokens, t.Pair) // the access token issued with it
+		access, refresh := s.issue(t.Account, c.ID, t.Family, now)
+		s.rotated[h] = &issued{access: access, refresh: refresh, at: now}
 		tokenResponse(w, access, refresh)
 	default:
 		oauthError(w, http.StatusBadRequest, "unsupported_grant_type", "authorization_code or refresh_token")
