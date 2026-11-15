@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>ask-form</title>
+<style>
+:root {
+  color-scheme: light;
+  --af-fg: var(--color-text-primary, #1c1917);
+  --af-muted: var(--color-text-secondary, #6b625b);
+  --af-border: var(--color-border-primary, rgba(28, 25, 23, .15));
+  --af-soft: var(--color-background-secondary, rgba(28, 25, 23, .04));
+  --af-radius: var(--border-radius-lg, 12px);
+  --af-radius-sm: var(--border-radius-md, 8px);
+  --af-font: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+  --af-accent: hsl(24 95% 53%);
+  --af-accent-fg: #fff;
+  --af-wait: var(--color-text-warning, #b45309);
+  --af-ok: var(--color-text-success, #15803d);
+  --af-bad: var(--color-text-danger, #b91c1c);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --af-fg: var(--color-text-primary, #f5f0eb);
+  --af-muted: var(--color-text-secondary, #a8a29e);
+  --af-border: var(--color-border-primary, rgba(245, 240, 235, .16));
+  --af-soft: var(--color-background-secondary, rgba(245, 240, 235, .05));
+  --af-accent: hsl(24 95% 56%);
+  --af-accent-fg: hsl(24 30% 8%);
+  --af-wait: var(--color-text-warning, #fbbf24);
+  --af-ok: var(--color-text-success, #4ade80);
+  --af-bad: var(--color-text-danger, #f87171);
+}
+html, body { margin: 0; background: transparent; }
+body { font: 14px/1.45 var(--af-font); color: var(--af-fg); -webkit-font-smoothing: antialiased; }
+.card { border: 1px solid var(--af-border); border-radius: var(--af-radius); padding: 14px 16px 16px; margin: 1px; }
+.brand { display: flex; align-items: center; gap: 6px; color: var(--af-muted); font-size: 12px; letter-spacing: .02em; margin-bottom: 8px; }
+.brand svg { flex: none; }
+h1 { font-size: 16px; line-height: 1.3; font-weight: var(--font-weight-semibold, 600); margin: 0 0 4px; overflow-wrap: anywhere; }
+.meta { color: var(--af-muted); font-size: 13px; margin: 0 0 10px; }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: var(--font-weight-medium, 500); margin: 0 0 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.status.wait { color: var(--af-wait); }
+.status.wait .dot { animation: pulse 1.6s ease-in-out infinite; }
+.status.ok { color: var(--af-ok); }
+.status.bad { color: var(--af-bad); }
+.status.off { color: var(--af-muted); }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .status.wait .dot { animation: none; } }
+.note { font-size: 13px; color: var(--af-muted); margin: -4px 0 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.note.reason { color: var(--af-fg); background: var(--af-soft); border-radius: var(--af-radius-sm); padding: 8px 10px; margin: -4px 0 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { appearance: none; font: inherit; font-size: 13.5px; font-weight: var(--font-weight-medium, 500); border-radius: var(--af-radius-sm);
+  padding: 7px 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
+  border: 1px solid var(--af-border); background: transparent; color: var(--af-fg); }
+.btn:hover { background: var(--af-soft); }
+.btn.primary { background: var(--af-accent); border-color: var(--af-accent); color: var(--af-accent-fg); }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn:focus-visible { outline: 2px solid var(--af-accent); outline-offset: 2px; }
+.btn[disabled] { opacity: .6; cursor: default; filter: none; }
+.hint { font-size: 12.5px; color: var(--af-muted); margin: 10px 0 0; }
+.hint:empty { display: none; }
+.link { font-size: 12.5px; color: var(--af-muted); margin: 10px 0 0; overflow-wrap: anywhere; user-select: all; }
+.skel { height: 12px; border-radius: 6px; background: var(--af-soft); margin: 6px 0; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="card" id="card" aria-live="polite">
+  <div class="brand">
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.8 8.2l2.1 2.1 4.3-4.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>ask-form</span>
+  </div>
+  <h1 id="title"><span class="skel" style="display:block;width:55%"></span></h1>
+  <p class="meta" id="meta"></p>
+  <p class="status off" id="status" hidden><span class="dot"></span><span id="status-text"></span></p>
+  <p class="note" id="note" hidden></p>
+  <div class="actions">
+    <a class="btn" id="open" href="#" target="_blank" rel="noopener noreferrer" hidden></a>
+    <button class="btn primary" id="continue" type="button" hidden></button>
+  </div>
+  <p class="hint" id="hint"></p>
+  <p class="link" id="link" hidden></p>
+</div>
+<script>
+(function () {
+  "use strict";
+  var T = {
+    en: {
+      creating: "Creating the form…", cancelled: "The form wasn't created.", failed: "The form wasn't created.",
+      questions: function (n) { return n === 1 ? "1 question" : n + " questions"; },
+      until: function (s) { return "open until " + s; },
+      waiting: "Waiting for your answers", waitingMulti: function (n) { return n === 0 ? "Waiting for answers" : (n === 1 ? "1 answer so far" : n + " answers so far"); },
+      submitted: "Answered", declined: "Declined", revoked: "Withdrawn", expired: "Expired", closed: "Closed",
+      closedMulti: function (n) { return n === 1 ? "Closed · 1 answer" : "Closed · " + n + " answers"; },
+      open: "Open form", reopen: "View answers", cont: "Continue with my answers", contDeclined: "Continue",
+      contMulti: "Continue with the answers", sent: "Sent to the chat", sending: "Sending…",
+      notSent: "The chat didn't take the message. Tell it you've answered.",
+      phone: "The link works on any device, your phone included.",
+      lost: "The card can't follow this form any more. Ask in the chat for the answers.",
+      noReason: "No reason given.", reasonPrefix: "Reason: ",
+      msgSubmitted: function (t) { return "I answered the form “" + t + "”"; },
+      msgDeclined: function (t) { return "I declined the form “" + t + "”."; },
+      msgMulti: function (t, n) { return "The form “" + t + "” has " + (n === 1 ? "1 answer" : n + " answers") + "."; },
+      msgAnswers: "My answers:", msgMore: "(more with get_answers)", yes: "yes", no: "no",
+      msgRead: function (id) { return "Read them with get_answers (id " + id + ")."; }
+    },
+    fr: {
+      creating: "Création du formulaire…", cancelled: "Le formulaire n’a pas été créé.", failed: "Le formulaire n’a pas été créé.",
+      questions: function (n) { return n <= 1 ? n + " question" : n + " questions"; },
+      until: function (s) { return "ouvert jusqu’à " + s; },
+      waiting: "En attente de vos réponses", waitingMulti: function (n) { return n === 0 ? "En attente de réponses" : (n === 1 ? "1 réponse pour l’instant" : n + " réponses pour l’instant"); },
+      submitted: "Répondu", declined: "Refusé", revoked: "Retiré", expired: "Expiré", closed: "Fermé",
+      closedMulti: function (n) { return n <= 1 ? "Fermé · " + n + " réponse" : "Fermé · " + n + " réponses"; },
+      open: "Ouvrir le formulaire", reopen: "Voir les réponses", cont: "Continuer avec mes réponses", contDeclined: "Continuer",
+      contMulti: "Continuer avec les réponses", sent: "Envoyé dans la conversation", sending: "Envoi…",
+      notSent: "La conversation n’a pas pris le message. Dites-lui que vous avez répondu.",
+      phone: "Le lien marche sur tout appareil, téléphone compris.",
+      lost: "Cette carte ne peut plus suivre le formulaire. Demandez les réponses dans la conversation.",
+      noReason: "Aucune raison donnée.", reasonPrefix: "Raison : ",
+      msgSubmitted: function (t) { return "J’ai répondu au formulaire « " + t + " »"; },
+      msgDeclined: function (t) { return "J’ai refusé le formulaire « " + t + " »."; },
+      msgMulti: function (t, n) { return "Le formulaire « " + t + " » a " + (n <= 1 ? n + " réponse" : n + " réponses") + "."; },
+      msgAnswers: "Mes réponses :", msgMore: "(la suite avec get_answers)", yes: "oui", no: "non",
+      msgRead: function (id) { return "Lisez-les avec get_answers (id " + id + ")."; }
+    }
+  };
+  var MAX_MESSAGE = 6000;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var host = { context: {}, caps: {} };
+  var input = null;       // create_form's arguments
+  var form = null;        // what we know of the form
+  var lang = "en";
+  var polling = false, stopped = false, failures = 0, timer = null;
+  var told = false;       // model context updated once the form closed
+  var sent = false;
+
+  // ---- JSON-RPC over postMessage (MCP Apps, no SDK) ----
+  var nextId = 1, waiting = {};
+  function post(msg) { window.parent.postMessage(msg, "*"); }
+  function request(method, params, ms) {
+    var id = nextId++;
+    return new Promise(function (resolve, reject) {
+      waiting[id] = { resolve: resolve, reject: reject };
+      post({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+      if (ms) setTimeout(function () {
+        if (waiting[id]) { delete waiting[id]; reject(new Error("timeout")); }
+      }, ms);
+    });
+  }
+  function notify(method, params) { post({ jsonrpc: "2.0", method: method, params: params || {} }); }
+  function reply(id, result) { post({ jsonrpc: "2.0", id: id, result: result || {} }); }
+
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (!m || m.jsonrpc !== "2.0") return;
+    if (!m.method) {
+      var w = waiting[m.id];
+      if (!w) return;
+      delete waiting[m.id];
+      if (m.error) w.reject(Object.assign(new Error(m.error.message || "error"), { code: m.error.code }));
+      else w.resolve(m.result);
+      return;
+    }
+    switch (m.method) {
+      case "ui/notifications/tool-input":
+        onInput(m.params && m.params.arguments); break;
+      case "ui/notifications/tool-input-partial":
+        if (!input) onInput(m.params && m.params.arguments, true); break;
+      case "ui/notifications/tool-result":
+        onResult(m.params || {}); break;
+      case "ui/notifications/tool-cancelled":
+        if (!form) showEnd(t().cancelled); break;
+      case "ui/notifications/host-context-changed":
+        Object.assign(host.context, m.params || {}); applyHost(); break;
+      case "ui/resource-teardown":
+        stopped = true; clearTimeout(timer); if (m.id != null) reply(m.id); break;
+      case "ping":
+        if (m.id != null) reply(m.id); break;
+      default:
+        if (m.id != null) post({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "not supported" } });
+    }
+  });
+
+  function t() { return T[lang] || T.en; }
+
+  // ---- host theme ----
+  function applyHost() {
+    var c = host.context || {};
+    var theme = c.theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", theme);
+    var vars = c.styles && c.styles.variables;
+    if (vars) for (var k in vars) if (vars[k] && k.indexOf("--") === 0) document.documentElement.style.setProperty(k, vars[k]);
+    var fonts = c.styles && c.styles.css && c.styles.css.fonts;
+    if (fonts && !document.getElementById("host-fonts")) {
+      var s = document.createElement("style"); s.id = "host-fonts"; s.textContent = fonts; document.head.appendChild(s);
+    }
+    if (!form && !input) pickLang();
+  }
+  function pickLang(l) {
+    l = (l || (host.context && host.context.locale) || "").toLowerCase();
+    lang = l.indexOf("fr") === 0 ? "fr" : "en";
+    document.documentElement.lang = lang;
+  }
+
+  // ---- what the card shows ----
+  function fieldCount(fields) {
+    if (typeof fields === "string") { try { fields = JSON.parse(fields); } catch (e) { return 0; } }
+    if (!Array.isArray(fields)) return 0;
+    var n = 0;
+    fields.forEach(function (f) { if (f && ["markdown", "html", "diff", "details"].indexOf(f.type) < 0) n++; });
+    return n;
+  }
+  function labels() {
+    var out = {}, fields = input && input.fields;
+    if (typeof fields === "string") { try { fields = JSON.parse(fields); } catch (e) { fields = null; } }
+    if (Array.isArray(fields)) fields.forEach(function (f) { if (f && f.key) out[f.key] = f.label || f.key; });
+    return out;
+  }
+  function onInput(args, partial) {
+    if (!args || typeof args !== "object") return;
+    if (!partial) input = args;
+    if (args.lang) pickLang(args.lang);
+    if (!form) {
+      $("title").textContent = args.title || t().creating;
+      var n = fieldCount(args.fields);
+      $("meta").textContent = n ? t().questions(n) : "";
+      setStatus("off", t().creating);
+    }
+    resize();
+  }
+  function onResult(res) {
+    if (res.isError) {
+      var text = (res.content || []).filter(function (c) { return c && c.type === "text"; }).map(function (c) { return c.text; }).join("\n");
+      showEnd(text || t().failed);
+      return;
+    }
+    var sc = res.structuredContent || (res._meta && res._meta.structuredContent);
+    if (!sc || !sc.id) return;
+    if (sc.lang) pickLang(sc.lang);
+    form = Object.assign(form || {}, sc);
+    render();
+    if (!polling && !done()) poll();
+  }
+  function done() {
+    if (!form) return false;
+    return form.status && form.status !== "pending";
+  }
+  function count() {
+    if (form.answerCount != null) return form.answerCount;
+    return form.responses ? form.responses.length : 0;
+  }
+  function when(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    var opts = { hour: "2-digit", minute: "2-digit" };
+    if (d - Date.now() > 20 * 3600 * 1000) { opts.weekday = "short"; opts.day = "numeric"; opts.month = "short"; }
+    try { opts.timeZone = host.context.timeZone || undefined; return d.toLocaleString(host.context.locale || lang, opts); }
+    catch (e) { return d.toLocaleString(); }
+  }
+  function setStatus(kind, text) {
+    var s = $("status");
+    s.className = "status " + kind;
+    $("status-text").textContent = text;
+    s.hidden = !text;
+  }
+  function render() {
+    var L = t();
+    $("title").textContent = form.title || (input && input.title) || "ask-form";
+    var bits = [];
+    var n = form.fieldCount != null ? form.fieldCount : fieldCount(input && input.fields);
+    if (n) bits.push(L.questions(n));
+    if (form.status === "pending" && form.expiresAt) bits.push(L.until(when(form.expiresAt)));
+    $("meta").textContent = bits.join(" · ");
+    var note = $("note");
+    note.hidden = true; note.className = "note";
+    var st = form.status || "pending";
+    if (form.multi) {
+      var c = count();
+      if (st === "pending") setStatus(c ? "ok" : "wait", L.waitingMulti(c));
+      else setStatus(c ? "ok" : "off", L.closedMulti(c));
+    } else if (st === "pending") setStatus("wait", L.waiting);
+    else if (st === "submitted") setStatus("ok", L.submitted);
+    else if (st === "declined") {
+      setStatus("bad", L.declined);
+      note.className = "note reason";
+      note.textContent = form.reason ? L.reasonPrefix + form.reason : L.noReason;
+      note.hidden = false;
+    } else setStatus("off", L[st] || st);
+
+    var open = $("open");
+    if (form.url && /^https?:\/\//.test(form.url)) {
+      open.href = form.url;
+      open.textContent = "";
+      open.appendChild(document.createTextNode(st === "pending" ? L.open : L.reopen));
+      var arrow = document.createElement("span"); arrow.setAttribute("aria-hidden", "true"); arrow.textContent = "↗";
+      open.appendChild(arrow);
+      open.className = st === "pending" && !form.multi ? "btn primary" : "btn";
+      open.hidden = st === "revoked" || st === "expired";
+    }
+    var cont = $("continue");
+    var canContinue = st === "submitted" || st === "declined" || (form.multi && count() > 0);
+    cont.hidden = !canContinue || sent;
+    cont.textContent = st === "declined" ? L.contDeclined : (form.multi ? L.contMulti : L.cont);
+    cont.disabled = false;
+    if (canContinue && !form.multi) open.className = "btn";
+    $("hint").textContent = sent ? L.sent : (st === "pending" && !form.multi ? L.phone : "");
+    if (done() && !told) tellModel();
+    resize();
+  }
+  function showEnd(text) {
+    stopped = true;
+    $("title").textContent = (input && input.title) || "ask-form";
+    $("meta").textContent = "";
+    setStatus("bad", text);
+    $("open").hidden = true; $("continue").hidden = true; $("hint").textContent = "";
+    resize();
+  }
+
+  // ---- following the form ----
+  function poll() {
+    if (stopped || !form || !form.id || done() && !form.multi) { polling = false; return; }
+    if (form.multi && done()) { polling = false; return; }
+    if (document.hidden) { polling = false; return; }
+    polling = true;
+    var started = Date.now();
+    request("tools/call", { name: "get_answers", arguments: { id: form.id, wait_seconds: form.multi ? 0 : 25 } }, 60000)
+      .then(function (res) {
+        failures = 0;
+        if (res && res.structuredContent && !res.isError) {
+          Object.assign(form, res.structuredContent);
+          render();
+        }
+        var gap = form.multi ? 10000 : Math.max(0, 3000 - (Date.now() - started));
+        timer = setTimeout(poll, gap);
+      }, function (err) {
+        failures++;
+        if (err && err.code === -32601 || failures > 6) {
+          polling = false;
+          $("hint").textContent = t().lost;
+          resize();
+          return;
+        }
+        timer = setTimeout(poll, Math.min(60000, 5000 * failures));
+      });
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && !polling && form && !stopped) poll();
+  });
+
+  // ---- telling the chat ----
+  function show(v) {
+    if (v === true) return t().yes;
+    if (v === false) return t().no;
+    if (v == null) return "";
+    if (Array.isArray(v)) return v.map(function (x) { return typeof x === "object" ? JSON.stringify(x) : String(x); }).join(", ");
+    if (typeof v === "object") return v.secret ? "(secret, " + v.chars + " characters)" : JSON.stringify(v);
+    return String(v);
+  }
+  function summary() {
+    var L = t(), title = form.title || "";
+    if (form.multi) return L.msgMulti(title, count()) + " " + L.msgRead(form.id);
+    if (form.status === "declined") return L.msgDeclined(title) + (form.reason ? " " + L.reasonPrefix + form.reason : "");
+    var lines = [L.msgSubmitted(title) + " (id " + form.id + ").", L.msgAnswers], names = labels();
+    var a = form.answers || {};
+    var text = lines.join("\n");
+    for (var k in a) {
+      if (/\.files$/.test(k)) continue;
+      var line = "- " + (names[k] || k) + ": " + show(a[k]);
+      if (text.length + line.length + 1 > MAX_MESSAGE) { text += "\n" + L.msgMore; break; }
+      text += "\n" + line;
+    }
+    return text.replace(/\n{4,}/g, "\n\n\n").replace(/[ \t]{65,}/g, " ");
+  }
+  function tellModel() {
+    told = true;
+    request("ui/update-model-context", {
+      content: [{ type: "text", text: summary() }],
+      structuredContent: { form: form }
+    }, 10000).catch(function () {});
+  }
+  $("continue").addEventListener("click", function () {
+    var cont = $("continue"), L = t();
+    cont.disabled = true;
+    cont.textContent = L.sending;
+    request("ui/message", { role: "user", content: [{ type: "text", text: summary() }] }, 0).then(function (res) {
+      if (res && res.isError) { cont.disabled = false; cont.textContent = L.cont; $("hint").textContent = L.notSent; resize(); return; }
+      sent = true; render();
+    }, function () {
+      cont.disabled = false; render(); $("hint").textContent = L.notSent; resize();
+    });
+  });
+  $("open").addEventListener("click", function (e) {
+    var url = form && form.url;
+    if (!url || !/^https?:\/\//.test(url)) return;
+    e.preventDefault();
+    request("ui/open-link", { url: url }, 0).catch(function (err) {
+      if (err && /denied|cancel/i.test(err.message || "")) return;
+      var w = null;
+      try { w = window.open(url, "_blank", "noopener"); } catch (x) {}
+      if (!w) { var l = $("link"); l.textContent = url; l.hidden = false; resize(); }
+    });
+  });
+
+  // ---- size ----
+  var lastH = 0, lastW = 0;
+  function resize() {
+    var r = document.documentElement.getBoundingClientRect();
+    var h = Math.ceil(r.height), w = Math.ceil(r.width);
+    if (h === lastH && w === lastW) return;
+    lastH = h; lastW = w;
+    notify("ui/notifications/size-changed", { width: w, height: h });
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(document.documentElement);
+
+  // ---- start ----
+  pickLang();
+  request("ui/initialize", {
+    appInfo: { name: "ask-form card", version: "1" },
+    appCapabilities: { availableDisplayModes: ["inline"] },
+    protocolVersion: "2026-01-26"
+  }, 15000).then(function (res) {
+    host.context = (res && res.hostContext) || {};
+    host.caps = (res && res.hostCapabilities) || {};
+    applyHost();
+    notify("ui/notifications/initialized", {});
+    resize();
+  }, function () {
+    // No MCP Apps host answered (an older ChatGPT): read its globals.
+    var o = window.openai;
+    if (o) {
+      host.context = { theme: o.theme, locale: o.locale };
+      applyHost();
+      if (o.toolInput) onInput(o.toolInput);
+      if (o.toolOutput) onResult({ structuredContent: o.toolOutput });
+    }
+  });
+})();
+</script>
+</body>
+</html>
