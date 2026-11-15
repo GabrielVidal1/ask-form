@@ -7,6 +7,14 @@ name: Release
 on:
   push:
     tags: ["v*.*.*"]
+  # Publish an existing release to npm again (a failed npm step): Actions →
+  # Release → Run workflow, or `gh workflow run release.yml -f tag=vX.Y.Z`.
+  # The same file, so npm's trusted publishing (bound to release.yml) holds.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to publish to npm (vX.Y.Z)"
+        required: true
 
 permissions:
   contents: write
@@ -15,6 +23,7 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,14 +54,41 @@ jobs:
       # publish is by hand (`npm login && scripts/npm-publish.sh vX.Y.Z
       # --trust`): a package must exist before it can trust a workflow. A
       # failure here never holds the GitHub release back.
+      # No registry-url: setup-node would write an .npmrc whose token is
+      # NODE_AUTH_TOKEN, and an empty one (no NPM_TOKEN secret) makes npm
+      # stop at ENEEDAUTH instead of trying the OIDC token (v0.18.0).
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
       - name: Publish to npm
         continue-on-error: true
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@^11.10.0
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+          fi
           scripts/npm-publish.sh "$GITHUB_REF_NAME" --dist dist
+
+  npm:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Publish the release to npm
+        env:
+          TAG: ${{ inputs.tag }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a release tag: $TAG" >&2; exit 1 ;; esac
+          npm install -g npm@^11.10.0
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+          fi
+          # The binaries come from the GitHub release, checked against its
+          # checksums.txt.
+          scripts/npm-publish.sh "$TAG"

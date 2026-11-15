@@ -11,7 +11,7 @@
 #
 # A version already on npm is skipped, so a re-run finishes what a failed one
 # started. In GitHub Actions (release.yml) npm authenticates with the
-# workflow's OIDC token (trusted publishing) or NODE_AUTH_TOKEN, and adds
+# workflow's OIDC token (trusted publishing) or an NPM_TOKEN .npmrc, and adds
 # provenance. By hand: `npm login` first. NPM_REGISTRY points elsewhere for a
 # test (a throwaway Verdaccio).
 set -eu
