@@ -242,6 +242,7 @@ var fr = map[string]string{
 
 	// The examples and `brand preview` (internal/server/examples.go).
 	"Brand preview.": "Aperçu de la marque.",
+	"Made by an AI assistant in a chat, with ask-form. Never type a password or a card number here.":                                         "Créé par un assistant IA dans une conversation, avec ask-form. Ne saisissez jamais de mot de passe ni de numéro de carte ici.",
 	"Your forms with this brand. Edit the CSS and reload to see the change; sending shows the JSON the agent reads back. Nothing is stored.": "Vos formulaires avec cette marque. Modifiez le CSS et rechargez pour voir le changement ; l'envoi montre le JSON que l'agent reçoit. Rien n'est gardé.",
 	"Example form.": "Formulaire d'exemple.",
 	"What the person gets when an agent runs":                           "Ce que reçoit la personne quand un agent lance",

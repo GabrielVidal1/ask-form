@@ -57,9 +57,10 @@ where its forms live:
 - **on ask-form.xyz**: a form and its answers are deleted 24 hours after it
   closes; nobody but the link's holder opens it;
 - **on your computer**: run `ask-form link CODE` there with the code the
-  sign-in page shows. The forms stay on that machine like any other (they
-  only pass through the relay, as answers always do); it must be on and
-  running `ask-form serve` when the assistant asks.
+  sign-in page shows, then check the page names that computer. The forms stay
+  on that machine like any other (they only pass through the relay, as
+  answers always do); it must be on and running `ask-form serve` when the
+  assistant asks. `ask-form link --off` unlinks every chat.
 
 No `secret` or `file` fields from a chat: a secret would land in the
 conversation. Details in [how it works](docs/how-it-works.md#in-chat-apps).

@@ -30,6 +30,7 @@ import (
 )
 
 type hostedParts struct {
+	dir     string
 	cloud   *server.Server
 	acc     *accounts.Service
 	backend *hosted.Backend
@@ -91,7 +92,7 @@ func setupHosted(dir, publicURL string, policy server.CloudPolicy, relayOf func(
 			w.Write(zip)
 		}),
 	}
-	return &hostedParts{cloud: cloud, acc: acc, backend: backend}, routes, nil
+	return &hostedParts{dir: dir, cloud: cloud, acc: acc, backend: backend}, routes, nil
 }
 
 // unmeteredPaths: called from a chat app's servers (shared addresses); each
@@ -103,6 +104,7 @@ func (h *hostedParts) start(ctx context.Context, r *relay.Relay) {
 	h.backend.Relay = r
 	h.cloud.Claim = r.ClaimCloud
 	go h.cloud.RunRetention(ctx, 10*time.Minute)
+	go h.takedowns(ctx, 30*time.Second)
 	go func() {
 		t := time.NewTicker(time.Hour)
 		defer t.Stop()
@@ -115,6 +117,78 @@ func (h *hostedParts) start(ctx context.Context, r *relay.Relay) {
 			}
 		}
 	}()
+}
+
+// link is relay.Config.Link: a machine took the account behind a code.
+func (h *hostedParts) link(code, machine string) (string, string, error) {
+	info, err := h.acc.Link(code, machine)
+	return info.Account, info.Client, err
+}
+
+// close flushes the accounts at shutdown.
+func (h *hostedParts) close() {
+	if err := h.acc.Close(); err != nil {
+		log.Printf("hosted: saving accounts: %v", err)
+	}
+}
+
+// takedownFile lists what the relay's owner took down (`ask-form-relay
+// takedown`): a cloud form's id, or an account (acct_…) whose tokens stop
+// working and whose cloud forms go. Applied every so often, again at start.
+func takedownFile(dir string) string { return filepath.Join(dir, "takedown") }
+
+func (h *hostedParts) takedowns(ctx context.Context, every time.Duration) {
+	done := map[string]bool{}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		b, _ := os.ReadFile(takedownFile(h.dir))
+		for _, line := range strings.Split(string(b), "\n") {
+			id := strings.TrimSpace(line)
+			if id == "" || strings.HasPrefix(id, "#") || done[id] {
+				continue
+			}
+			done[id] = true
+			n := 0
+			if strings.HasPrefix(id, "acct_") {
+				h.acc.Remove(id)
+				for _, st := range h.cloud.Store().List() {
+					if st.Meta[server.MetaAccount] == id && h.cloud.Store().Delete(st.ID) == nil {
+						n++
+					}
+				}
+			} else if h.cloud.Store().Delete(id) == nil {
+				n++
+			}
+			log.Printf("takedown %s: %d cloud forms deleted", id, n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// takedownCmd: ask-form-relay takedown <form-id | acct_…>
+func takedownCmd(args []string) int {
+	dir := os.Getenv("ASK_FORM_RELAY_HOSTED")
+	if len(args) == 2 && strings.HasPrefix(args[0], "--hosted=") {
+		dir, args = strings.TrimPrefix(args[0], "--hosted="), args[1:]
+	}
+	if len(args) != 1 || dir == "" {
+		fmt.Fprintln(os.Stderr, "usage: ask-form-relay takedown [--hosted=DIR] <form-id | acct_…>   (DIR: --hosted's, or ASK_FORM_RELAY_HOSTED)")
+		return 2
+	}
+	f, err := os.OpenFile(takedownFile(dir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s\n", strings.TrimSpace(args[0]))
+	fmt.Printf("%s: taken down within 30 s (a running relay reads %s)\n", args[0], takedownFile(dir))
+	return 0
 }
 
 // longCall lets an MCP call outlive the listener's write timeout:

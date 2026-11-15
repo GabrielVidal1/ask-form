@@ -38,6 +38,14 @@ type LinkRequest struct {
 	Code string `json:"code"`
 }
 
+// LinkResponse names the account the code stood for (the machine takes
+// only the accounts it linked) and the app that asked.
+type LinkResponse struct {
+	OK      bool   `json:"ok"`
+	Account string `json:"account"`
+	Client  string `json:"client,omitempty"`
+}
+
 // Response is what the machine answered.
 type Response struct {
 	Status int         `json:"status"`

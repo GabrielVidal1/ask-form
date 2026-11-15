@@ -48,6 +48,8 @@ const usage = `ask-form-relay — public relay for ask-form
                                         Claude's code sandbox (ask-form start --key)
   ask-form-relay key rm <name>
   ask-form-relay key ls
+  ask-form-relay takedown <form-id | acct_…>   delete a cloud form, or an account and its cloud forms
+                                        (--hosted only; read by the running relay within 30 s)
   ask-form-relay healthcheck            exit 0 when the public listener on :8080 answers
 
 Route the --listen port from the internet (it serves /, /forms/*, /examples,
@@ -76,6 +78,8 @@ func main() {
 		os.Exit(machine(os.Args[2:], machines))
 	case "key":
 		os.Exit(keyCmd(os.Args[2:], keys))
+	case "takedown":
+		os.Exit(takedownCmd(os.Args[2:]))
 	case "healthcheck":
 		// For the container's HEALTHCHECK (the image has no shell or curl).
 		res, err := http.Get("http://127.0.0.1:8080/robots.txt")
@@ -147,7 +151,7 @@ func serve(args []string, machines, keys string) int {
 		},
 	}
 	if hp != nil {
-		cfg.Cloud, cfg.Link, cfg.Routes, cfg.Unmetered = hp.cloud, hp.acc.Link, routes, unmeteredPaths
+		cfg.Cloud, cfg.Link, cfg.Routes, cfg.Unmetered = hp.cloud, hp.link, routes, unmeteredPaths
 	}
 	r, err = relay.New(cfg)
 	if err != nil {
@@ -190,6 +194,9 @@ func serve(args []string, machines, keys string) int {
 	}
 	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if hp != nil {
+		hp.close()
+	}
 	pub.Shutdown(sctx)
 	if mach != nil {
 		mach.Shutdown(sctx)

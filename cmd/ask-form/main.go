@@ -330,12 +330,15 @@ func cmdServe(args []string) int {
 		if err != nil || tok == "" {
 			log.Fatalf("relay token %s: %v (mint one with `ask-form-relay machine add <name>`)", path, err)
 		}
-		link := &server.Link{File: filepath.Join(*conf, "chat-link")}
+		link := &server.Link{File: filepath.Join(*conf, "chat-link.json")}
 		agent := &tunnel.Agent{
 			RelayURL: *relayURL, Token: tok, Handler: srv.Public(), Forms: st.RoutableIDs,
-			Version: server.Version, Bridge: srv.AccountAPI(), BridgeOn: link.On,
+			Version: server.Version, Bridge: srv.AccountAPI(), BridgeAllows: link.Allows,
 		}
-		link.Relay = agent.Link
+		link.Relay = func(ctx context.Context, code string) (server.LinkInfo, error) {
+			r, err := agent.Link(ctx, code)
+			return server.LinkInfo{Account: r.Account, Client: r.Client}, err
+		}
 		srv.Relay, srv.Link = agent, link
 		go agent.Run(work)
 	}
@@ -803,7 +806,11 @@ func cmdLink(args []string) int {
 	if *off {
 		fmt.Fprintln(os.Stderr, "Unlinked: chat apps can't reach this machine's forms any more.")
 	} else {
-		fmt.Fprintln(os.Stderr, "Linked. Back on the sign-in page, continue: the forms that chat creates will live on this machine.")
+		app, _ := out["client"].(string)
+		if app == "" {
+			app = "a chat app"
+		}
+		fmt.Fprintf(os.Stderr, "Linked to %s's connection (the name it gave itself). Back on the sign-in page, check it names this computer and continue: that chat's forms will live here.\n", app)
 	}
 	printJSON(out)
 	return exitOK

@@ -123,12 +123,13 @@ func (r *Relay) link(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "bad link request", http.StatusBadRequest)
 		return
 	}
-	if err := r.cfg.Link(lr.Code, req.Header.Get("X-Ask-Machine")); err != nil {
+	account, client, err := r.cfg.Link(lr.Code, req.Header.Get("X-Ask-Machine"))
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"ok":true}`))
+	json.NewEncoder(w).Encode(tunnel.LinkResponse{OK: true, Account: account, Client: client})
 }
 
 // unmetered: a path the general per-IP limit skips (Config.Unmetered).

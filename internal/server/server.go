@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/brand"
@@ -100,6 +101,8 @@ type Server struct {
 	Claim func(ctx context.Context, id string) error
 	// Link: chat apps' accounts this machine took (`ask-form link`); nil = none.
 	Link *Link
+	// acctMu serializes the account API's creates (account_api.go).
+	acctMu sync.Mutex
 	// Restart asks `serve` to re-exec itself (POST /v1/restart, after
 	// `ask-form upgrade` swapped the binary); nil = not supported.
 	Restart func()

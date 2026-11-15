@@ -103,6 +103,7 @@ type formPage struct {
 	Count       int       // a multi form's answers so far
 	ShowCount   bool      // …shown to the respondent
 	HasRequired bool      // a question is required: paper says what * means
+	Hosted      bool      // a relay's cloud form, made from a chat: the anti-phishing note
 	Brand       pageBrand
 }
 
@@ -124,6 +125,7 @@ func buildPage(st store.State, base string, values url.Values, errs map[string]s
 		ID: st.ID, Title: st.Title, Base: base, Description: form.MarkdownHTML(st.Description),
 		CSRF: csrf, Nonce: nonce, Expires: st.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
 		Multi: st.Multi, Count: len(st.Responses), ShowCount: st.Multi && !st.HideCount,
+		Hosted: st.Meta[MetaHosted] == "1",
 	}
 	var css strings.Builder
 	fields := make([]pageField, 0, len(st.Fields))

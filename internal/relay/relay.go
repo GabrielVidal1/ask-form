@@ -84,8 +84,9 @@ type Config struct {
 	// claim their ids. Nil: the relay keeps no forms.
 	Cloud *server.Server
 	// Link takes `ask-form link CODE` from a machine (POST /_relay/v1/link):
-	// the chat-app account behind code now lives on that machine. Nil = 404.
-	Link func(code, machine string) error
+	// the chat-app account behind code now lives on that machine; it returns
+	// that account and the app that asked. Nil = 404.
+	Link func(code, machine string) (account, client string, err error)
 	// Routes are more public handlers, by ServeMux pattern (the MCP server
 	// at /mcp, its OAuth endpoints).
 	Routes map[string]http.Handler

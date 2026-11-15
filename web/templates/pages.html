@@ -41,6 +41,7 @@
     {{template "brand" .}}
     <h1>{{.Title}}</h1>
     {{if .Description}}<div class="md desc">{{.Description}}</div>{{end}}
+    {{if .Hosted}}<p class="hosted-note">{{t "Made by an AI assistant in a chat, with ask-form. Never type a password or a card number here."}}</p>{{end}}
     {{if and .ShowCount .Count}}<p class="count">{{tn .Count "%d person has answered so far." "%d people have answered so far."}}</p>{{end}}
     {{if .HasRequired}}<p class="print-legend" hidden><span class="req">*</span> {{t "required"}}</p>{{end}}
   </header>

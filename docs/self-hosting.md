@@ -435,6 +435,10 @@ sign-in (`/.well-known/oauth-*`, `/oauth/…`) and the plugin zip
 - Accounts that pick "my computer" reach a machine through this relay: the
   machine must run `serve` connected here, and its owner runs `ask-form link
   CODE` once.
+- Abuse: `ask-form-relay takedown <form-id | acct_…>` (with `--hosted=DIR` or
+  `ASK_FORM_RELAY_HOSTED`) deletes a cloud form, or an account, its tokens and
+  its cloud forms; the running relay applies it within 30 s. Cloud form pages
+  say they were made from a chat and never to type a password there.
 
 ## `ask-form-relay serve` reference
 

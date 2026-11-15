@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,7 +79,11 @@ func newWorld(t *testing.T) *world {
 	}
 	oauth := w.acc.Handler()
 	w.relay, err = relay.New(relay.Config{
-		MachinesFile: mfile, PublicURL: pub, Cloud: w.cloud, Link: w.acc.Link,
+		MachinesFile: mfile, PublicURL: pub, Cloud: w.cloud,
+		Link: func(code, m string) (string, string, error) {
+			i, err := w.acc.Link(code, m)
+			return i.Account, i.Client, err
+		},
 		Routes:    map[string]http.Handler{"/mcp": connector, "/.well-known/": oauth, "/oauth/": oauth},
 		Unmetered: []string{"/mcp", "/oauth/token", "/oauth/register", "/.well-known/"},
 	})
@@ -99,12 +104,15 @@ func newWorld(t *testing.T) *world {
 		t.Fatal(err)
 	}
 	w.laptop = server.New(server.Config{PublicURL: pub, AdminToken: "admintok", Key: []byte("k")}, lst)
-	link := &server.Link{File: filepath.Join(dir, "chat-link")}
+	link := &server.Link{File: filepath.Join(dir, "chat-link.json")}
 	w.agent = &tunnel.Agent{
 		RelayURL: pub, Token: tok, Handler: w.laptop.Public(), Forms: lst.RoutableIDs, Pollers: 2,
-		Bridge: w.laptop.AccountAPI(), BridgeOn: link.On,
+		Bridge: w.laptop.AccountAPI(), BridgeAllows: link.Allows,
 	}
-	link.Relay = w.agent.Link
+	link.Relay = func(ctx context.Context, code string) (server.LinkInfo, error) {
+		r, err := w.agent.Link(ctx, code)
+		return server.LinkInfo{Account: r.Account, Client: r.Client}, err
+	}
 	w.laptop.Relay, w.laptop.Link = w.agent, link
 	w.laptopAd = httptest.NewServer(w.laptop.Admin())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -182,6 +190,12 @@ func (w *world) signIn(choice string, linkNow func(code string)) string {
 		}
 		linkNow(string(lm[1]))
 		post.Set("link", string(lm[1]))
+		// Continue shows the computer that linked; the user confirms it.
+		st, _, b = w.do("POST", "/oauth/authorize", post.Encode(), h)
+		if st != 200 || !strings.Contains(string(b), "laptop") {
+			w.t.Fatalf("confirm page: %d %s", st, b)
+		}
+		post.Set("confirm", "laptop")
 		st, hdr, b = w.do("POST", "/oauth/authorize", post.Encode(), h)
 	}
 	if st != http.StatusSeeOther {
@@ -246,9 +260,12 @@ func TestCloudAccount(t *testing.T) {
 	if sc["where"] != "cloud" || !strings.HasPrefix(link, w.pub.URL+"/f/"+id+"?token=") {
 		t.Fatalf("structured: %v", sc)
 	}
-	// The relay serves the cloud form's page itself.
+	// The relay serves the cloud form's page itself, with the warning.
 	if st, _, b := w.do("GET", strings.TrimPrefix(link, w.pub.URL), "", nil); st != http.StatusFound && st != 200 {
 		t.Fatalf("form page: %d %s", st, b)
+	}
+	if b := w.page(link); !strings.Contains(b, "Never type a password") {
+		t.Fatal("a cloud form's page lacks the password warning")
 	}
 	stt, err := w.cloud.Store().Get(id)
 	if err != nil || stt.Meta[server.MetaUploads] != "off" || stt.Meta[server.MetaVia] != "mcp" {
@@ -275,8 +292,29 @@ func TestCloudAccount(t *testing.T) {
 	if text, _, isErr := w.call(access, "create_form", map[string]any{"title": "Key", "fields": []map[string]any{{"key": "k", "type": "secret"}}}); !isErr || !strings.Contains(text, "secret") {
 		t.Fatalf("secret field: %s", text)
 	}
-	for i := 0; i < 3; i++ {
+	// Parallel creates don't slip past the quota (3 open per account here).
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Some get 429 (4 calls in flight per account): fine, raw call.
+			body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_form","arguments":{"title":"Q","fields":[{"key":"c","type":"text"}]}}}`
+			w.do("POST", "/mcp", body, map[string]string{"Authorization": "Bearer " + access, "Content-Type": "application/json"})
+		}()
+	}
+	wg.Wait()
+	for i := 0; i < 3; i++ { // top up what the 429s left
 		w.call(access, "create_form", map[string]any{"title": "Q", "fields": spec})
+	}
+	open := 0
+	for _, st := range w.cloud.Store().List() {
+		if st.Meta[server.MetaAccount] != "" && st.Status == store.Pending {
+			open++
+		}
+	}
+	if open != 3 {
+		t.Fatalf("%d open forms, the quota is 3", open)
 	}
 	if text, _, isErr := w.call(access, "create_form", map[string]any{"title": "Q", "fields": spec}); !isErr || !strings.Contains(text, "close some") {
 		t.Fatalf("quota: %s", text)
@@ -339,4 +377,24 @@ func TestMachineAccount(t *testing.T) {
 	if text, _, isErr := w.call(access, "list_forms", map[string]any{}); !isErr || !strings.Contains(text, "link") {
 		t.Fatalf("after unlink: %s", text)
 	}
+	// Linking again takes the new account only: the old one stays refused.
+	again := w.signIn("machine", linkOnLaptop)
+	if text, _, isErr := w.call(again, "list_forms", map[string]any{}); isErr {
+		t.Fatalf("new account: %s", text)
+	}
+	if text, _, isErr := w.call(access, "list_forms", map[string]any{}); !isErr {
+		t.Fatalf("an account unlinked earlier came back: %s", text)
+	}
+}
+
+// page fetches a form's page through the relay, the way a browser does
+// (the token visit sets a cookie, then the clean URL).
+func (w *world) page(link string) string {
+	w.t.Helper()
+	st, hdr, b := w.do("GET", strings.TrimPrefix(link, w.pub.URL), "", nil)
+	if st == http.StatusFound {
+		c := strings.Split(hdr.Get("Set-Cookie"), ";")[0]
+		_, _, b = w.do("GET", hdr.Get("Location"), "", map[string]string{"Cookie": c})
+	}
+	return string(b)
 }

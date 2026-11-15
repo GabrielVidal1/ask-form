@@ -314,6 +314,8 @@ html:not(.js) .widget-frame { display: none; }
 
 /* multi forms */
 .count { margin: 10px 0 0; font-size: 14px; color: hsl(var(--muted-foreground)); }
+.hosted-note { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; font-size: 13px; color: hsl(var(--muted-foreground)); background: hsl(var(--muted) / .6); }
+@media print { .hosted-note { display: none; } }
 
 /* ── desktop: the whole form at once, its sections listed in the margin ──── */
 .toc { display: none; }

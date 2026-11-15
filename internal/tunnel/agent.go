@@ -27,15 +27,15 @@ type Agent struct {
 	Token    string       // this machine's token
 	Handler  http.Handler // the public handler requests are served by
 	// Bridge serves the relay's calls under BridgePrefix (a chat app's
-	// connector working on this machine's forms: server.AccountAPI), while
-	// BridgeOn says the owner linked the machine (`ask-form link`). Nil, or
-	// off: those calls get 404 and nothing else changes.
-	Bridge   http.Handler
-	BridgeOn func() bool
-	Forms    func() []string
-	Pollers  int
-	Version  string
-	client   *http.Client
+	// connector working on this machine's forms: server.AccountAPI) for the
+	// accounts BridgeAllows: the ones the owner linked (`ask-form link`).
+	// Nil, or another account: those calls get 404, nothing else changes.
+	Bridge       http.Handler
+	BridgeAllows func(account string) bool
+	Forms        func() []string
+	Pollers      int
+	Version      string
+	client       *http.Client
 
 	connected atomic.Bool
 	mu        sync.Mutex
@@ -174,7 +174,7 @@ func (a *Agent) serve(ctx context.Context, fr *Request) {
 		rec := &recorder{header: http.Header{}}
 		h := a.Handler
 		if strings.HasPrefix(fr.Path, BridgePrefix) {
-			h = a.bridge()
+			h = a.bridge(r.Header.Get("X-Ask-Account"))
 		}
 		h.ServeHTTP(rec, r)
 		resp = Response{Status: rec.code(), Header: Filter(rec.header, ResponseHeaders), Body: rec.body.Bytes()}
@@ -193,9 +193,9 @@ func (a *Agent) serve(ctx context.Context, fr *Request) {
 }
 
 // bridge is the handler for a BridgePrefix call: the account API when the
-// machine is linked, else a 404 saying how to link it.
-func (a *Agent) bridge() http.Handler {
-	if a.Bridge != nil && a.BridgeOn != nil && a.BridgeOn() {
+// owner linked that account here, else a 404 saying how to link it.
+func (a *Agent) bridge(account string) http.Handler {
+	if a.Bridge != nil && a.BridgeAllows != nil && a.BridgeAllows(account) {
 		return a.Bridge
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -206,18 +206,23 @@ func (a *Agent) bridge() http.Handler {
 }
 
 // Link tells the relay this machine takes the chat-app account behind code
-// (the code the relay's sign-in page showed: `ask-form link CODE`).
-func (a *Agent) Link(ctx context.Context, code string) error {
+// (the code the relay's sign-in page showed: `ask-form link CODE`), and
+// returns which account and app that was.
+func (a *Agent) Link(ctx context.Context, code string) (LinkResponse, error) {
 	res, err := a.call(ctx, http.MethodPost, "/_relay/v1/link", LinkRequest{Code: code}, 15*time.Second)
 	if err != nil {
-		return fmt.Errorf("relay unreachable: %v", err)
+		return LinkResponse{}, fmt.Errorf("relay unreachable: %v", err)
 	}
 	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
-		return fmt.Errorf("relay: %s", strings.TrimSpace(string(b)))
+		return LinkResponse{}, fmt.Errorf("relay: %s", strings.TrimSpace(string(b)))
 	}
-	return nil
+	var lr LinkResponse
+	if err := json.Unmarshal(b, &lr); err != nil {
+		return LinkResponse{}, fmt.Errorf("relay: %v", err)
+	}
+	return lr, nil
 }
 
 // Claim reserves id on the relay.

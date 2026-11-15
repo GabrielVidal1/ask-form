@@ -119,19 +119,31 @@ be installed.
   - **cloud**: the relay's own forms server keeps them. A form and its answers
     are deleted `--cloud-retention` (24 h) after it closes; it stays open 7
     days at most; an account has at most 20 forms waiting and creates 100 a
-    day. No snapshot is kept, no file can be added to it, and its link is
-    routed like a machine's (the same answer pages, the same tokens).
-  - **my computer**: the page shows a code; `ask-form link CODE` on a machine
-    running `serve` through this relay tells the relay that the account's
-    calls go there. They travel through the machine's tunnel to its **account
-    API** (`server.AccountAPI`, `/_mcp/v1/`), which `serve` answers only while
-    the machine is linked (`<config>/chat-link`; `ask-form link --off` removes
-    it). The forms are the machine's like any other: its store, its
-    snapshots, its events (the hub's push). An offline machine is a tool error
-    telling the user to start it.
+    day; a request is 2 MB at most, pictures included, a `multi` form takes
+    200 answers, and the relay keeps 2000 forms in all. No snapshot is kept,
+    and the page says it was made from a chat and never to type a password
+    there. Its link is routed like a machine's (the same answer pages, the
+    same tokens). `ask-form-relay takedown <form-id | acct_…>` deletes a form,
+    or an account with its forms and tokens.
+  - **my computer**: the page shows a code, tied to that browser;
+    `ask-form link CODE` on a machine running `serve` through this relay
+    tells the relay that the account's calls go there, and the page names
+    the computer for the user to confirm. The machine keeps the accounts it
+    took (`<config>/chat-link.json`) and answers the relay's calls for those
+    only, through its tunnel, at its **account API** (`server.AccountAPI`,
+    `/_mcp/v1/`); `ask-form link --off` drops them all. The forms are the
+    machine's like any other: its store, its snapshots, its events (the hub's
+    push), with at most 50 waiting and 200 a day per account. An offline
+    machine is a tool error telling the user to start it.
 - **What a chat can't ask**: `secret` fields (the value would be in the
   conversation) and `file` fields (the files would sit where the chat can't
-  read them) are refused with a sentence the model can act on.
+  read them) are refused with a sentence the model can act on, and no file
+  can be attached to a chat's form.
+- **Limits at /mcp** (its callers share a few addresses, so no per-address
+  limit there): a token first, then per account 120 requests a minute and 4
+  at once, 256 at once in all, batches of 10 at most, 4 MB a request, 8 MB an
+  answer. Sign-in: accounts per address (an IPv6 /64) per day; registrations
+  and accounts never used are dropped after an hour.
 - **Accounts see only their own forms**: the account API scopes every call
   to the forms created with its account (`meta.account`); another id is a
   404, the same as an unknown one.

@@ -16,7 +16,12 @@ import (
 	"github.com/GabrielVidal1/ask-form/internal/mcp"
 	"github.com/GabrielVidal1/ask-form/internal/relay"
 	"github.com/GabrielVidal1/ask-form/internal/server"
+	"github.com/GabrielVidal1/ask-form/internal/tunnel"
 )
+
+// MaxMachineBody: what a call to a machine may carry. It travels base64 in
+// a poll answer the machine reads up to tunnel.MaxPollResponse.
+const MaxMachineBody = tunnel.MaxPollResponse * 3 / 4 * 9 / 10
 
 // Backend is mcp.Backend for a relay.
 type Backend struct {
@@ -44,6 +49,9 @@ func (b *Backend) Do(ctx context.Context, acct mcp.Account, method, path string,
 	}
 	if b.Relay == nil {
 		return 0, nil, errors.New("no relay")
+	}
+	if len(body) > MaxMachineBody {
+		return 0, nil, fmt.Errorf("this form is too big to send to the computer it lives on (%d KB at most through the relay, pictures included): use fewer or smaller pictures", MaxMachineBody>>10)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()

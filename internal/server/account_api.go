@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,20 +35,31 @@ const (
 	MetaAccount = "account" // the MCP account a form belongs to
 	MetaVia     = "via"     // "mcp" for a form a chat app created
 	MetaUploads = "uploads" // "off": no files can be added to it (NoUploads)
+	MetaHosted  = "hosted"  // "1": a relay's cloud form (the page warns about passwords)
 )
 
 var accountRe = regexp.MustCompile(`^[a-z0-9_]{8,64}$`)
 
-// CloudPolicy bounds what a hosted server keeps for anonymous accounts.
+// CloudPolicy bounds what a server keeps for chat apps' accounts: a hosted
+// relay's (Config.Cloud) for anonymous ones, a machine's (MachineChat) for
+// the accounts its owner linked.
 type CloudPolicy struct {
-	MaxOpen   int           // pending forms per account
-	MaxPerDay int           // forms an account creates in 24 h
-	MaxTTL    time.Duration // the longest a form stays open
-	Retention time.Duration // a closed form is deleted after this
+	MaxOpen    int           // pending forms per account
+	MaxPerDay  int           // forms an account creates in 24 h
+	MaxTTL     time.Duration // the longest a form stays open
+	Retention  time.Duration // a closed form is deleted after this (0 = kept)
+	MaxForms   int           // forms kept in all, every account together (0 = no cap)
+	MaxBody    int64         // one create request, pictures included (0 = MaxAdminBody)
+	MaxAnswers int           // a multi form's answers (0 = store.MaxMultiAnswers)
 }
 
 // DefaultCloud is ask-form.xyz's policy.
-var DefaultCloud = CloudPolicy{MaxOpen: 20, MaxPerDay: 100, MaxTTL: 7 * 24 * time.Hour, Retention: 24 * time.Hour}
+var DefaultCloud = CloudPolicy{MaxOpen: 20, MaxPerDay: 100, MaxTTL: 7 * 24 * time.Hour, Retention: 24 * time.Hour,
+	MaxForms: 2000, MaxBody: 2 << 20, MaxAnswers: 200}
+
+// MachineChat bounds the forms chat apps create on a linked machine: the
+// owner allowed one account at a time (Link), still not an open tap.
+var MachineChat = CloudPolicy{MaxOpen: 50, MaxPerDay: 200, MaxTTL: 30 * 24 * time.Hour}
 
 // NoUploads reports whether a form takes no files: the hosted forms don't
 // (MetaUploads), so the relay keeps people's answers, never their files.
@@ -72,22 +84,42 @@ func (s *Server) AccountAPI() http.Handler {
 
 func (s *Server) acctCreate(w http.ResponseWriter, r *http.Request) {
 	acct := r.Header.Get(AccountHeader)
+	c := MachineChat
+	if s.cfg.Cloud != nil {
+		c = *s.cfg.Cloud
+	}
+	limit := int64(MaxAdminBody)
+	if c.MaxBody > 0 {
+		limit = c.MaxBody
+	}
 	var req createReq
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, MaxAdminBody)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(&req); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			apiError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the form is too big: %d MB at most, pictures included", limit>>20))
+			return
+		}
 		apiError(w, http.StatusBadRequest, "body: "+err.Error())
 		return
 	}
-	req.Meta = map[string]string{MetaAccount: acct, MetaVia: "mcp"}
+	// The chat can't read files, so its forms take none.
+	req.Meta = map[string]string{MetaAccount: acct, MetaVia: "mcp", MetaUploads: "off"}
 	req.Public = true
-	o := createOpts{public: true, vet: vetChatFields}
-	if c := s.cfg.Cloud; c != nil {
-		if msg := s.overQuota(acct, *c); msg != "" {
-			apiError(w, http.StatusTooManyRequests, msg)
-			return
-		}
-		o.maxTTL = c.MaxTTL
-		req.Meta[MetaUploads] = "off"
+	if c.MaxAnswers > 0 && req.Multi && (req.MaxAnswers == 0 || req.MaxAnswers > c.MaxAnswers) {
+		req.MaxAnswers = c.MaxAnswers
+	}
+	o := createOpts{public: true, vet: vetChatFields, maxTTL: c.MaxTTL}
+	if s.cfg.Cloud != nil {
+		req.Meta[MetaHosted] = "1"
 		req.NoSnapshot = true
+	}
+	// The check and the create under one lock: parallel calls can't slip
+	// past a quota between the two.
+	s.acctMu.Lock()
+	defer s.acctMu.Unlock()
+	if msg := s.overQuota(acct, c); msg != "" {
+		apiError(w, http.StatusTooManyRequests, msg)
+		return
 	}
 	out, err := s.createForm(r.Context(), req, o)
 	if err != nil {
@@ -116,7 +148,11 @@ func vetChatFields(fields []form.Field) error {
 func (s *Server) overQuota(acct string, c CloudPolicy) string {
 	open, today := 0, 0
 	since := time.Now().Add(-24 * time.Hour)
-	for _, st := range s.store.List() {
+	all := s.store.List()
+	if c.MaxForms > 0 && len(all) >= c.MaxForms {
+		return "ask-form is keeping as many forms as it can right now: try again in a few hours"
+	}
+	for _, st := range all {
 		if st.Meta[MetaAccount] != acct {
 			continue
 		}
