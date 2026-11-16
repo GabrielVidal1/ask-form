@@ -25,6 +25,7 @@ import (
 	"github.com/GabrielVidal1/ask-form/internal/mcp"
 	"github.com/GabrielVidal1/ask-form/internal/relay"
 	"github.com/GabrielVidal1/ask-form/internal/server"
+	"github.com/GabrielVidal1/ask-form/internal/stats"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/skill"
 )
@@ -38,7 +39,7 @@ type hostedParts struct {
 
 // setupHosted builds the connector's parts; relay() is the relay once it
 // exists (the parts and the relay need each other).
-func setupHosted(dir, publicURL string, policy server.CloudPolicy, relayOf func() *relay.Relay) (*hostedParts, map[string]http.Handler, error) {
+func setupHosted(dir, publicURL string, policy server.CloudPolicy, rec *stats.Recorder, relayOf func() *relay.Relay) (*hostedParts, map[string]http.Handler, error) {
 	if publicURL == "" {
 		return nil, nil, errors.New("--hosted needs --public-url (the connector's address is <public-url>/mcp)")
 	}
@@ -59,13 +60,24 @@ func setupHosted(dir, publicURL string, policy server.CloudPolicy, relayOf func(
 		PublicURL: publicURL, DefaultURL: publicURL, AdminToken: hex.EncodeToString(admin), Key: key,
 		NoSnapshots: true, Cloud: &policy,
 	}, st)
+	if rec != nil {
+		cloud.Events = cloudEvents{rec}
+	}
 	acc, err := accounts.New(accounts.Config{
 		Dir: filepath.Join(dir, "accounts"), PublicURL: publicURL,
 		ClientIP:      func(r *http.Request) string { return relayOf().ClientIP(r) },
 		MachineOnline: func(name string) bool { return relayOf().MachineOnline(name) },
+		SignedIn: func(a accounts.Account, client string) {
+			rec.SignedIn(a.ID, client, where(a.Machine))
+		},
 	})
 	if err != nil {
 		return nil, nil, err
+	}
+	// Accounts from before the counts began get their summary (no counter
+	// moves), so "came back" and "active" know them.
+	for _, a := range acc.Summaries() {
+		rec.Known(a.ID, a.Client, where(a.Machine), a.Created)
 	}
 	backend := &hosted.Backend{Cloud: cloud.AccountAPI()}
 	connector := mcp.Handler(mcp.Config{
@@ -75,6 +87,7 @@ func setupHosted(dir, publicURL string, policy server.CloudPolicy, relayOf func(
 			return mcp.Account{ID: a.ID, Machine: a.Machine}, ok
 		},
 		Backend: backend,
+		Stats:   rec,
 	})
 	zip, err := skill.PluginZip(askform.Plugin, publicURL)
 	if err != nil {
@@ -93,6 +106,46 @@ func setupHosted(dir, publicURL string, policy server.CloudPolicy, relayOf func(
 		}),
 	}
 	return &hostedParts{dir: dir, cloud: cloud, acc: acc, backend: backend}, routes, nil
+}
+
+func where(machine string) string {
+	if machine == "" {
+		return stats.Cloud
+	}
+	return stats.Machine
+}
+
+// cloudEvents hands the cloud forms' lifecycle to the usage counts: a form
+// closed is counted once, whether this or a tool's result tells it first.
+type cloudEvents struct{ rec *stats.Recorder }
+
+func (e cloudEvents) Notify(event string, f any) {
+	j, ok := f.(server.FormJSON)
+	if !ok {
+		return
+	}
+	switch event {
+	case "answered": // one more answer to a multi form
+		e.rec.Count("multi_answers", "where", stats.Cloud)
+	case "submitted", "declined", "revoked", "expired", "closed":
+		var closed time.Time
+		if j.ClosedAt != nil {
+			closed = *j.ClosedAt
+		}
+		e.rec.FormClosed(j.ID, event, closed)
+	}
+}
+
+// gauges: the connector's accounts right now, by where their forms live.
+func (h *hostedParts) gauges() []stats.Gauge {
+	n := map[string]int{stats.Cloud: 0, stats.Machine: 0}
+	for _, a := range h.acc.Summaries() {
+		n[where(a.Machine)]++
+	}
+	return []stats.Gauge{
+		{Name: "accounts", Help: "Connector accounts signed in now, by where their forms live.", Labels: []string{"where", stats.Cloud}, Value: float64(n[stats.Cloud])},
+		{Name: "accounts", Labels: []string{"where", stats.Machine}, Value: float64(n[stats.Machine])},
+	}
 }
 
 // unmeteredPaths: called from a chat app's servers (shared addresses); each

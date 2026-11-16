@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/GabrielVidal1/ask-form/internal/mcp"
 	"github.com/GabrielVidal1/ask-form/internal/relay"
 	"github.com/GabrielVidal1/ask-form/internal/server"
+	"github.com/GabrielVidal1/ask-form/internal/stats"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
 )
@@ -37,6 +39,8 @@ type world struct {
 	laptopAd *httptest.Server
 	agent    *tunnel.Agent
 	cancel   context.CancelFunc
+	stats    *stats.Recorder
+	statsAt  string
 }
 
 func newWorld(t *testing.T) *world {
@@ -56,17 +60,29 @@ func newWorld(t *testing.T) *world {
 	policy := server.DefaultCloud
 	policy.MaxOpen = 3
 	w.cloud = server.New(server.Config{PublicURL: pub, DefaultURL: pub, AdminToken: "x", Key: []byte("cloudkey"), NoSnapshots: true, Cloud: &policy}, cst)
+	w.statsAt = filepath.Join(dir, "stats.json")
+	if w.stats, err = stats.Open(w.statsAt); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { w.stats.Close() })
 	w.acc, err = accounts.New(accounts.Config{
 		Dir: filepath.Join(dir, "accounts"), PublicURL: pub,
 		ClientIP:      func(r *http.Request) string { return w.relay.ClientIP(r) },
 		MachineOnline: func(n string) bool { return w.relay.MachineOnline(n) },
+		SignedIn: func(a accounts.Account, client string) {
+			where := stats.Cloud
+			if a.Machine != "" {
+				where = stats.Machine
+			}
+			w.stats.SignedIn(a.ID, client, where)
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	backend := &Backend{Cloud: w.cloud.AccountAPI()}
 	connector := mcp.Handler(mcp.Config{
-		PublicURL: pub, Version: "test", ResourceMetadataURL: w.acc.ResourceMetadataURL(), Backend: backend,
+		PublicURL: pub, Version: "test", ResourceMetadataURL: w.acc.ResourceMetadataURL(), Backend: backend, Stats: w.stats,
 		Authenticate: func(r *http.Request) (mcp.Account, bool) {
 			a, ok := w.acc.Authenticate(r)
 			return mcp.Account{ID: a.ID, Machine: a.Machine}, ok
@@ -86,6 +102,9 @@ func newWorld(t *testing.T) *world {
 		},
 		Routes:    map[string]http.Handler{"/mcp": connector, "/.well-known/": oauth, "/oauth/": oauth},
 		Unmetered: []string{"/mcp", "/oauth/token", "/oauth/register", "/.well-known/"},
+		Files:     map[string]relay.File{"/install.sh": {Body: []byte("#!/bin/sh\n"), ContentType: "text/plain"}},
+		Landing:   []byte("<!doctype html><title>ask-form</title>"),
+		Stats:     w.stats, StatsToken: "stats-secret",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -397,4 +416,107 @@ func (w *world) page(link string) string {
 		_, _, b = w.do("GET", hdr.Get("Location"), "", map[string]string{"Cookie": c})
 	}
 	return string(b)
+}
+
+// TestUsageCounts: a sign-in, the connector's tools and the public side's
+// hits land in the counts, which the owner reads with the stats token —
+// and nothing a form says does.
+func TestUsageCounts(t *testing.T) {
+	w := newWorld(t)
+	access := w.signIn("cloud", nil)
+	fields := []map[string]any{
+		{"type": "markdown", "text": "Context"},
+		{"key": "color", "label": "Colour", "type": "radio", "options": []any{"red", map[string]any{"value": "b", "label": "Blue", "html": "<div>b</div>"}}},
+		{"key": "why", "label": "Why", "type": "textarea", "showIf": map[string]any{"key": "color", "equals": "red"}},
+	}
+	_, sc, isErr := w.call(access, "create_form", map[string]any{"title": "Secret project Zebra", "fields": fields, "lang": "fr"})
+	if isErr {
+		t.Fatal("create_form failed")
+	}
+	id := sc["id"].(string)
+	w.cloud.Store().Close(id, store.Submitted, map[string]any{"color": "vermilion-42"}, nil)
+	if _, sc, _ := w.call(access, "get_answers", map[string]any{"id": id, "wait_seconds": 0}); sc["status"] != "submitted" {
+		t.Fatalf("answers: %v", sc)
+	}
+	w.call(access, "get_answers", map[string]any{"id": id, "wait_seconds": 0}) // seen again: counted once
+	_, sc, _ = w.call(access, "create_form", map[string]any{"title": "Q2", "fields": spec})
+	w.call(access, "close_form", map[string]any{"id": sc["id"]})
+	w.call(access, "get_answers", map[string]any{"id": "nope", "wait_seconds": 0}) // a tool error
+
+	browser := map[string]string{"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0"}
+	w.do("GET", "/", "", browser)
+	w.do("GET", "/", "", map[string]string{"User-Agent": "Googlebot/2.1"})
+	w.do("GET", "/install.sh", "", map[string]string{"User-Agent": "curl/8.5"})
+	w.do("GET", "/nope", "", browser) // a 404: not counted
+
+	// The owner's endpoints: closed without the token.
+	if st, _, _ := w.do("GET", "/_relay/v1/stats", "", nil); st != http.StatusUnauthorized {
+		t.Fatalf("no token: %d", st)
+	}
+	if st, _, _ := w.do("GET", "/_relay/v1/metrics", "", map[string]string{"Authorization": "Bearer wrong"}); st != http.StatusUnauthorized {
+		t.Fatalf("wrong token: %d", st)
+	}
+	auth := map[string]string{"Authorization": "Bearer stats-secret"}
+	st, _, b := w.do("GET", "/_relay/v1/stats?days=1", "", auth)
+	if st != 200 {
+		t.Fatalf("stats: %d %s", st, b)
+	}
+	var s stats.Summary
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	check := func(what string, got, want int64) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s: %d, want %d", what, got, want)
+		}
+	}
+	check("sign-ins from claude", s.SignIns["claude"], 1)
+	check("cloud sign-ins", s.SignInsWhere["cloud"], 1)
+	check("create_form calls", s.ToolCalls["create_form"], 2)
+	check("get_answers calls", s.ToolCalls["get_answers"], 3)
+	check("get_answers errors", s.ToolErrors["get_answers"], 1)
+	check("forms created", s.FormsCreated, 2)
+	check("french forms", s.FormsLang["fr"], 1)
+	check("radio fields", s.FieldTypes["radio"], 2)
+	check("markdown blocks", s.FieldTypes["markdown"], 1)
+	check("forms with mockups", s.FormsWith["mockups"], 1)
+	check("forms with conditions", s.FormsWith["conditions"], 1)
+	check("answered", s.Outcomes["answered"], 1)
+	check("revoked", s.Outcomes["revoked"], 1)
+	check("landing views by people", s.PageViews["landing"], 1)
+	check("bot views", s.BotViews, 1)
+	check("install.sh", s.Downloads["install_sh"], 1)
+	if s.Active != 1 || s.MedianAnswer == "" {
+		t.Errorf("active %d, median %q", s.Active, s.MedianAnswer)
+	}
+	w.stats.Gauges = w.relay.Gauges
+	if g := w.stats.Summarize(1).Now; g[`machines{kind="online"}`] != 1 || g[`machines{kind="owner"}`] != 1 {
+		t.Errorf("gauges: %v", g) // the laptop, added by its owner, polling
+	}
+	st, _, b = w.do("GET", "/_relay/v1/metrics", "", auth)
+	if st != 200 {
+		t.Fatalf("metrics: %d", st)
+	}
+	for _, line := range []string{
+		`askform_signins_total{app="claude",where="cloud"} 1`,
+		`askform_forms_closed_total{outcome="answered",where="cloud"} 1`,
+		`askform_answer_seconds_count 1`,
+		`askform_active_accounts{window="7d"} 1`,
+	} {
+		if !strings.Contains(string(b), line+"\n") {
+			t.Errorf("metrics lack %q:\n%s", line, b)
+		}
+	}
+	// Nothing a form says, nor its id, reaches the file.
+	w.stats.Flush()
+	raw, err := os.ReadFile(w.statsAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"Zebra", "zebra", id, "vermilion", access} {
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("the stats file holds %q", leak)
+		}
+	}
 }

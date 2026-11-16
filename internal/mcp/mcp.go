@@ -21,6 +21,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/GabrielVidal1/ask-form/internal/stats"
 )
 
 // Account is who an MCP request acts for (from the bearer token).
@@ -45,6 +47,8 @@ type Config struct {
 	ResourceMetadataURL string // named in WWW-Authenticate on a 401
 	Backend             Backend
 	Limits              Limits // per-account and global request limits (zero: the defaults)
+	// Stats counts what the connector does (internal/stats); nil = nothing.
+	Stats *stats.Recorder
 }
 
 // MaxBody caps one POST /mcp: a form with a few pictures (base64 assets).
@@ -227,6 +231,7 @@ func internalErrorMsg(id json.RawMessage, msg string) rpcResponse {
 
 // tooMany turns a request away: HTTP 429, Retry-After, a JSON-RPC error.
 func (h *handler) tooMany(w http.ResponseWriter, retry time.Duration) {
+	h.cfg.Stats.Limited()
 	secs := int((retry + time.Second - 1) / time.Second)
 	if secs < 1 {
 		secs = 1

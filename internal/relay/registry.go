@@ -334,8 +334,10 @@ func (r *Relay) register(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		log.Printf("relay: machine %s registered with key %s (%s, ip=%s)", name, keyName, clip(body.Version, 40), r.clientIP(req))
+		r.cfg.Stats.Count("machines_registered", "how", "key")
 	} else {
 		log.Printf("relay: machine %s registered itself (%s, ip=%s)", name, clip(body.Version, 40), r.clientIP(req))
+		r.cfg.Stats.Count("machines_registered", "how", "self")
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

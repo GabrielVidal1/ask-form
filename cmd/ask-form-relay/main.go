@@ -30,6 +30,7 @@ import (
 	"github.com/GabrielVidal1/ask-form/examples"
 	"github.com/GabrielVidal1/ask-form/internal/relay"
 	"github.com/GabrielVidal1/ask-form/internal/server"
+	"github.com/GabrielVidal1/ask-form/internal/stats"
 	"github.com/GabrielVidal1/ask-form/landing"
 )
 
@@ -40,6 +41,7 @@ const usage = `ask-form-relay — public relay for ask-form
                        [--keys FILE] [--register-per-key 20] [--forget-ephemeral 48h] [--web-keys-per-ip 3]
                        [--public-url https://ask-form.xyz] [--trust-cloudflare]
                        [--hosted DIR [--cloud-retention 24h] [--cloud-max-open 20] [--cloud-per-day 100]]
+                       [--stats FILE|off] [--stats-token TOKEN]
   ask-form-relay machine add <name>     mint a machine token (printed once; only its hash is kept)
   ask-form-relay machine rm <name>
   ask-form-relay machine ls
@@ -50,6 +52,8 @@ const usage = `ask-form-relay — public relay for ask-form
   ask-form-relay key ls
   ask-form-relay takedown <form-id | acct_…>   delete a cloud form, or an account and its cloud forms
                                         (--hosted only; read by the running relay within 30 s)
+  ask-form-relay stats [--days 7] [--json]    the usage counts of the last days (the running relay
+                                        writes them every 30 s; never what a form says)
   ask-form-relay healthcheck            exit 0 when the public listener on :8080 answers
 
 Route the --listen port from the internet (it serves /, /forms/*, /examples,
@@ -80,6 +84,8 @@ func main() {
 		os.Exit(keyCmd(os.Args[2:], keys))
 	case "takedown":
 		os.Exit(takedownCmd(os.Args[2:]))
+	case "stats":
+		os.Exit(statsCmd(os.Args[2:], machines))
 	case "healthcheck":
 		// For the container's HEALTHCHECK (the image has no shell or curl).
 		res, err := http.Get("http://127.0.0.1:8080/robots.txt")
@@ -117,6 +123,8 @@ func serve(args []string, machines, keys string) int {
 	retention := fs.Duration("cloud-retention", envDuration("ASK_FORM_RELAY_CLOUD_RETENTION", server.DefaultCloud.Retention), "delete a cloud form this long after it closes")
 	cloudOpen := fs.Int("cloud-max-open", envInt("ASK_FORM_RELAY_CLOUD_MAX_OPEN", server.DefaultCloud.MaxOpen), "pending cloud forms per account")
 	cloudDay := fs.Int("cloud-per-day", envInt("ASK_FORM_RELAY_CLOUD_PER_DAY", server.DefaultCloud.MaxPerDay), "cloud forms an account creates per day")
+	statsFile := fs.String("stats", statsFileFor(machines), "usage counts file, never what a form says (\"off\" = none)")
+	statsToken := fs.String("stats-token", os.Getenv("ASK_FORM_RELAY_STATS_TOKEN"), "opens GET /_relay/v1/stats and /_relay/v1/metrics with Authorization: Bearer <token> (prefer the env var; \"\" = closed)")
 	fs.Parse(args)
 	if *register != "open" && *register != "closed" {
 		log.Fatalf("--register %q: use open or closed", *register)
@@ -126,13 +134,19 @@ func serve(args []string, machines, keys string) int {
 	if err != nil {
 		log.Fatalf("examples: %v", err)
 	}
+	var rec *stats.Recorder
+	if *statsFile != "" && *statsFile != "off" {
+		if rec, err = stats.Open(*statsFile); err != nil {
+			log.Fatalf("--stats: %v", err)
+		}
+	}
 	var r *relay.Relay
 	var hp *hostedParts
 	var routes map[string]http.Handler
 	if *hostedDir != "" {
 		policy := server.DefaultCloud
 		policy.Retention, policy.MaxOpen, policy.MaxPerDay = *retention, *cloudOpen, *cloudDay
-		hp, routes, err = setupHosted(*hostedDir, strings.TrimRight(*publicURL, "/"), policy, func() *relay.Relay { return r })
+		hp, routes, err = setupHosted(*hostedDir, strings.TrimRight(*publicURL, "/"), policy, rec, func() *relay.Relay { return r })
 		if err != nil {
 			log.Fatalf("--hosted: %v", err)
 		}
@@ -149,6 +163,7 @@ func serve(args []string, machines, keys string) int {
 			"/install.sh":    {Body: askform.InstallScript, ContentType: "text/plain; charset=utf-8"},
 			"/agent-install": {Body: landing.AgentInstall, ContentType: "text/plain; charset=utf-8"},
 		},
+		Stats: rec, StatsToken: *statsToken,
 	}
 	if hp != nil {
 		cfg.Cloud, cfg.Link, cfg.Routes, cfg.Unmetered = hp.cloud, hp.link, routes, unmeteredPaths
@@ -156,6 +171,15 @@ func serve(args []string, machines, keys string) int {
 	r, err = relay.New(cfg)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if rec != nil {
+		rec.Gauges = func() []stats.Gauge {
+			g := r.Gauges()
+			if hp != nil {
+				g = append(g, hp.gauges()...)
+			}
+			return g
+		}
 	}
 	errc := make(chan error, 2)
 	var pub, mach *http.Server
@@ -186,6 +210,26 @@ func serve(args []string, machines, keys string) int {
 		log.Printf("chat-app connector at %s/mcp, data in %s (cloud forms deleted %s after they close)",
 			strings.TrimRight(*publicURL, "/"), *hostedDir, *retention)
 	}
+	if rec != nil {
+		go func() {
+			rec.Prune()
+			t := time.NewTicker(time.Hour)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					rec.Prune()
+				}
+			}
+		}()
+		open := "closed (no --stats-token)"
+		if *statsToken != "" {
+			open = "/_relay/v1/stats and /_relay/v1/metrics"
+		}
+		log.Printf("usage counts in %s, read at %s", *statsFile, open)
+	}
 	select {
 	case err := <-errc:
 		log.Printf("listener: %v", err)
@@ -196,6 +240,9 @@ func serve(args []string, machines, keys string) int {
 	defer cancel()
 	if hp != nil {
 		hp.close()
+	}
+	if err := rec.Close(); err != nil {
+		log.Printf("stats: %v", err)
 	}
 	pub.Shutdown(sctx)
 	if mach != nil {
@@ -344,4 +391,44 @@ func envDuration(k string, def time.Duration) time.Duration {
 		return d
 	}
 	return def
+}
+
+// statsFileFor: $ASK_FORM_RELAY_STATS, else stats.json next to the machines
+// file.
+func statsFileFor(machines string) string {
+	if v, ok := os.LookupEnv("ASK_FORM_RELAY_STATS"); ok {
+		return v
+	}
+	return stats.FileFor(machines)
+}
+
+// statsCmd: ask-form-relay stats [--days 7] [--json] [--file F]
+func statsCmd(args []string, machines string) int {
+	fs := flag.NewFlagSet("stats", flag.ExitOnError)
+	days := fs.Int("days", 7, "days to sum, today included")
+	asJSON := fs.Bool("json", false, "print the summary as JSON")
+	file := fs.String("file", statsFileFor(machines), "the relay's stats file")
+	fs.Parse(args)
+	if *file == "" || *file == "off" {
+		fmt.Fprintln(os.Stderr, "this relay keeps no usage counts (--stats off)")
+		return 1
+	}
+	if _, err := os.Stat(*file); err != nil {
+		fmt.Fprintf(os.Stderr, "%v (the relay writes it within 30 s of its first count)\n", err)
+		return 1
+	}
+	rec, err := stats.Load(*file)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	s := rec.Summarize(*days)
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(s)
+		return 0
+	}
+	fmt.Print(s.Text())
+	return 0
 }

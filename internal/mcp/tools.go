@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/GabrielVidal1/ask-form/internal/stats"
 )
 
 // form is the Account API's FormJSON (internal/server), the parts used here.
@@ -188,17 +190,75 @@ func (h *handler) callTool(ctx context.Context, acct Account, params json.RawMes
 	if len(args) == 0 || string(args) == "null" {
 		args = json.RawMessage("{}")
 	}
+	var res toolResult
 	switch p.Name {
 	case "create_form":
-		return h.createForm(ctx, acct, args), nil
+		res = h.createForm(ctx, acct, args)
 	case "get_answers":
-		return h.getAnswers(ctx, acct, args), nil
+		res = h.getAnswers(ctx, acct, args)
 	case "close_form":
-		return h.closeForm(ctx, acct, args), nil
+		res = h.closeForm(ctx, acct, args)
 	case "list_forms":
-		return h.listForms(ctx, acct), nil
+		res = h.listForms(ctx, acct)
+	default:
+		return nil, &rpcError{Code: codeInvalidParams, Message: "unknown tool: " + p.Name}
 	}
-	return nil, &rpcError{Code: codeInvalidParams, Message: "unknown tool: " + p.Name}
+	h.cfg.Stats.Tool(acct.ID, h.where(acct), p.Name, !res.IsError)
+	return res, nil
+}
+
+// seen tells the stats a form's status, as a tool's result showed it: a
+// closed form the connector made is counted once.
+func (h *handler) seen(f form) {
+	if f.ID == "" || f.Status == "" || f.Status == statusPending {
+		return
+	}
+	var closed time.Time
+	if f.ClosedAt != nil {
+		closed = *f.ClosedAt
+	}
+	h.cfg.Stats.FormClosed(f.ID, f.Status, closed)
+}
+
+// shape is what the stats keep of a form: its fields' types, how many
+// questions, and whether it has pictures, mockups or conditions.
+func shape(fields []json.RawMessage, a createArgs, questions int) stats.Shape {
+	s := stats.Shape{Questions: questions, Multi: a.Multi, Lang: a.Lang, Pictures: len(a.Assets) > 0}
+	for _, raw := range fields {
+		var f struct {
+			Type       string            `json:"type"`
+			ShowIf     json.RawMessage   `json:"showIf"`
+			RequiredIf json.RawMessage   `json:"requiredIf"`
+			Options    []json.RawMessage `json:"options"`
+		}
+		json.Unmarshal(raw, &f)
+		t := f.Type
+		if t == "" {
+			t = "text"
+		}
+		s.Types = append(s.Types, t)
+		if t == "html" {
+			s.Mockups = true
+		}
+		if len(f.ShowIf) > 0 || len(f.RequiredIf) > 0 {
+			s.Conditions = true
+		}
+		for _, o := range f.Options {
+			var opt struct {
+				HTML  string `json:"html"`
+				Image string `json:"image"`
+			}
+			if json.Unmarshal(o, &opt) == nil {
+				if opt.HTML != "" {
+					s.Mockups = true
+				}
+				if opt.Image != "" {
+					s.Pictures = true
+				}
+			}
+		}
+	}
+	return s
 }
 
 // do calls the Account API. A non-nil toolResult is the error to hand the model.
@@ -319,6 +379,9 @@ func (h *handler) createForm(ctx context.Context, acct Account, raw json.RawMess
 	if lang == "" {
 		lang = a.Lang
 	}
+	sh := shape(fields, a, count)
+	sh.Lang = lang
+	h.cfg.Stats.FormCreated(acct.ID, h.where(acct), f.ID, sh, f.ExpiresAt)
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Form created: “%s” (id %s, %s, open until %s).\n", f.Title, f.ID, plural(count, "question", "questions"),
 		f.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"))
@@ -436,6 +499,7 @@ func (h *handler) getAnswers(ctx context.Context, acct Account, raw json.RawMess
 		if err := json.Unmarshal(resp, &f); err != nil {
 			return toolError("ask-form gave an answer this server can't read.")
 		}
+		h.seen(f)
 		if f.Status != statusPending || f.Multi || !h.now().Before(deadline) || ctx.Err() != nil {
 			return answersResult(f)
 		}
@@ -525,6 +589,9 @@ func (h *handler) closeForm(ctx context.Context, acct Account, raw json.RawMessa
 	}
 	var f form
 	json.Unmarshal(resp, &f)
+	if status/100 == 2 || status == http.StatusConflict {
+		h.seen(f)
+	}
 	switch {
 	case status == http.StatusNotFound:
 		return toolError("There is no form %q on this account.", id)
@@ -563,6 +630,7 @@ func (h *handler) listForms(ctx context.Context, acct Account) toolResult {
 		fmt.Fprintf(&sb, "%s, newest first:", plural(len(l.Forms), "form", "forms"))
 	}
 	for _, f := range l.Forms {
+		h.seen(f)
 		item := map[string]any{"id": f.ID, "title": f.Title, "status": f.Status, "createdAt": f.CreatedAt, "expiresAt": f.ExpiresAt}
 		extra := ""
 		if f.Multi {

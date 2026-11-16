@@ -128,6 +128,7 @@ func (r *Relay) link(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	r.cfg.Stats.Count("links")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tunnel.LinkResponse{OK: true, Account: account, Client: client})
 }

@@ -32,6 +32,7 @@ import (
 
 	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/server"
+	"github.com/GabrielVidal1/ask-form/internal/stats"
 	"github.com/GabrielVidal1/ask-form/internal/store"
 	"github.com/GabrielVidal1/ask-form/internal/tunnel"
 )
@@ -94,6 +95,10 @@ type Config struct {
 	// app's servers call from a few shared addresses; those handlers meter
 	// per account themselves.
 	Unmetered []string
+	// Stats keeps the usage counts (internal/stats); nil = none. StatsToken
+	// opens GET /_relay/v1/stats and /_relay/v1/metrics ("" = both 404).
+	Stats      *stats.Recorder
+	StatsToken string
 }
 
 // File is a static file of the relay.
@@ -142,6 +147,7 @@ type Relay struct {
 	landing     landingPage   // at /
 	landFR      landingPage   // at /fr
 	cloudPublic http.Handler  // Cloud's answer pages, nil without
+	statsKey    []byte        // SHA-256 of Config.StatsToken, nil without
 }
 
 // landingPage is a landing page and the CSP computed from its own bytes.
@@ -166,6 +172,10 @@ func New(cfg Config) (*Relay, error) {
 	}
 	if cfg.Cloud != nil {
 		r.cloudPublic = cfg.Cloud.Public()
+	}
+	if cfg.StatsToken != "" {
+		sum := sha256.Sum256([]byte(cfg.StatsToken))
+		r.statsKey = sum[:]
 	}
 	if err := r.loadTokens(true); err != nil {
 		return nil, err
@@ -192,6 +202,10 @@ func (r *Relay) MachineAPI() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/_relay/v1/register" && req.Method == http.MethodPost {
 			r.register(w, req)
+			return
+		}
+		if req.URL.Path == "/_relay/v1/stats" || req.URL.Path == "/_relay/v1/metrics" {
+			r.statsAPI(w, req) // the owner's token, not a machine's
 			return
 		}
 		name := r.machineOf(req)
@@ -447,6 +461,7 @@ func (r *Relay) Public() http.Handler {
 			http.Error(sw, "Too many requests", http.StatusTooManyRequests)
 		} else {
 			mux.ServeHTTP(sw, req)
+			r.countHit(req, sw.status)
 		}
 		// Never the query string: it carries the respondent token.
 		log.Printf("public %s %s %d %s ip=%s", req.Method, clip(req.URL.EscapedPath(), 200), sw.status,

@@ -72,6 +72,10 @@ type Config struct {
 	// MachineOnline says whether a relay machine is connected (nil: unknown).
 	// The link page shows it once the computer has linked.
 	MachineOnline func(name string) bool
+	// SignedIn hears of each account's first tokens (the end of a sign-in),
+	// with its client's self-given name, for the usage counts; nil = nobody.
+	// It's called with the store locked: it must not call back.
+	SignedIn func(a Account, clientName string)
 }
 
 const (
@@ -524,10 +528,43 @@ func (s *Service) issue(account, client, family string, now time.Time) (access, 
 		c.LastUsed = now
 	}
 	if a := s.db.Accounts[account]; a != nil {
+		if !a.Activated && s.cfg.SignedIn != nil {
+			name := ""
+			if c := s.db.Clients[client]; c != nil {
+				name = c.Name
+			}
+			s.cfg.SignedIn(*a, name)
+		}
 		a.Activated = true
 	}
 	s.dirty = true
 	return access, refresh
+}
+
+// Summary is one account as the usage counts see it.
+type Summary struct {
+	Account
+	Client string // the self-given name of the app that has its tokens
+}
+
+// Summaries lists the activated accounts, each with the name of the app
+// whose tokens it holds.
+func (s *Service) Summaries() []Summary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	client := map[string]string{}
+	for _, t := range s.db.Tokens {
+		if c := s.db.Clients[t.Client]; c != nil {
+			client[t.Account] = c.Name
+		}
+	}
+	var out []Summary
+	for _, a := range s.db.Accounts {
+		if a.Activated {
+			out = append(out, Summary{Account: *a, Client: client[a.ID]})
+		}
+	}
+	return out
 }
 
 // revokeFamily deletes every token of a grant; the caller holds s.mu.
