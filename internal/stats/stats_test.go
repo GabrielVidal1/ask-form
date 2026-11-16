@@ -100,6 +100,8 @@ func TestLifecycle(t *testing.T) {
 		`askform_forms_closed_total{outcome="unknown",where="machine"} 1`,
 		`askform_retention_7d_ratio 0.5`,
 		`askform_tool_calls_total{result="ok",tool="create_form"} 1`,
+		`askform_signins_total{app="lechat",where="machine"} 0`, // seeded
+		`askform_links_total 0`,
 	} {
 		if !strings.Contains(b.String(), line+"\n") {
 			t.Errorf("metrics lack %q:\n%s", line, b.String())

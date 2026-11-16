@@ -269,6 +269,51 @@ var help = map[string]string{
 	"form_posts":          "Answers posted through the relay, cloud forms or machines'.",
 }
 
+// apps are App's answers, plus "unknown" (an account from before the counts).
+var apps = []string{"claude", "chatgpt", "lechat", "cursor", "vscode", "inspector", "goose", "windsurf", "zed",
+	"gemini", "perplexity", "other", "unnamed", "unknown"}
+
+// seeds are the label sets every counter is written with from the start, at
+// 0 until counted: Prometheus' increase() only sees a series' growth from
+// its first sample, so a first sign-in from a new app would never show.
+func seeds() []string {
+	var out []string
+	cross := func(name string, dims ...[]string) {
+		// dims alternate: label name ([]string{"app"}), its values.
+		var walk func(i int, labels []string)
+		walk = func(i int, labels []string) {
+			if i == len(dims) {
+				out = append(out, Key(name, labels...))
+				return
+			}
+			for _, v := range dims[i+1] {
+				walk(i+2, append(append([]string{}, labels...), dims[i][0], v))
+			}
+		}
+		walk(0, nil)
+	}
+	where := []string{Cloud, Machine}
+	cross("signins", []string{"app"}, apps, []string{"where"}, where)
+	cross("tool_calls", []string{"tool"}, []string{"create_form", "get_answers", "close_form", "list_forms"}, []string{"result"}, []string{"ok", "error"})
+	cross("forms_created", []string{"where"}, where, []string{"kind"}, []string{"single", "multi"}, []string{"lang"}, []string{"en", "fr"})
+	cross("forms_closed", []string{"where"}, where, []string{"outcome"}, []string{"answered", "declined", "expired", "revoked", "closed", "unknown"})
+	types := []string{"other"}
+	for t := range fieldTypes {
+		types = append(types, t)
+	}
+	cross("form_fields", []string{"type"}, types)
+	cross("forms_by_size", []string{"questions"}, []string{"1", "2-3", "4-6", "7-10", "11+"})
+	cross("forms_with", []string{"feature"}, []string{"pictures", "mockups", "conditions"})
+	cross("page_views", []string{"page"}, []string{"landing", "landing_fr", "examples"}, []string{"who"}, []string{"person", "bot"})
+	cross("downloads", []string{"what"}, []string{"install_sh", "agent_install", "plugin_zip", "claude_ai_skill"})
+	cross("machines_registered", []string{"how"}, []string{"self", "key"})
+	cross("form_views", []string{"via"}, where)
+	cross("form_posts", []string{"via"}, where)
+	cross("multi_answers", []string{"where"}, []string{Cloud})
+	out = append(out, "links", "limited")
+	return out
+}
+
 // WriteMetrics writes every counter's total since the counts began, the
 // time-to-answer histogram and the gauges, in Prometheus' text format.
 func (r *Recorder) WriteMetrics(w io.Writer) {
@@ -285,6 +330,11 @@ func (r *Recorder) WriteMetrics(w io.Writer) {
 	kept := len(r.db.Accounts)
 	r.mu.Unlock()
 
+	for _, k := range seeds() {
+		if _, ok := totals[k]; !ok {
+			totals[k] = 0
+		}
+	}
 	byName := map[string][]string{}
 	for k := range totals {
 		name, _ := parseKey(k)
