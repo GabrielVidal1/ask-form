@@ -154,6 +154,38 @@ be installed.
   the relay serves it zipped at `/plugin/ask-form.zip`, with its own origin as
   the connector's address.
 
+## Usage counts
+
+A relay counts how it is used, for the person who runs it: how many people
+sign in to the connector and from which app, what its tools do, how many
+forms get answered and how fast, which kinds of fields forms use, and how
+often the landing page, `install.sh` and the plugin are fetched. It counts;
+it doesn't record:
+
+- **Never kept**: what a form says (title, questions, options, answers), a
+  form's id, who answered, an address, a user agent (only whether it looks
+  like a person's browser or a bot, for page views), a token.
+- **Kept** (`stats.json` next to `machines.json`): counters per day, such as
+  `forms_created{where="cloud",kind="single",lang="en"}` or
+  `form_fields{type="radio"}`; per connector account, under the SHA-256 of
+  its id, the app it signed in from (a short list: claude, chatgpt, lechat,
+  cursor… or "other"), where its forms live, the days it called a tool and
+  how many forms it made and got answered, which is how "came back a week
+  later" is counted, dropped after 400 days unseen; and a form the connector
+  made, under the SHA-256 of its id, until its outcome is known.
+- **Outcomes** come from the tools' own results (`get_answers`,
+  `close_form`, `list_forms`) and, for cloud forms, from the form's events.
+  A form on someone's computer whose outcome no tool ever saw is counted as
+  "unknown" a day after it expired.
+- **Read** by the relay's owner only: `ask-form-relay stats [--days 7]`, or
+  `GET /_relay/v1/stats?days=7` (JSON) and `GET /_relay/v1/metrics`
+  (Prometheus) with `Authorization: Bearer <ASK_FORM_RELAY_STATS_TOKEN>`;
+  without that token both answer 404. `--stats off` keeps no counts.
+
+Forms on your own machine through the CLI are counted only as pages opened
+and answers posted through the relay; their content never passes through
+anything that counts.
+
 ## Languages
 
 A form's pages are in English or French: the buttons, the errors, the confirm
@@ -382,7 +414,8 @@ asked it. Without it no site may frame them (`frame-ancestors 'none'`,
   that field, as JSON of at most 16 KB checked against the field's `schema`.
   The script is the agent's own, so treat a widget as code the agent chose to
   show: never put a secret in one.
-- **Logs** never contain a query string.
+- **Logs** never contain a query string. **Usage counts** never contain
+  what a form says, its id or who answered ([usage counts](#usage-counts)).
 - **Submissions**:
   - per-IP limits on failed token attempts, on submissions, and overall;
   - a 64 KB body cap (`http.MaxBytesReader`, at the relay and at the machine;

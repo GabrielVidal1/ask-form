@@ -46,6 +46,14 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   cloud policy and retention), `internal/server/link.go` (`ask-form link`),
   `internal/relay/hosted.go` (cloud forms' routing, `CallMachine`,
   `/_relay/v1/link`), `cmd/ask-form-relay/hosted.go` (`--hosted` wiring).
+- Usage counts (`docs/how-it-works.md` → "Usage counts"): `internal/stats`
+  (counters per day, per-account summaries under a hash, the summary, the
+  Prometheus text), fed by `internal/mcp` (tools, form shapes and outcomes),
+  `internal/accounts` (`Config.SignedIn`), the cloud server's events
+  (`cloudEvents` in `cmd/ask-form-relay/hosted.go`) and `internal/relay/stats.go`
+  (page/download hits, the owner's `/_relay/v1/stats` and `/metrics`). Never
+  a form's text, id, answers or an address: a new counter keeps to labels
+  from a fixed set (`stats.Key` cleans them; `App` buckets client names).
   `plugins/ask-form/` is the Claude + ChatGPT plugin (one folder, both
   manifests; bump both versions on a release), listed by
   `.claude-plugin/marketplace.json` and zipped by `skill.PluginZip`. A tool's

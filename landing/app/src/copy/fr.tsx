@@ -308,7 +308,7 @@ export const fr: Copy = {
       },
       { title: 'Les secrets vont dans .env', text: "La valeur d'un champ secret n'apparaît jamais dans les réponses que lit l'agent." },
     ],
-    how: "Même 404 pour un formulaire inconnu et pour un mauvais jeton, pas de referrer, pas de cache, pas d'indexation, une CSP stricte, des maquettes dans des cadres isolés et sans script.",
+    how: "Même 404 pour un formulaire inconnu et pour un mauvais jeton, pas de referrer, pas de cache, pas d'indexation, une CSP stricte, des maquettes dans des cadres isolés et sans script. Le relais compte l'usage (connexions, formulaires répondus, téléchargements), jamais le contenu d'un formulaire, ses réponses ni qui vous êtes.",
     more: (github: string): ReactNode => (
       <>
         Plus de détails dans <a href={github + '/blob/main/docs/how-it-works.md'}>comment ça marche</a>.

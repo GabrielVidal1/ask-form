@@ -321,7 +321,7 @@ export const en = {
       },
       { title: 'Secrets go to .env', text: "A secret field's value never appears in the answers the agent reads." },
     ],
-    how: 'Same 404 for an unknown form and a wrong token, no referrer, no cache, no indexing, a strict CSP, mockups in sandboxed script-free frames.',
+    how: 'Same 404 for an unknown form and a wrong token, no referrer, no cache, no indexing, a strict CSP, mockups in sandboxed script-free frames. The relay counts usage (sign-ins, forms answered, downloads), never what a form says, its answers or who you are.',
     more: (github: string): ReactNode => (
       <>
         More in <a href={github + '/blob/main/docs/how-it-works.md'}>how it works</a>.

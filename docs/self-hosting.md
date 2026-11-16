@@ -26,6 +26,10 @@ open at `https://forms.example.com`.
 - With `--hosted DIR` it also runs the [chat-app connector](#chat-apps-the-connector):
   then it keeps, in `DIR`, the anonymous accounts' token hashes and the cloud
   forms with their answers, each deleted 24 h after it closes.
+- It keeps [usage counts](how-it-works.md#usage-counts) in `stats.json`
+  next to `machines.json`: counters per day and, per connector account, a
+  summary under a hash of its id — never what a form says. `--stats off`
+  turns them off.
 - It is a single process holding the live polls in memory: run one instance,
   not several behind a load balancer. It is small: ask-form.xyz runs on a
   Raspberry Pi 5 in 128 MB.
@@ -386,6 +390,26 @@ docker compose exec ask-form-relay /ask-form-relay machine rm <name>
   and a reload brings the form back.
 - The landing page and the examples come with the relay; there is no switch
   to turn them off.
+- **Usage**: `docker compose exec ask-form-relay /ask-form-relay stats
+  --days 30` (`--json` for a script). To read it from elsewhere, set
+  `ASK_FORM_RELAY_STATS_TOKEN` to a long random string: `GET
+  /_relay/v1/stats?days=7` gives the same summary as JSON and `GET
+  /_relay/v1/metrics` the totals for Prometheus, both with
+  `Authorization: Bearer <token>`:
+
+  ```yaml
+  scrape_configs:
+    - job_name: ask-form
+      scheme: https
+      metrics_path: /_relay/v1/metrics
+      authorization: {credentials_file: /etc/prometheus/ask-form-stats-token}
+      static_configs: [{targets: ['forms.example.com']}]
+  ```
+
+  The counters are totals since the counts began (`askform_*_total`), with
+  `askform_answer_seconds` (time to answer, a histogram),
+  `askform_active_accounts{window="1d|7d|30d"}`,
+  `askform_retention_7d_ratio`, and the machines and accounts right now.
 
 ## Behind Cloudflare
 
@@ -456,9 +480,11 @@ sign-in (`/.well-known/oauth-*`, `/oauth/…`) and the plugin zip
 | `--hosted` | `ASK_FORM_RELAY_HOSTED` | off | run the [chat-app connector](#chat-apps-the-connector) with its data in this directory |
 | `--cloud-retention` | `ASK_FORM_RELAY_CLOUD_RETENTION` | `24h` | delete a cloud form this long after it closes |
 | `--cloud-max-open`, `--cloud-per-day` | `ASK_FORM_RELAY_CLOUD_MAX_OPEN`, `…_PER_DAY` | `20`, `100` | pending cloud forms per account; forms an account creates a day |
+| `--stats` | `ASK_FORM_RELAY_STATS` | `stats.json` next to the machines file | [usage counts](how-it-works.md#usage-counts); `off`: none |
+| `--stats-token` | `ASK_FORM_RELAY_STATS_TOKEN` | none (closed) | opens `GET /_relay/v1/stats` and `/_relay/v1/metrics` to `Authorization: Bearer <token>`; prefer the env var |
 
 Other commands: `ask-form-relay machine add|rm <name>`, `machine ls`,
-`key add|rm <name>`, `key ls`,
+`key add|rm <name>`, `key ls`, `stats [--days 7] [--json]`,
 `healthcheck` (exit 0 when `127.0.0.1:8080` answers; for the image, which has
 no shell), `version`. How the relay and the machines keep forms private is in
 [how it works](how-it-works.md).
