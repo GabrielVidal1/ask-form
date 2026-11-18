@@ -872,6 +872,17 @@
     }
     openConfirm(by);
   });
+  // Cmd+Enter (Ctrl+Enter off a Mac) in the last box, "Anything else?",
+  // opens the send step as the Send button does.
+  var sendBtn = form.querySelector("button[type=submit][value=submit]");
+  form.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+    if (e.repeat || e.isComposing || e.defaultPrevented || !sendBtn || sendBtn.disabled) return;
+    if (!e.target.closest || !e.target.closest(".catchall")) return;
+    e.preventDefault();
+    if (form.requestSubmit) form.requestSubmit(sendBtn);
+    else sendBtn.click();
+  });
   function lock() {
     setTimeout(function () { $all("button[type=submit]", form).forEach(function (b) { b.disabled = true; }); }, 0);
   }
@@ -926,6 +937,9 @@
     return main ? main.value.trim() : "";
   }
   function openConfirm(by) {
+    // Back returns to where the step was opened from: the box Cmd+Enter
+    // was pressed in, else the Send button.
+    var from = form.contains(document.activeElement) ? document.activeElement : by;
     var wrap = make("div", "confirm");
     wrap.setAttribute("role", "dialog");
     wrap.setAttribute("aria-modal", "true");
@@ -954,7 +968,11 @@
     var back = make("button", "btn ghost", tr("Back"));
     var send = make("button", "btn primary", tr("Confirm & send"));
     back.type = send.type = "button";
-    back.addEventListener("click", function () { wrap.remove(); if (by) by.focus(); });
+    back.addEventListener("click", function () {
+      wrap.remove();
+      document.removeEventListener("keydown", key, true);
+      if (from) from.focus();
+    });
     send.addEventListener("click", function () {
       confirmed = true;
       send.disabled = true;
@@ -966,7 +984,37 @@
         form.submit();
       }
     });
-    wrap.addEventListener("keydown", function (e) { if (e.key === "Escape") back.click(); });
+    // The keyboard answers the step wherever the focus went (a click on the
+    // recap or the backdrop leaves it on the page): Esc goes back, Enter
+    // sends — Enter on a focused Back is that button's own — and Tab stays
+    // on the step's two buttons. Caught before the page's own handlers,
+    // and never the key press that opened the step (a held key repeats).
+    function key(e) {
+      if (!wrap.isConnected || e.defaultPrevented || e.isComposing) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        back.click();
+      } else if (e.key === "Enter") {
+        if (e.repeat || send.disabled) { e.preventDefault(); return; }
+        if (document.activeElement === back && !(e.metaKey || e.ctrlKey)) return;
+        e.preventDefault();
+        send.click();
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        var ring = [back, send];
+        var at = ring.indexOf(document.activeElement);
+        ring[at < 0 ? (e.shiftKey ? 1 : 0) : 1 - at].focus();
+      }
+    }
+    document.addEventListener("keydown", key, true);
+    // A click on the dim backdrop goes back too — pressed there, not a
+    // selection in the recap dragged out of the box.
+    var downOut = false;
+    wrap.addEventListener("pointerdown", function (e) { downOut = e.target === wrap; });
+    wrap.addEventListener("click", function (e) {
+      if (e.target === wrap && downOut) back.click();
+      downOut = false;
+    });
     acts.appendChild(back);
     acts.appendChild(send);
     box.appendChild(acts);

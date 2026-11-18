@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ask-form",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "Ask the user structured questions in a private web form they answer from any browser or phone (choices, mockups, sliders, dates, tables), and read the answers back in the chat.",
   "author": { "name": "Gabriel Vidal", "url": "https://ask-form.xyz" },
   "homepage": "https://ask-form.xyz",

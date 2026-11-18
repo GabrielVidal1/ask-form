@@ -97,6 +97,10 @@ device, your phone included. For a team vote or anyone else's feedback,
 `--multi` makes one public link that takes any number of answers until it
 expires or `ask-form close <id>`; `wait` then returns them all.
 
+The page answers to the keyboard too: Cmd+Enter (Ctrl+Enter off a Mac) in the
+last box, "Anything else?", opens the send step, where Enter sends and Esc
+goes back.
+
 Forms speak English or French. `create --lang fr` sets the language of the page
 around the questions (buttons, errors, the thanks page), and
 `ask-form setup --lang fr` makes French the machine's default. The agent writes
