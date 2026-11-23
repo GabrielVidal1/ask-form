@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	askform "github.com/GabrielVidal1/ask-form"
@@ -31,10 +32,24 @@ import (
 )
 
 type hostedParts struct {
-	dir     string
-	cloud   *server.Server
-	acc     *accounts.Service
-	backend *hosted.Backend
+	dir       string
+	cloud     *server.Server
+	acc       *accounts.Service
+	backend   *hosted.Backend
+	revokedMu sync.RWMutex
+	revoked   map[string]bool
+}
+
+func (h *hostedParts) isRevoked(acct string) bool {
+	h.revokedMu.RLock()
+	defer h.revokedMu.RUnlock()
+	return h.revoked[acct]
+}
+
+func (h *hostedParts) markRevoked(acct string) {
+	h.revokedMu.Lock()
+	h.revoked[acct] = true
+	h.revokedMu.Unlock()
 }
 
 // setupHosted builds the connector's parts; relay() is the relay once it
@@ -101,11 +116,15 @@ func setupHosted(dir, publicURL string, policy server.CloudPolicy, rec *stats.Re
 		"GET /plugin/ask-form.zip": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/zip")
 			w.Header().Set("Content-Disposition", `attachment; filename="ask-form-plugin.zip"`)
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Cache-Control", "public, max-age=3600")
 			w.Write(zip)
 		}),
 	}
-	return &hostedParts{dir: dir, cloud: cloud, acc: acc, backend: backend}, routes, nil
+	hp := &hostedParts{dir: dir, cloud: cloud, acc: acc, backend: backend, revoked: map[string]bool{}}
+	cloud.RevokedAccount = hp.isRevoked
+	return hp, routes, nil
 }
 
 func where(machine string) string {
@@ -204,6 +223,7 @@ func (h *hostedParts) takedowns(ctx context.Context, every time.Duration) {
 			done[id] = true
 			n := 0
 			if strings.HasPrefix(id, "acct_") {
+				h.markRevoked(id)
 				h.acc.Remove(id)
 				for _, st := range h.cloud.Store().List() {
 					if st.Meta[server.MetaAccount] == id && h.cloud.Store().Delete(st.ID) == nil {

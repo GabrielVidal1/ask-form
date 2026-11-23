@@ -54,7 +54,7 @@ type CloudPolicy struct {
 }
 
 // DefaultCloud is ask-form.xyz's policy.
-var DefaultCloud = CloudPolicy{MaxOpen: 20, MaxPerDay: 100, MaxTTL: 7 * 24 * time.Hour, Retention: 24 * time.Hour,
+var DefaultCloud = CloudPolicy{MaxOpen: 20, MaxPerDay: 50, MaxTTL: 7 * 24 * time.Hour, Retention: 24 * time.Hour,
 	MaxForms: 2000, MaxBody: 2 << 20, MaxAnswers: 200}
 
 // MachineChat bounds the forms chat apps create on a linked machine: the
@@ -114,9 +114,13 @@ func (s *Server) acctCreate(w http.ResponseWriter, r *http.Request) {
 		req.NoSnapshot = true
 	}
 	// The check and the create under one lock: parallel calls can't slip
-	// past a quota between the two.
+	// past a quota or an account takedown between the two.
 	s.acctMu.Lock()
 	defer s.acctMu.Unlock()
+	if s.RevokedAccount != nil && s.RevokedAccount(acct) {
+		apiError(w, http.StatusUnauthorized, "this account is gone")
+		return
+	}
 	if msg := s.overQuota(acct, c); msg != "" {
 		apiError(w, http.StatusTooManyRequests, msg)
 		return
@@ -129,6 +133,8 @@ func (s *Server) acctCreate(w http.ResponseWriter, r *http.Request) {
 	apiJSON(w, http.StatusCreated, out)
 }
 
+var passwordInputRe = regexp.MustCompile(`(?i)<input\b[^>]*type\s*=\s*["']?password\b`)
+
 // vetChatFields refuses what a form asked from a chat can't hand back: a
 // secret would land in the conversation's transcript, an uploaded file on a
 // disk the chat can't read.
@@ -139,6 +145,20 @@ func vetChatFields(fields []form.Field) error {
 			return fmt.Errorf("field %q: secret fields aren't available from a chat — the value would end up in the conversation; ask for it some other way", f.Key)
 		case form.File:
 			return fmt.Errorf("field %q: file fields aren't available from a chat yet", f.Key)
+		case form.Textarea:
+			if form.LooksLikeCredential(f.Key, f.Label) {
+				return fmt.Errorf("field %q: credential fields aren't available from a chat — the value would end up in the conversation; ask for it some other way", f.Key)
+			}
+		case form.List:
+			for _, col := range f.Cols {
+				if form.LooksLikeCredential(col.Key, col.Label) {
+					return fmt.Errorf("field %q (column %q): credential fields aren't available from a chat — the value would end up in the conversation", f.Key, col.Key)
+				}
+			}
+		case form.Widget:
+			if passwordInputRe.MatchString(f.HTML) {
+				return fmt.Errorf("field %q: password inputs aren't allowed in chat widgets — secrets would end up in the conversation", f.Key)
+			}
 		}
 	}
 	return nil
@@ -231,6 +251,11 @@ func (s *Server) acctClose(w http.ResponseWriter, r *http.Request) {
 		typ = store.Closed
 	}
 	s.closeWith(w, st.ID, typ)
+	// On a hosted cloud relay, immediately drop empty revoked forms so an
+	// attacker cannot create+revoke 2000 forms to exhaust MaxForms for 24 h.
+	if s.cfg.Cloud != nil && typ == store.Revoked && len(st.Answers) == 0 && len(st.Responses) == 0 {
+		s.store.Delete(st.ID)
+	}
 }
 
 // RunRetention deletes, every so often until ctx ends, the forms closed for

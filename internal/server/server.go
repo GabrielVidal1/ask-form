@@ -101,6 +101,9 @@ type Server struct {
 	Claim func(ctx context.Context, id string) error
 	// Link: chat apps' accounts this machine took (`ask-form link`); nil = none.
 	Link *Link
+	// RevokedAccount reports whether an MCP account was taken down; checked
+	// under acctMu in acctCreate to prevent takedown races.
+	RevokedAccount func(string) bool
 	// acctMu serializes the account API's creates (account_api.go).
 	acctMu sync.Mutex
 	// Restart asks `serve` to re-exec itself (POST /v1/restart, after

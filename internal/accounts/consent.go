@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // The consent pages: plain HTML forms that work with JavaScript off (the
@@ -138,15 +139,18 @@ form.inline{display:inline}
   // the user says it is their computer.
   var code={{.Code}}, st=document.getElementById("status"), ask=document.getElementById("ask"),
       confirm=document.getElementById("confirm"), go=document.getElementById("go"), until=Date.now()+15*60*1000;
+  // Disable Continue while waiting so a mid-click race cannot confirm a machine before the user sees its name.
+  go.disabled=true;
   function poll(){
     if(Date.now()>until) return;
-    fetch("/oauth/link?code="+encodeURIComponent(code),{cache:"no-store",credentials:"same-origin"}).then(function(r){return r.json()}).then(function(d){
+    fetch("/oauth/link",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"code="+encodeURIComponent(code),cache:"no-store",credentials:"same-origin"}).then(function(r){return r.json()}).then(function(d){
       if(d.linked){
         st.className="status ok";
         st.textContent="Linked to “"+d.machine+"”"+(d.online===false?" (offline right now: forms work once ask-form serve runs there)":"")+". Is that your computer?";
         confirm.value=d.machine;
         go.textContent="Yes, that's my computer";
         ask.hidden=false;
+        setTimeout(function(){go.disabled=false;},400);
         return;
       }
       setTimeout(poll,2000);
@@ -211,6 +215,9 @@ func (s *Service) render(w http.ResponseWriter, status int, page any) {
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("X-Robots-Tag", "noindex, nofollow")
+	if strings.HasPrefix(s.cfg.PublicURL, "https://") {
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	}
 	w.WriteHeader(status)
 	w.Write(buf.Bytes())
 }

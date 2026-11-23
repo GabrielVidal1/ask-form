@@ -135,6 +135,7 @@ type db struct {
 
 type authCode struct {
 	client, redirect, challenge, account string
+	redirectRequired                     bool
 	expires                              time.Time
 	used                                 bool
 	family                               string // set once exchanged (revoked on reuse)
@@ -164,16 +165,18 @@ type Service struct {
 	key  []byte
 	path string
 
-	mu       sync.Mutex
-	db       db
-	dirty    bool
-	codes    map[string]*authCode // code → …
-	links    map[string]*linkCode // "ABCD-EFGH" → …
-	rotated  map[string]*issued   // old refresh token hash → the pair it gave
-	acctIP   *ipLimiter
-	linkIP   *ipLimiter
-	tokenLim *ipLimiter // token requests per client id
-	linkTry  *ipLimiter // Link calls per machine
+	mu        sync.Mutex
+	db        db
+	dirty     bool
+	codes     map[string]*authCode // code → …
+	links     map[string]*linkCode // "ABCD-EFGH" → …
+	rotated   map[string]*issued   // old refresh token hash → the pair it gave
+	acctIP    *ipLimiter
+	linkIP    *ipLimiter
+	regGlobal *ipLimiter // global dynamic client registrations (chat apps share egress IPs)
+	tokFailIP *ipLimiter // failed client auth at /oauth/token per IP/64
+	tokenLim  *ipLimiter // token requests per client id
+	linkTry   *ipLimiter // Link calls per machine
 
 	every     time.Duration
 	stop      chan struct{}
@@ -192,7 +195,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, errors.New("accounts: need a directory")
 	}
 	if cfg.AccountsPerIP <= 0 {
-		cfg.AccountsPerIP = 10
+		cfg.AccountsPerIP = 5
 	}
 	if cfg.MaxAccounts <= 0 {
 		cfg.MaxAccounts = 20000
@@ -210,13 +213,15 @@ func New(cfg Config) (*Service, error) {
 	s := &Service{
 		cfg: cfg, key: key, path: filepath.Join(cfg.Dir, "accounts.json"),
 		codes: map[string]*authCode{}, links: map[string]*linkCode{}, rotated: map[string]*issued{},
-		acctIP:   newIPLimiter(cfg.AccountsPerIP, 24*time.Hour),
-		linkIP:   newIPLimiter(20, time.Hour),
-		tokenLim: newIPLimiter(tokensPerMin, time.Minute),
-		linkTry:  newIPLimiter(30, time.Hour),
-		every:    flushEvery,
-		stop:     make(chan struct{}),
-		done:     make(chan struct{}),
+		acctIP:    newIPLimiter(cfg.AccountsPerIP, 24*time.Hour),
+		linkIP:    newIPLimiter(20, time.Hour),
+		regGlobal: newIPLimiter(600, time.Minute),
+		tokFailIP: newIPLimiter(60, time.Minute),
+		tokenLim:  newIPLimiter(tokensPerMin, time.Minute),
+		linkTry:   newIPLimiter(30, time.Hour),
+		every:     flushEvery,
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 	if err := s.load(); err != nil {
 		return nil, err
@@ -273,7 +278,8 @@ func (s *Service) load() error {
 	return nil
 }
 
-// flusher writes the store when it changed, at most every s.every.
+// flusher writes the store when it changed, at most every s.every, and sweeps
+// expired rotated-token grace entries so plaintext tokens don't linger in RAM.
 func (s *Service) flusher() {
 	defer close(s.done)
 	t := time.NewTicker(s.every)
@@ -282,14 +288,31 @@ func (s *Service) flusher() {
 		select {
 		case <-s.stop:
 			return
-		case <-t.C:
+		case now := <-t.C:
+			var snap []byte
 			s.mu.Lock()
+			for h, p := range s.rotated {
+				if now.Sub(p.at) > refreshGrace {
+					delete(s.rotated, h)
+				}
+			}
 			if s.dirty {
-				if err := s.save(); err != nil {
-					log.Printf("accounts: write %s: %v", s.path, err)
+				if b, err := json.Marshal(s.db); err != nil {
+					log.Printf("accounts: marshal %s: %v", s.path, err)
+				} else {
+					snap = append(b, '\n')
+					s.dirty = false
 				}
 			}
 			s.mu.Unlock()
+			if snap != nil {
+				if err := writeAtomic(s.path, snap); err != nil {
+					log.Printf("accounts: write %s: %v", s.path, err)
+					s.mu.Lock()
+					s.dirty = true
+					s.mu.Unlock()
+				}
+			}
 		}
 	}
 }
@@ -311,7 +334,7 @@ func (s *Service) Close() error {
 
 // save writes the store; the caller holds s.mu.
 func (s *Service) save() error {
-	b, err := json.MarshalIndent(s.db, "", "  ")
+	b, err := json.Marshal(s.db)
 	if err != nil {
 		return err
 	}
@@ -323,11 +346,39 @@ func (s *Service) save() error {
 }
 
 func writeAtomic(path string, b []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp, err := os.CreateTemp(dir, ".accounts-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if err := os.Chmod(name, 0o600); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
 }
 
 // ResourceMetadataURL is where an MCP client learns which server issues
@@ -408,11 +459,17 @@ func (s *Service) Remove(accountID string) error {
 	for h, t := range s.db.Tokens {
 		if t.Account == accountID {
 			delete(s.db.Tokens, h)
+			delete(s.rotated, h)
 		}
 	}
 	for c, a := range s.codes {
 		if a.account == accountID {
 			delete(s.codes, c)
+		}
+	}
+	for c, l := range s.links {
+		if l.account == accountID {
+			delete(s.links, c)
 		}
 	}
 	return s.save()
@@ -448,7 +505,11 @@ func (s *Service) Prune(now time.Time) {
 		used[t.Client] = true
 	}
 	for id, c := range s.db.Clients {
-		if c.LastUsed.IsZero() && now.Sub(c.Created) > unusedTTL && !used[id] {
+		if used[id] {
+			continue
+		}
+		if (c.LastUsed.IsZero() && now.Sub(c.Created) > unusedTTL) ||
+			(!c.LastUsed.IsZero() && now.Sub(c.LastUsed) > accountIdle) {
 			delete(s.db.Clients, id)
 			s.dirty = true
 		}
@@ -654,16 +715,20 @@ func normalizeLinkCode(c string) string {
 	return s[:4] + "-" + s[4:]
 }
 
-// ipLimiter allows max hits per key per window (internal/relay's, copied).
+// ipLimiter allows max hits per key per window, bounded in size so >50k
+// unique keys cannot cause O(N^2) mutex stalls or memory exhaustion.
 type ipLimiter struct {
-	mu     sync.Mutex
-	max    int
-	window time.Duration
-	hits   map[string]*struct {
+	mu        sync.Mutex
+	max       int
+	window    time.Duration
+	lastSweep time.Time
+	hits      map[string]*struct {
 		start time.Time
 		n     int
 	}
 }
+
+const maxIPLimiterEntries = 50000
 
 func newIPLimiter(max int, window time.Duration) *ipLimiter {
 	return &ipLimiter{max: max, window: window, hits: map[string]*struct {
@@ -676,15 +741,24 @@ func (l *ipLimiter) hit(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	if len(l.hits) > 50000 {
-		for k, v := range l.hits {
-			if now.Sub(v.start) > l.window {
-				delete(l.hits, k)
-			}
-		}
-	}
 	w := l.hits[ip]
 	if w == nil || now.Sub(w.start) > l.window {
+		if w == nil && len(l.hits) >= maxIPLimiterEntries {
+			if now.Sub(l.lastSweep) > 5*time.Second {
+				l.lastSweep = now
+				for k, v := range l.hits {
+					if now.Sub(v.start) > l.window {
+						delete(l.hits, k)
+					}
+				}
+			}
+			for len(l.hits) >= maxIPLimiterEntries {
+				for k := range l.hits {
+					delete(l.hits, k)
+					break
+				}
+			}
+		}
 		w = &struct {
 			start time.Time
 			n     int

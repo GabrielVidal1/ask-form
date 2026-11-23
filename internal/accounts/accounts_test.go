@@ -234,21 +234,20 @@ func TestAuthorizeValidation(t *testing.T) {
 		}
 	}
 	for name, c := range map[string]struct {
-		mod  func(url.Values)
-		want string
+		mod func(url.Values)
 	}{
-		"no PKCE":        {func(q url.Values) { q.Del("code_challenge") }, "invalid_request"},
-		"plain PKCE":     {func(q url.Values) { q.Set("code_challenge_method", "plain") }, "invalid_request"},
-		"token flow":     {func(q url.Values) { q.Set("response_type", "token") }, "unsupported_response_type"},
-		"other resource": {func(q url.Values) { q.Set("resource", "https://other.example/mcp") }, "invalid_target"},
-		"resource below": {func(q url.Values) { q.Set("resource", pub+"/mcp/other") }, "invalid_target"},
-		"lookalike host": {func(q url.Values) { q.Set("resource", pub+".evil.example/mcp") }, "invalid_target"},
+		"no PKCE":        {func(q url.Values) { q.Del("code_challenge") }},
+		"plain PKCE":     {func(q url.Values) { q.Set("code_challenge_method", "plain") }},
+		"token flow":     {func(q url.Values) { q.Set("response_type", "token") }},
+		"other resource": {func(q url.Values) { q.Set("resource", "https://other.example/mcp") }},
+		"resource below": {func(q url.Values) { q.Set("resource", pub+"/mcp/other") }},
+		"lookalike host": {func(q url.Values) { q.Set("resource", pub+".evil.example/mcp") }},
 	} {
+		// Malformed authorize requests render an inline 400 error page and never
+		// redirect (prevents zero-click open redirects via DCR clients).
 		w := try(c.mod)
-		u, _ := url.Parse(w.Header().Get("Location"))
-		if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), redirect) ||
-			u.Query().Get("error") != c.want || u.Query().Get("state") != "s" {
-			t.Errorf("%s: %d %q", name, w.Code, w.Header().Get("Location"))
+		if w.Code != http.StatusBadRequest || w.Header().Get("Location") != "" {
+			t.Errorf("%s: %d location=%q", name, w.Code, w.Header().Get("Location"))
 		}
 	}
 	for _, res := range []string{pub, pub + "/mcp"} {
@@ -288,7 +287,7 @@ func TestCodeReuseAndVerifier(t *testing.T) {
 	v, c := pkce()
 	req, ck := e.consent(client, redirect, c, "s")
 	code := codeFrom(t, e.post(url.Values{"req": {req}, "choice": {"cloud"}}, ck), "s")
-	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "client_id": {client}, "code_verifier": {v}}
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "client_id": {client}, "code_verifier": {v}, "redirect_uri": {redirect}}
 	bad := url.Values{}
 	for k, x := range form {
 		bad[k] = x
@@ -316,7 +315,7 @@ func TestConfidentialClient(t *testing.T) {
 	v, c := pkce()
 	req, ck := e.consent(client, redirect, c, "s")
 	code := codeFrom(t, e.post(url.Values{"req": {req}, "choice": {"cloud"}}, ck), "s")
-	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "code_verifier": {v}}
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "code_verifier": {v}, "redirect_uri": {redirect}}
 	r := httptest.NewRequest("POST", pub+"/oauth/token", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.SetBasicAuth(client, "afs_wrong")
@@ -548,7 +547,7 @@ func TestMachineFlow(t *testing.T) {
 	}
 	cont.Set("confirm", "laptop")
 	auth := codeFrom(t, e.post(cont, ck), "m")
-	st, tok := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {auth}, "client_id": {client}, "code_verifier": {v}})
+	st, tok := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {auth}, "client_id": {client}, "code_verifier": {v}, "redirect_uri": {redirect}})
 	if st != 200 {
 		t.Fatalf("token: %d %v", st, tok)
 	}
@@ -656,10 +655,10 @@ func TestMaxAccountsEvictsUnused(t *testing.T) {
 	if st != http.StatusSeeOther {
 		t.Fatalf("third account: %d", st)
 	}
-	if st, _ := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {code2}, "client_id": {client}, "code_verifier": {v2}}); st != http.StatusBadRequest {
+	if st, _ := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {code2}, "client_id": {client}, "code_verifier": {v2}, "redirect_uri": {redirect}}); st != http.StatusBadRequest {
 		t.Fatalf("the evicted account's code still works: %d", st)
 	}
-	if st, _ := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {code3}, "client_id": {client}, "code_verifier": {v3}}); st != 200 {
+	if st, _ := e.token(url.Values{"grant_type": {"authorization_code"}, "code": {code3}, "client_id": {client}, "code_verifier": {v3}, "redirect_uri": {redirect}}); st != 200 {
 		t.Fatalf("third account's token: %d", st)
 	}
 	if _, _, st := consent(); st != http.StatusServiceUnavailable {

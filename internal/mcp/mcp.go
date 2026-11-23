@@ -124,6 +124,8 @@ type rpcError struct {
 
 func (e *rpcError) Error() string { return e.Message }
 
+type batchCtxKey struct{}
+
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodPost {
@@ -146,6 +148,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+	// Bound the entire POST (including batches) to 100 s so a batch of
+	// wait calls cannot hold an InFlightTotal slot for 15 minutes (M-9).
+	ctx, cancel := context.WithTimeout(r.Context(), 100*time.Second)
+	defer cancel()
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBody))
 	if err != nil {
 		writeJSON(w, http.StatusRequestEntityTooLarge, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"),
@@ -170,10 +176,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.tooMany(w, retry)
 			return
 		}
+		batchCtx := context.WithValue(ctx, batchCtxKey{}, true)
 		var out []json.RawMessage
 		size := 2
 		for _, m := range batch {
-			resp, reply := h.one(r.Context(), acct, m)
+			resp, reply := h.one(batchCtx, acct, m)
 			if !reply {
 				continue
 			}
@@ -195,7 +202,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeBytes(w, http.StatusOK, b)
 		return
 	}
-	resp, reply := h.one(r.Context(), acct, body)
+	resp, reply := h.one(ctx, acct, body)
 	if !reply {
 		w.WriteHeader(http.StatusAccepted)
 		return

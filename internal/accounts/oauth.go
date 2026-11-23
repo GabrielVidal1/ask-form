@@ -32,7 +32,12 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /oauth/authorize", s.authorizePost)
 	mux.HandleFunc("POST /oauth/token", s.tokenEndpoint)
 	mux.HandleFunc("GET /oauth/link", s.linkStatus)
+	mux.HandleFunc("POST /oauth/link", s.linkStatus)
+	https := strings.HasPrefix(s.cfg.PublicURL, "https://")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if https {
+			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
 		// The machine-to-machine endpoints may be called from a browser-based
 		// MCP client (the MCP Inspector): no cookies there, so any origin.
 		if isCORS(r.URL.Path) {
@@ -96,13 +101,18 @@ type regRequest struct {
 }
 
 func (s *Service) register(w http.ResponseWriter, r *http.Request) {
+	if !s.regGlobal.hit("global") {
+		w.Header().Set("Retry-After", "60")
+		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many client registrations: try again in a minute")
+		return
+	}
 	var req regRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "the body is not client metadata JSON")
 		return
 	}
-	if len(req.RedirectURIs) == 0 || len(req.RedirectURIs) > 10 {
-		oauthError(w, http.StatusBadRequest, "invalid_redirect_uri", "give 1 to 10 redirect_uris")
+	if len(req.RedirectURIs) == 0 || len(req.RedirectURIs) > 5 {
+		oauthError(w, http.StatusBadRequest, "invalid_redirect_uri", "give 1 to 5 redirect_uris")
 		return
 	}
 	for _, u := range req.RedirectURIs {
@@ -172,19 +182,23 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 // checkRedirect accepts https URLs, http on a loopback address (Claude Code,
 // RFC 8252) and private-use schemes of native apps (cursor://, vscode://).
 func checkRedirect(raw string) string {
-	if len(raw) > 2000 {
+	if len(raw) > 512 {
 		return "redirect_uri too long"
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" {
 		return "redirect_uri is not an absolute URL"
 	}
+	if u.User != nil {
+		return "redirect_uri may not include credentials"
+	}
 	if u.Fragment != "" || strings.Contains(raw, "#") {
 		return "redirect_uri may not have a fragment"
 	}
-	switch strings.ToLower(u.Scheme) {
+	scheme := strings.ToLower(u.Scheme)
+	switch scheme {
 	case "https":
-		if u.Host == "" {
+		if u.Hostname() == "" {
 			return "redirect_uri needs a host"
 		}
 	case "http":
@@ -194,7 +208,12 @@ func checkRedirect(raw string) string {
 	case "javascript", "data", "file", "vbscript", "about", "blob", "ftp", "ws", "wss":
 		return "redirect_uri scheme not allowed"
 	default:
-		for _, c := range u.Scheme {
+		// RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+		if !(scheme[0] >= 'a' && scheme[0] <= 'z') {
+			return "redirect_uri scheme not allowed"
+		}
+		for i := 1; i < len(scheme); i++ {
+			c := scheme[i]
 			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '.' || c == '-') {
 				return "redirect_uri scheme not allowed"
 			}
@@ -219,13 +238,16 @@ func redirectMatches(registered []string, got string) bool {
 			return true
 		}
 	}
+	if checkRedirect(got) != "" {
+		return false
+	}
 	g, err := url.Parse(got)
-	if err != nil || g.Scheme != "http" || !isLoopback(g.Hostname()) {
+	if err != nil || g.Scheme != "http" || !isLoopback(g.Hostname()) || g.User != nil || g.Fragment != "" {
 		return false
 	}
 	for _, r := range registered {
 		u, err := url.Parse(r)
-		if err == nil && u.Scheme == "http" && u.Hostname() == g.Hostname() && u.Path == g.Path && u.RawQuery == g.RawQuery {
+		if err == nil && u.Scheme == "http" && u.User == nil && u.Hostname() == g.Hostname() && u.Path == g.Path && u.RawQuery == g.RawQuery {
 			return true
 		}
 	}
@@ -251,43 +273,52 @@ func cleanName(n string) string {
 
 // authReq is what the consent page carries, signed, from GET to POST.
 type authReq struct {
-	Client    string `json:"c"`
-	Redirect  string `json:"r"`
-	State     string `json:"s,omitempty"`
-	Challenge string `json:"p"`
-	CSRF      string `json:"x"`
-	Issued    int64  `json:"t"`
+	Client           string `json:"c"`
+	Redirect         string `json:"r"`
+	RedirectRequired bool   `json:"rr,omitempty"`
+	State            string `json:"s,omitempty"`
+	Challenge        string `json:"p"`
+	CSRF             string `json:"x"`
+	Issued           int64  `json:"t"`
 }
 
 const csrfCookie = "af_oauth"
 
 func (s *Service) authorizeGet(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	c, redirect, ok := s.lookupClient(w, q.Get("client_id"), q.Get("redirect_uri"))
+	rawRedirect := q.Get("redirect_uri")
+	c, redirect, ok := s.lookupClient(w, q.Get("client_id"), rawRedirect)
 	if !ok {
 		return
 	}
 	state := q.Get("state")
-	fail := func(code, desc string) { redirectError(w, r, redirect, code, desc, state, s.cfg.PublicURL) }
+	// Render inline error pages rather than 303-redirecting to unverified DCR
+	// clients on malformed requests (prevents zero-click open redirects, H-7).
+	bad := func(desc string) {
+		s.render(w, http.StatusBadRequest, errorPage{Title: "Invalid sign-in request", Text: desc})
+	}
 	if q.Get("response_type") != "code" {
-		fail("unsupported_response_type", "response_type must be code")
+		bad("response_type must be code.")
 		return
 	}
 	challenge := q.Get("code_challenge")
 	if q.Get("code_challenge_method") != "S256" || !validChallenge(challenge) {
-		fail("invalid_request", "PKCE with code_challenge_method=S256 is required")
+		bad("PKCE with code_challenge_method=S256 is required.")
 		return
 	}
 	if res := q.Get("resource"); res != "" && res != s.resource() && res != s.cfg.PublicURL {
-		fail("invalid_target", "this server issues tokens for "+s.resource()+" only")
+		bad("This server issues tokens for " + s.resource() + " only.")
 		return
 	}
 	if len(state) > 1000 {
-		fail("invalid_request", "state too long")
+		bad("The sign-in state parameter is too long.")
 		return
 	}
 	csrf := s.csrf(w, r)
-	req := authReq{Client: c.ID, Redirect: redirect, State: state, Challenge: challenge, CSRF: csrf, Issued: time.Now().Unix()}
+	req := authReq{
+		Client: c.ID, Redirect: redirect, RedirectRequired: rawRedirect != "",
+		State: state, Challenge: challenge, CSRF: csrf, Issued: time.Now().Unix(),
+	}
 	s.render(w, http.StatusOK, consentPage{
 		Client: c.Name, RedirectHost: displayHost(redirect), Req: s.sign(req),
 		Install: s.cfg.PublicURL + "/install.sh", FormAction: cspOrigin(redirect),
@@ -412,7 +443,10 @@ func (s *Service) authorizePost(w http.ResponseWriter, r *http.Request) {
 		delete(s.links, spent)
 	}
 	code := randToken()
-	s.codes[code] = &authCode{client: c.ID, redirect: redirect, challenge: req.Challenge, account: a.ID, expires: now.Add(codeTTL)}
+	s.codes[code] = &authCode{
+		client: c.ID, redirect: redirect, redirectRequired: req.RedirectRequired,
+		challenge: req.Challenge, account: a.ID, expires: now.Add(codeTTL),
+	}
 	s.mu.Unlock()
 	v := url.Values{"code": {code}, "iss": {s.cfg.PublicURL}}
 	if req.State != "" {
@@ -439,11 +473,16 @@ func (s *Service) host() string {
 	return s.cfg.PublicURL
 }
 
-// linkStatus answers the link page's poll (GET /oauth/link?code=…, the code
-// in the query so access logs don't keep it), for the browser that minted
-// the code only.
+// linkStatus answers the link page's poll (POST /oauth/link with form body
+// code=… so upstream proxies don't log the code in query strings; GET kept for
+// compatibility), for the browser that minted the code only.
 func (s *Service) linkStatus(w http.ResponseWriter, r *http.Request) {
-	code := normalizeLinkCode(r.URL.Query().Get("code"))
+	rawCode := r.URL.Query().Get("code")
+	if r.Method == http.MethodPost {
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		rawCode = r.PostFormValue("code")
+	}
+	code := normalizeLinkCode(rawCode)
 	ck, _ := r.Cookie(csrfCookie)
 	s.mu.Lock()
 	l := s.links[code]
@@ -465,12 +504,25 @@ func (s *Service) linkStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// csrf returns the browser's consent cookie, setting one if missing.
+// csrf returns the browser's consent cookie, refreshing its TTL or setting a new one.
 func (s *Service) csrf(w http.ResponseWriter, r *http.Request) string {
+	v := ""
 	if c, err := r.Cookie(csrfCookie); err == nil && len(c.Value) >= 20 && len(c.Value) <= 100 {
-		return c.Value
+		valid := true
+		for i := 0; i < len(c.Value); i++ {
+			ch := c.Value[i]
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_') {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			v = c.Value
+		}
 	}
-	v := randToken()
+	if v == "" {
+		v = randToken()
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name: csrfCookie, Value: v, Path: "/oauth/", MaxAge: int(requestTTL / time.Second),
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: strings.HasPrefix(s.cfg.PublicURL, "https://"),
@@ -584,7 +636,23 @@ func (s *Service) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c := s.db.Clients[id]
-	if c == nil || (c.SecretHash != "" && subtle.ConstantTimeCompare([]byte(hashHex(secret)), []byte(c.SecretHash)) != 1) {
+	authOK := c != nil
+	if authOK {
+		switch c.AuthMethod {
+		case "client_secret_basic":
+			authOK = basic && subtle.ConstantTimeCompare([]byte(hashHex(secret)), []byte(c.SecretHash)) == 1
+		case "client_secret_post":
+			authOK = !basic && subtle.ConstantTimeCompare([]byte(hashHex(secret)), []byte(c.SecretHash)) == 1
+		default: // "none"
+			authOK = c.SecretHash == "" && secret == ""
+		}
+	}
+	if !authOK {
+		if !s.tokFailIP.hit(ipKey(s.clientIP(r))) {
+			w.Header().Set("Retry-After", "60")
+			oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many failed token requests")
+			return
+		}
 		if basic {
 			w.Header().Set("WWW-Authenticate", `Basic realm="ask-form"`)
 		}
@@ -611,7 +679,8 @@ func (s *Service) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
 			oauthError(w, http.StatusBadRequest, "invalid_grant", "code already used")
 			return
 		}
-		if red := r.PostFormValue("redirect_uri"); red != "" && red != ac.redirect {
+		red := r.PostFormValue("redirect_uri")
+		if (ac.redirectRequired && red != ac.redirect) || (red != "" && red != ac.redirect) {
 			oauthError(w, http.StatusBadRequest, "invalid_grant", "redirect_uri differs from the authorization request")
 			return
 		}

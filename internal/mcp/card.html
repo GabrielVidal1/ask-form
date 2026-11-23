@@ -139,8 +139,8 @@ h1 { font-size: 16px; line-height: 1.3; font-weight: var(--font-weight-semibold,
   var sent = false;
 
   // ---- JSON-RPC over postMessage (MCP Apps, no SDK) ----
-  var nextId = 1, waiting = {};
-  function post(msg) { window.parent.postMessage(msg, "*"); }
+  var nextId = 1, waiting = {}, parentOrigin = "*";
+  function post(msg) { window.parent.postMessage(msg, parentOrigin); }
   function request(method, params, ms) {
     var id = nextId++;
     return new Promise(function (resolve, reject) {
@@ -156,8 +156,10 @@ h1 { font-size: 16px; line-height: 1.3; font-weight: var(--font-weight-semibold,
 
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return;
+    if (parentOrigin !== "*" && e.origin !== parentOrigin) return;
     var m = e.data;
     if (!m || m.jsonrpc !== "2.0") return;
+    if (parentOrigin === "*" && e.origin && e.origin !== "null") parentOrigin = e.origin;
     if (!m.method) {
       var w = waiting[m.id];
       if (!w) return;
@@ -194,7 +196,7 @@ h1 { font-size: 16px; line-height: 1.3; font-weight: var(--font-weight-semibold,
     var theme = c.theme === "dark" ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", theme);
     var vars = c.styles && c.styles.variables;
-    if (vars) for (var k in vars) if (vars[k] && k.indexOf("--") === 0) document.documentElement.style.setProperty(k, vars[k]);
+    if (vars) for (var k in vars) if (Object.prototype.hasOwnProperty.call(vars, k) && vars[k] && k.indexOf("--") === 0) document.documentElement.style.setProperty(k, vars[k]);
     var fonts = c.styles && c.styles.css && c.styles.css.fonts;
     if (fonts && !document.getElementById("host-fonts")) {
       var s = document.createElement("style"); s.id = "host-fonts"; s.textContent = fonts; document.head.appendChild(s);
@@ -370,7 +372,7 @@ h1 { font-size: 16px; line-height: 1.3; font-weight: var(--font-weight-semibold,
     var a = form.answers || {};
     var text = lines.join("\n");
     for (var k in a) {
-      if (/\.files$/.test(k)) continue;
+      if (!Object.prototype.hasOwnProperty.call(a, k) || /\.files$/.test(k)) continue;
       var line = "- " + (names[k] || k) + ": " + show(a[k]);
       if (text.length + line.length + 1 > MAX_MESSAGE) { text += "\n" + L.msgMore; break; }
       text += "\n" + line;

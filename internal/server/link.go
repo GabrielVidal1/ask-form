@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +20,7 @@ import (
 // the machine to accounts its owner never linked. The forms they create
 // stay on this machine like any other.
 type Link struct {
+	mu sync.Mutex
 	// File lists the linked accounts; removing it (`ask-form link --off`)
 	// refuses every chat app at once.
 	File string
@@ -43,7 +46,7 @@ type linkedAccount struct {
 	LinkedAt time.Time `json:"linkedAt"`
 }
 
-func (l *Link) read() linkFile {
+func (l *Link) readUnlocked() linkFile {
 	var f linkFile
 	if l == nil || l.File == "" {
 		return f
@@ -52,6 +55,15 @@ func (l *Link) read() linkFile {
 		json.Unmarshal(b, &f)
 	}
 	return f
+}
+
+func (l *Link) read() linkFile {
+	if l == nil {
+		return linkFile{}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.readUnlocked()
 }
 
 // On reports whether any chat app's account is linked.
@@ -70,6 +82,42 @@ func (l *Link) Allows(account string) bool {
 	return false
 }
 
+func writeLinkAtomic(path string, b []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".chat-link-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if err := os.Chmod(name, 0o600); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
+}
+
 // POST /v1/link {"code"} links one account; DELETE /v1/link unlinks all.
 func (s *Server) adminLink(w http.ResponseWriter, r *http.Request) {
 	if s.Link == nil || s.Link.Relay == nil {
@@ -77,7 +125,10 @@ func (s *Server) adminLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodDelete {
-		if err := os.Remove(s.Link.File); err != nil && !errors.Is(err, os.ErrNotExist) {
+		s.Link.mu.Lock()
+		err := os.Remove(s.Link.File)
+		s.Link.mu.Unlock()
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			apiError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -102,14 +153,25 @@ func (s *Server) adminLink(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadGateway, "the relay named no account: is it older than this machine?")
 		return
 	}
-	f := s.Link.read()
-	if !s.Link.Allows(info.Account) {
+	s.Link.mu.Lock()
+	f := s.Link.readUnlocked()
+	exists := false
+	for _, a := range f.Accounts {
+		if a.ID == info.Account {
+			exists = true
+			break
+		}
+	}
+	if !exists {
 		f.Accounts = append(f.Accounts, linkedAccount{ID: info.Account, Client: info.Client, LinkedAt: time.Now().UTC()})
 	}
 	b, _ := json.MarshalIndent(f, "", "  ")
-	if err := os.WriteFile(s.Link.File, b, 0o600); err != nil {
+	err = writeLinkAtomic(s.Link.File, b)
+	n := len(f.Accounts)
+	s.Link.mu.Unlock()
+	if err != nil {
 		apiError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	apiJSON(w, http.StatusOK, map[string]any{"linked": true, "account": info.Account, "client": info.Client, "accounts": len(f.Accounts)})
+	apiJSON(w, http.StatusOK, map[string]any{"linked": true, "account": info.Account, "client": info.Client, "accounts": n})
 }
