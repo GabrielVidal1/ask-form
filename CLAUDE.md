@@ -83,6 +83,11 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
 - The answer page must work with JavaScript off; `web/static/app.js` only
   adds. Strict CSP: no inline script or style (per-page CSS goes in the
   nonce'd `<style>`), no third-party assets. Never log a query string.
+- Pages are `Referrer-Policy: no-referrer`, so a browser's plain form submit
+  arrives with `Origin: null`, same-origin included. The POST guard is
+  `fromThisPage` (`internal/server/security.go`): `null` passes when
+  `Sec-Fetch-Site: same-origin` vouches for it. Refusing every `null` broke
+  every Send in v0.20.0 (fixed in v0.20.1, `origin_test.go`).
 - A brand reaches only the pages the machine renders (its CSS in the nonce'd
   `<style>`, before `PageCSS`; its logo/name via the `brand` template; frames
   get `Brand.FrameCSS()`, the tokens only). Its header layout travels in the
