@@ -36,15 +36,9 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		uploadFail(w, http.StatusTooManyRequests, "Too many uploads — wait a minute and try again.")
 		return
 	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+	if !fromThisPage(r) {
 		notFound(w)
 		return
-	}
-	if o := r.Header.Get("Origin"); o != "" {
-		if !sameOrigin(o, r.Host) {
-			notFound(w)
-			return
-		}
 	}
 	q := r.URL.Query()
 	if q.Has("token") {

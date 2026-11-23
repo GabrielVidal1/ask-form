@@ -318,15 +318,9 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 	}
 	// Browsers say where a POST comes from; anything but this page is refused
 	// (the SameSite cookie would be missing anyway).
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+	if !fromThisPage(r) {
 		notFound(w)
 		return
-	}
-	if o := r.Header.Get("Origin"); o != "" {
-		if !sameOrigin(o, r.Host) {
-			notFound(w)
-			return
-		}
 	}
 	if r.URL.Query().Has("token") {
 		notFound(w) // a POST never carries the token

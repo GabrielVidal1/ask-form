@@ -98,6 +98,30 @@ func sameOrigin(origin, reqHost string) bool {
 	}
 }
 
+// fromThisPage: a state-changing request (a form's POST, an upload) comes
+// from this machine's own page, as far as the browser says. Fetch Metadata
+// first — any Sec-Fetch-Site but same-origin is another site. Then Origin:
+// a real one must be this host. "null" is what every browser sends on a plain
+// form submit from our pages, same-origin included, because they all carry
+// Referrer-Policy: no-referrer (Fetch: "append a request Origin header" nulls
+// a non-CORS POST's Origin under that policy), so it passes only when
+// Sec-Fetch-Site vouches for it — an opaque origin (a sandboxed frame, a
+// data: page) never gets same-origin.
+func fromThisPage(r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	if site != "" && site != "same-origin" {
+		return false
+	}
+	switch o := r.Header.Get("Origin"); o {
+	case "":
+		return true
+	case "null":
+		return site == "same-origin"
+	default:
+		return sameOrigin(o, r.Host)
+	}
+}
+
 // framed: this request is a page loading in a frame, on a machine that lets
 // some origin frame its pages. The browser's frame-ancestors check decides
 // which embedder may; this only picks the frame's cookie and markup.
