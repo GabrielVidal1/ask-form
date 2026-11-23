@@ -2,6 +2,7 @@ package brand
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -41,14 +42,34 @@ func partFile(path, kind, want string) (string, error) {
 	if !ok || !strings.HasPrefix(ct, kind) {
 		return "", fmt.Errorf("%s: %s", path, want)
 	}
-	b, err := os.ReadFile(path)
+	b, err := readBoundedFile(path, MaxSize)
 	if err != nil {
-		return "", err
-	}
-	if len(b) > MaxSize {
-		return "", fmt.Errorf("%s: %d KB, the whole brand can be at most %d KB", path, len(b)>>10, MaxSize>>10)
+		return "", fmt.Errorf("%s: %w", path, err)
 	}
 	return DataURI(ct, b), nil
+}
+
+func readBoundedFile(path string, maxBytes int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file")
+	}
+	b, err := io.ReadAll(io.LimitReader(f, int64(maxBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxBytes {
+		return nil, fmt.Errorf("%d KB, the whole brand can be at most %d KB", len(b)>>10, maxBytes>>10)
+	}
+	return b, nil
 }
 
 // fontFormat is the format() hint @font-face wants for a font data: URI.

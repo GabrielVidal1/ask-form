@@ -26,6 +26,7 @@ func baseHeaders(h http.Header) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cross-Origin-Opener-Policy", "same-origin")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
+	h.Set("X-DNS-Prefetch-Control", "off")
 	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()")
 }
 
@@ -73,6 +74,30 @@ func ParseOrigins(s string) ([]string, error) {
 	return out, nil
 }
 
+// sameOrigin checks an HTTP Origin header against the request's Host: refuses
+// "null" and non-HTTP(S) schemes (allowing http only on loopback hosts).
+func sameOrigin(origin, reqHost string) bool {
+	if origin == "" || origin == "null" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	if !strings.EqualFold(u.Host, reqHost) {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return true
+	case "http":
+		h := strings.ToLower(u.Hostname())
+		return h == "localhost" || h == "127.0.0.1" || h == "::1"
+	default:
+		return false
+	}
+}
+
 // framed: this request is a page loading in a frame, on a machine that lets
 // some origin frame its pages. The browser's frame-ancestors check decides
 // which embedder may; this only picks the frame's cookie and markup.
@@ -116,12 +141,26 @@ func newNonce() string {
 
 // ── per-IP rate limits ───────────────────────────────────────────────────────
 
-// limiter is a fixed-window counter per key (a client IP).
+// limiter is a fixed-window counter per key (a client IP), bounded in size
+// and bucketing IPv6 addresses to /64 so cycling addresses in a /64 cannot
+// bypass limits or exhaust memory.
 type limiter struct {
-	mu     sync.Mutex
-	max    int
-	window time.Duration
-	hits   map[string]*window
+	mu        sync.Mutex
+	max       int
+	window    time.Duration
+	hits      map[string]*window
+	lastSweep time.Time
+}
+
+const maxLimiterEntries = 50000
+
+// ipBucket normalizes IPv6 addresses to their /64 prefix; IPv4 stays as-is.
+func ipBucket(raw string) string {
+	ip := net.ParseIP(raw)
+	if ip == nil || ip.To4() != nil {
+		return raw
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 type window struct {
@@ -148,6 +187,7 @@ func newLimiter(max int, per time.Duration) *limiter {
 
 // blocked reports whether key has used up its window, without counting.
 func (l *limiter) blocked(key string) bool {
+	key = ipBucket(key)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	w := l.hits[key]
@@ -156,11 +196,30 @@ func (l *limiter) blocked(key string) bool {
 
 // hit counts one event; false when it went over the limit.
 func (l *limiter) hit(key string) bool {
+	key = ipBucket(key)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
 	w := l.hits[key]
 	if w == nil || now.Sub(w.start) > l.window {
+		if w == nil && len(l.hits) >= maxLimiterEntries {
+			// Amortized sweep + bounded eviction so >50k distinct keys can
+			// never cause O(N^2) lock stalls or OOM.
+			if now.Sub(l.lastSweep) > 5*time.Second {
+				l.lastSweep = now
+				for k, v := range l.hits {
+					if now.Sub(v.start) > l.window {
+						delete(l.hits, k)
+					}
+				}
+			}
+			for len(l.hits) >= maxLimiterEntries {
+				for k := range l.hits {
+					delete(l.hits, k)
+					break
+				}
+			}
+		}
 		w = &window{start: now}
 		l.hits[key] = w
 	}

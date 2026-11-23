@@ -1,6 +1,7 @@
 package store
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,15 +69,35 @@ func (s *Store) Snapshot(id string) ([]byte, error) {
 
 // UploadedFile reads a file a respondent uploaded to the form, by the path
 // its answer holds (for a snapshot's thumbnail); a path outside the form's
-// uploads, or a file over the largest upload, is refused.
+// uploads (including via symlinks), or a file over the largest upload, is refused.
 func (s *Store) UploadedFile(id, path string) ([]byte, error) {
-	root := s.uploadsDir(id) + string(filepath.Separator)
-	if !ValidID(id) || !strings.HasPrefix(filepath.Clean(path), root) {
+	if !ValidID(id) {
 		return nil, ErrNotFound
 	}
-	fi, err := os.Stat(path)
+	rootReal, err := filepath.EvalSymlinks(s.uploadsDir(id))
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	targetReal, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	rel, err := filepath.Rel(rootReal, targetReal)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return nil, ErrNotFound
+	}
+	f, err := os.Open(targetReal)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	defer f.Close()
+	fi, err := f.Stat()
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() > MaxFormUpload {
 		return nil, ErrNotFound
 	}
-	return os.ReadFile(path)
+	b, err := io.ReadAll(io.LimitReader(f, MaxFormUpload+1))
+	if err != nil || int64(len(b)) > MaxFormUpload {
+		return nil, ErrNotFound
+	}
+	return b, nil
 }

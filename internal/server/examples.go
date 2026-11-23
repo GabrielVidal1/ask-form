@@ -150,14 +150,14 @@ func LoadExamplesIn(fsys fs.FS, lang string) ([]Example, error) {
 }
 
 type examplesHandler struct {
-	list     []Example
-	byName   map[string]*Example
-	ipHeader string
-	submits  *limiter
-	brand    func() brand.Brand // a brand preview's; nil = ask-form's own look
-	lang     string             // the pages' language (internal/i18n)
-	prefix   string             // ExamplesPrefix(lang)
-	others   []langLink         // the same examples in the other languages
+	list    []Example
+	byName  map[string]*Example
+	ipFn    func(*http.Request) string
+	submits *limiter
+	brand   func() brand.Brand // a brand preview's; nil = ask-form's own look
+	lang    string             // the pages' language (internal/i18n)
+	prefix  string             // ExamplesPrefix(lang)
+	others  []langLink         // the same examples in the other languages
 }
 
 // langLink points at a page in another language, named in that language.
@@ -167,11 +167,17 @@ type langLink struct{ Lang, Name, Href string }
 // its ExamplesPrefix. ipHeader names the trusted proxy header holding the
 // visitor's address (for the rate limit).
 func ExamplesHandler(sets map[string][]Example, ipHeader string) http.Handler {
+	return ExamplesHandlerWithIP(sets, func(r *http.Request) string { return clientIP(r, ipHeader) })
+}
+
+// ExamplesHandlerWithIP is ExamplesHandler with a custom client-IP extractor
+// (e.g. a relay's ClientIP that honors TrustCloudflare).
+func ExamplesHandlerWithIP(sets map[string][]Example, ipFn func(*http.Request) string) http.Handler {
 	submits := newLimiter(30, 10*time.Minute)
 	var hs []*examplesHandler
 	for _, lang := range i18n.Langs {
 		if list, ok := sets[lang]; ok {
-			hs = append(hs, newExamples(list, ipHeader, lang, submits))
+			hs = append(hs, newExamples(list, ipFn, lang, submits))
 		}
 	}
 	for _, h := range hs {
@@ -188,7 +194,7 @@ func ExamplesHandler(sets map[string][]Example, ipHeader string) http.Handler {
 // brand (look, called on every page so an edit shows on reload) in lang,
 // and the static files their pages link to. For a loopback listener.
 func PreviewHandler(list []Example, lang string, look func() brand.Brand) http.Handler {
-	h := newExamples(list, "", lang, newLimiter(30, 10*time.Minute))
+	h := newExamples(list, func(r *http.Request) string { return clientIP(r, "") }, lang, newLimiter(30, 10*time.Minute))
 	h.brand = look
 	mux := http.NewServeMux()
 	mux.Handle("GET "+Prefix+"_static/{file}", StaticHandler())
@@ -199,9 +205,9 @@ func PreviewHandler(list []Example, lang string, look func() brand.Brand) http.H
 	return mux
 }
 
-func newExamples(list []Example, ipHeader, lang string, submits *limiter) *examplesHandler {
+func newExamples(list []Example, ipFn func(*http.Request) string, lang string, submits *limiter) *examplesHandler {
 	lang = i18n.Of(lang)
-	h := &examplesHandler{list: list, byName: map[string]*Example{}, ipHeader: ipHeader, submits: submits,
+	h := &examplesHandler{list: list, byName: map[string]*Example{}, ipFn: ipFn, submits: submits,
 		lang: lang, prefix: ExamplesPrefix(lang)}
 	for i := range list {
 		h.byName[list[i].Name] = &list[i]
@@ -290,7 +296,7 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	if !h.submits.hit(clientIP(r, h.ipHeader)) {
+	if !h.submits.hit(h.ipFn(r)) {
 		tooMany(w)
 		return
 	}
@@ -380,7 +386,8 @@ func (h *examplesHandler) asset(w http.ResponseWriter, r *http.Request) {
 	}
 	hd := w.Header()
 	baseHeaders(hd)
-	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; sandbox")
+	hd.Set("X-Frame-Options", "DENY")
 	hd.Set("Content-Type", a.contentType)
 	hd.Set("Cache-Control", "public, max-age=3600")
 	w.Write(a.data)

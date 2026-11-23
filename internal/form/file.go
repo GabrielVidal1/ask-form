@@ -225,6 +225,18 @@ func SniffType(head []byte) string {
 	return t
 }
 
+var winReserved = map[string]bool{
+	"con": true, "prn": true, "aux": true, "nul": true,
+	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
+	"com6": true, "com7": true, "com8": true, "com9": true,
+	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
+	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
+}
+
+var dangerousTextExts = map[string]bool{
+	".html": true, ".htm": true, ".xhtml": true, ".svg": true, ".svgz": true,
+}
+
 // AcceptMatch reports whether a file named name whose bytes sniff as sniffed
 // is allowed by the field's accept list; an empty list allows anything. A
 // media type is matched against the sniffed one, an extension against the
@@ -235,7 +247,10 @@ func AcceptMatch(accept, name, sniffed string) bool {
 		return true
 	}
 	ext := strings.ToLower(filepath.Ext(name))
-	text := strings.HasPrefix(sniffed, "text/")
+	// Never treat sniffed text/html as equivalent to generic text/plain,
+	// text/csv, application/json, etc.; only an explicit text/html or .html
+	// accept token allows HTML content.
+	plainText := strings.HasPrefix(sniffed, "text/") && sniffed != "text/html"
 	for _, tok := range strings.Split(accept, ",") {
 		switch {
 		case strings.HasPrefix(tok, "."):
@@ -243,10 +258,18 @@ func AcceptMatch(accept, name, sniffed string) bool {
 				return true
 			}
 		case strings.HasSuffix(tok, "/*"):
+			if tok == "text/*" && (sniffed == "text/html" || dangerousTextExts[ext]) {
+				continue
+			}
 			if strings.HasPrefix(sniffed, strings.TrimSuffix(tok, "*")) {
 				return true
 			}
-		case tok == sniffed, text && (strings.HasPrefix(tok, "text/") || textTypes[tok]):
+		case tok == sniffed:
+			return true
+		case plainText && (strings.HasPrefix(tok, "text/") || textTypes[tok]):
+			if tok != "text/html" && dangerousTextExts[ext] && !(tok == "image/svg+xml" && ext == ".svg") {
+				continue
+			}
 			return true
 		}
 	}
@@ -258,9 +281,18 @@ func extFits(ext, sniffed string) bool {
 		return sniffed == want
 	}
 	if textExts[ext] {
-		return strings.HasPrefix(sniffed, "text/")
+		if ext == ".html" || ext == ".htm" {
+			return strings.HasPrefix(sniffed, "text/")
+		}
+		return strings.HasPrefix(sniffed, "text/") && sniffed != "text/html"
 	}
 	return true
+}
+
+func isBidiControl(r rune) bool {
+	return r == '\u061c' || r == '\u200e' || r == '\u200f' ||
+		(r >= '\u202a' && r <= '\u202e') ||
+		(r >= '\u2066' && r <= '\u2069')
 }
 
 // SafeFileName turns the name a browser gave into one fit for a directory
@@ -273,7 +305,7 @@ func SafeFileName(raw string) string {
 	var b strings.Builder
 	for _, r := range raw {
 		switch {
-		case r == utf8.RuneError, unicode.IsControl(r), r == '‮', r == '⁦', r == '⁧', r == '⁨', r == '⁩':
+		case r == utf8.RuneError, unicode.IsControl(r), isBidiControl(r):
 			b.WriteByte('_')
 		case strings.ContainsRune(`<>:"|?*%$`+"`", r):
 			b.WriteByte('_')
@@ -286,6 +318,15 @@ func SafeFileName(raw string) string {
 	name := strings.Trim(strings.Join(strings.Fields(b.String()), " "), ". ")
 	if name == "" {
 		return "file"
+	}
+	// Prefix Windows reserved device names (CON, NUL, COM1, LPT1…) so cross-OS
+	// saves never open a device handle.
+	stem := name
+	if dot := strings.IndexByte(stem, '.'); dot >= 0 {
+		stem = stem[:dot]
+	}
+	if winReserved[strings.ToLower(strings.TrimRight(stem, " "))] {
+		name = "_" + name
 	}
 	if len(name) > MaxFileNameBytes {
 		ext := filepath.Ext(name)

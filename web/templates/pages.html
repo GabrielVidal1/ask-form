@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="x-dns-prefetch-control" content="off">
 <meta name="color-scheme" content="light dark">
 <title>{{.Title}}{{with .Brand.Name}} · {{.}}{{end}}</title>
 <link rel="icon" href="data:,">
@@ -291,7 +292,7 @@
     <p class="snap-secret">{{if .SecretChars}}{{t "🔒 A secret was given (%s characters). Its value is never kept here." .SecretChars}}{{else}}{{t "No answer"}}{{end}}</p>
   {{else if eq .Type "secret"}}
     <div class="secret">
-      <input id="{{.DOMID}}-in" type="password" name="{{.Name}}" value="" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"{{if .Required}} required{{end}}>
+      <input id="{{.DOMID}}-in" type="password" name="{{.Name}}" value="" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-secret data-1p-ignore data-lpignore="true"{{if .Required}} required{{end}}>
     </div>
     <p class="secret-note">{{t "🔒 Kept out of the answers the agent reads — it writes the value straight where it's needed."}}{{if .Reenter}} <strong>{{t "Please type it again:"}}</strong> {{t "it isn't kept after a failed send."}}{{end}}</p>
   {{else}}
@@ -310,6 +311,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="x-dns-prefetch-control" content="off">
 <meta name="color-scheme" content="light dark">
 <meta name="generator" content="ask-form {{.Version}}">
 <title>{{.Title}}{{with .Brand.Name}} · {{.}}{{end}}</title>

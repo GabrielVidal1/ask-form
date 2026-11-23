@@ -2,13 +2,18 @@ package brand
 
 import "strings"
 
+const maxCSSDepth = 8
+
 // Tokens is the part of a brand that html blocks and mockups take: the
 // custom properties (--primary: …) its :root / html rules set, under the
 // same @media / @supports conditions. The rest of the CSS styles the answer
 // page and would only get in the way inside an agent's drawing.
-func Tokens(css string) string { return tokensIn(stripComments(css)) }
+func Tokens(css string) string { return tokensIn(stripComments(css), 0) }
 
-func tokensIn(css string) string {
+func tokensIn(css string, depth int) string {
+	if depth > maxCSSDepth {
+		return ""
+	}
 	var out strings.Builder
 	for i := 0; i < len(css); {
 		open, term := scanTo(css, i, "{;")
@@ -22,7 +27,7 @@ func tokensIn(css string) string {
 		i = end + 1
 		switch {
 		case foldPrefix(prelude, "@media"), foldPrefix(prelude, "@supports"):
-			if inner := tokensIn(body); inner != "" {
+			if inner := tokensIn(body, depth+1); inner != "" {
 				out.WriteString(prelude + "{" + inner + "}")
 			}
 		case rootSelector(prelude):
@@ -51,7 +56,7 @@ func tokensIn(css string) string {
 // twice keeps its last value, in the place of its first.
 func SchemeTokens(css string) (light, dark string) {
 	var l, d []string
-	schemeTokensIn(stripComments(css), true, true, &l, &d)
+	schemeTokensIn(stripComments(css), true, true, 0, &l, &d)
 	return lastWins(l), lastWins(d)
 }
 
@@ -71,7 +76,10 @@ func lastWins(decls []string) string {
 	return strings.Join(out, ";")
 }
 
-func schemeTokensIn(css string, inLight, inDark bool, l, d *[]string) {
+func schemeTokensIn(css string, inLight, inDark bool, depth int, l, d *[]string) {
+	if depth > maxCSSDepth {
+		return
+	}
 	for i := 0; i < len(css); {
 		open, term := scanTo(css, i, "{;")
 		prelude := strings.TrimSpace(css[i:open])
@@ -86,9 +94,9 @@ func schemeTokensIn(css string, inLight, inDark bool, l, d *[]string) {
 		case foldPrefix(prelude, "@media"):
 			switch strings.TrimPrefix(strings.Join(strings.Fields(strings.ToLower(prelude[6:])), ""), "screenand") {
 			case "(prefers-color-scheme:dark)":
-				schemeTokensIn(body, false, inDark, l, d)
+				schemeTokensIn(body, false, inDark, depth+1, l, d)
 			case "(prefers-color-scheme:light)":
-				schemeTokensIn(body, inLight, false, l, d)
+				schemeTokensIn(body, inLight, false, depth+1, l, d)
 			}
 		case rootSelector(prelude):
 			for _, decl := range splitTop(body, ';') {

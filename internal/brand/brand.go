@@ -131,7 +131,118 @@ func Check(b Brand) error {
 	if strings.Contains(b.CSS, "</") {
 		return errors.New(`the CSS contains "</": write it as "\3c /" inside a string`)
 	}
+	if err := checkCSSSafe(b.CSS); err != nil {
+		return err
+	}
 	return nil
+}
+
+// checkCSSSafe rejects @import, remote url(), image-set() with external URLs,
+// and CSS backslash escapes inside at-rules or url/image-set function names.
+func checkCSSSafe(css string) error {
+	for i := 0; i < len(css); {
+		c := css[i]
+		switch {
+		case c == '/' && i+1 < len(css) && css[i+1] == '*':
+			if end := strings.Index(css[i+2:], "*/"); end >= 0 {
+				i += end + 4
+			} else {
+				return nil
+			}
+		case c == '"' || c == '\'':
+			i = stringEnd(css, i)
+		case c == '@':
+			ident, next := scanCSSIdent(css, i+1)
+			if strings.EqualFold(ident, "import") {
+				return errors.New("@import: the page loads no other stylesheet — paste its rules into this file")
+			}
+			i = next
+		case isIdentStart(c) || c == '\\':
+			ident, next := scanCSSIdent(css, i)
+			if next < len(css) && css[next] == '(' && (i == 0 || !identChar(css[i-1])) {
+				low := strings.ToLower(ident)
+				if low == "url" {
+					ref, j, ok := urlArg(css, next+1)
+					if !ok {
+						return fmt.Errorf("unterminated url( at byte %d", i)
+					}
+					if strings.HasPrefix(ref, "//") || (schemeRe.MatchString(ref) && !foldPrefix(ref, "data:")) {
+						return fmt.Errorf("url(%s): the page loads nothing from other sites", ref)
+					}
+					i = j
+					continue
+				}
+				if low == "image-set" || low == "-webkit-image-set" {
+					return errors.New("image-set(): use url() with local files or data: URIs instead")
+				}
+			}
+			if next == i {
+				i++
+			} else {
+				i = next
+			}
+		default:
+			i++
+		}
+	}
+	return nil
+}
+
+func isIdentStart(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '-'
+}
+
+// scanCSSIdent decodes a CSS identifier including backslash escapes (e.g.
+// \69mport -> import, u\72l -> url) so escaped keywords cannot bypass checks.
+func scanCSSIdent(s string, i int) (string, int) {
+	var b strings.Builder
+	for i < len(s) {
+		c := s[i]
+		if c == '\\' && i+1 < len(s) {
+			i++
+			if isHex(s[i]) {
+				var cp rune
+				n := 0
+				for i < len(s) && n < 6 && isHex(s[i]) {
+					cp = cp*16 + hexVal(s[i])
+					i++
+					n++
+				}
+				if i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r' || s[i] == '\f') {
+					i++
+				}
+				if cp > 0 && cp <= utf8.MaxRune {
+					b.WriteRune(cp)
+				}
+			} else {
+				b.WriteByte(s[i])
+				i++
+			}
+			continue
+		}
+		if identChar(c) {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		break
+	}
+	return b.String(), i
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+func hexVal(c byte) rune {
+	switch {
+	case c >= '0' && c <= '9':
+		return rune(c - '0')
+	case c >= 'a' && c <= 'f':
+		return rune(c-'a') + 10
+	default:
+		return rune(c-'A') + 10
+	}
 }
 
 // Load reads a brand file; a missing one is the zero Brand.
@@ -249,23 +360,45 @@ func Prepare(css, dir string) (string, error) {
 			j := stringEnd(css, i)
 			out.WriteString(css[i:j])
 			i = j
-		case c == '@' && foldPrefix(css[i:], "@import"):
-			return "", errors.New("@import: the page loads no other stylesheet — paste its rules into this file")
-		case (c == 'u' || c == 'U') && foldPrefix(css[i:], "url(") && (i == 0 || !identChar(css[i-1])):
-			ref, j, ok := urlArg(css, i+4)
-			if !ok {
-				return "", fmt.Errorf("unterminated url( at byte %d", i)
+		case c == '@':
+			ident, next := scanCSSIdent(css, i+1)
+			if strings.EqualFold(ident, "import") {
+				return "", errors.New("@import: the page loads no other stylesheet — paste its rules into this file")
 			}
-			uri, err := resolve(ref, dir)
-			if err != nil {
-				return "", err
+			out.WriteString(css[i:next])
+			i = next
+		case (isIdentStart(c) || c == '\\') && (i == 0 || !identChar(css[i-1])):
+			ident, next := scanCSSIdent(css, i)
+			if next < len(css) && css[next] == '(' {
+				low := strings.ToLower(ident)
+				if low == "image-set" || low == "-webkit-image-set" {
+					return "", errors.New("image-set(): use url() with local files or data: URIs instead")
+				}
+				if low == "url" {
+					ref, j, ok := urlArg(css, next+1)
+					if !ok {
+						return "", fmt.Errorf("unterminated url( at byte %d", i)
+					}
+					uri, err := resolve(ref, dir)
+					if err != nil {
+						return "", err
+					}
+					if uri == "" {
+						out.WriteString(css[i:j]) // kept as written
+					} else {
+						out.WriteString(`url("` + uri + `")`)
+					}
+					i = j
+					continue
+				}
 			}
-			if uri == "" {
-				out.WriteString(css[i:j]) // kept as written
+			if next == i {
+				out.WriteByte(c)
+				i++
 			} else {
-				out.WriteString(`url("` + uri + `")`)
+				out.WriteString(css[i:next])
+				i = next
 			}
-			i = j
 		default:
 			out.WriteByte(c)
 			i++
@@ -287,19 +420,29 @@ func resolve(ref, dir string) (string, error) {
 	if k := strings.IndexAny(p, "?#"); k >= 0 {
 		p = p[:k]
 	}
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(dir, p)
+	if filepath.IsAbs(p) {
+		return "", fmt.Errorf("url(%s): must be a relative path inside the stylesheet's directory", ref)
 	}
-	ct, ok := fileTypes[strings.ToLower(filepath.Ext(p))]
-	if !ok {
-		return "", fmt.Errorf("url(%s): only images (png, jpg, gif, webp, avif, svg, ico) and fonts (woff2, woff, ttf, otf)", ref)
-	}
-	b, err := os.ReadFile(p)
+	absDir, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return "", fmt.Errorf("url(%s): %w", ref, err)
 	}
-	if len(b) > MaxSize {
-		return "", fmt.Errorf("url(%s): %d KB, the whole brand can be at most %d KB", ref, len(b)>>10, MaxSize>>10)
+	joined := filepath.Join(absDir, p)
+	realPath, err := filepath.EvalSymlinks(joined)
+	if err != nil {
+		return "", fmt.Errorf("url(%s): %w", ref, err)
+	}
+	rel, err := filepath.Rel(absDir, realPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("url(%s): path escapes the stylesheet's directory", ref)
+	}
+	ct, ok := fileTypes[strings.ToLower(filepath.Ext(realPath))]
+	if !ok {
+		return "", fmt.Errorf("url(%s): only images (png, jpg, gif, webp, avif, svg, ico) and fonts (woff2, woff, ttf, otf)", ref)
+	}
+	b, err := readBoundedFile(realPath, MaxSize)
+	if err != nil {
+		return "", fmt.Errorf("url(%s): %w", ref, err)
 	}
 	return DataURI(ct, b), nil
 }

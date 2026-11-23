@@ -104,7 +104,7 @@ func snapshotCSP() string {
 
 func snapshotCSPWith(hashes string) string {
 	return "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; " +
-		"script-src " + hashes + "; frame-src 'self' data: about:; " +
+		"script-src " + hashes + "; frame-src 'self' about:; " +
 		"base-uri 'none'; form-action 'none'"
 }
 
@@ -483,19 +483,28 @@ func (s *Server) snapFileList(st store.State, infos []form.FileInfo) []snapFile 
 // stays a JPEG, the others become PNGs, transparency kept); the formats the
 // standard library can't decode come as they are when small enough.
 const (
-	thumbMax      = 480
-	thumbRawBytes = 256 << 10
+	thumbMax       = 480
+	thumbRawBytes  = 256 << 10
+	thumbMaxDim    = 16384
+	thumbMaxPixels = 25_000_000
 )
 
 func thumbnail(contentType string, data []byte) template.URL {
 	switch contentType {
 	case "image/jpeg", "image/png", "image/gif":
-	case "image/webp", "image/avif", "image/svg+xml":
+	case "image/webp", "image/avif":
 		if len(data) <= thumbRawBytes {
 			return template.URL(dataURI(contentType, data))
 		}
 		return ""
 	default:
+		return ""
+	}
+	// Check image dimensions before decoding to prevent decompression-bomb OOMs.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 ||
+		cfg.Width > thumbMaxDim || cfg.Height > thumbMaxDim ||
+		int64(cfg.Width)*int64(cfg.Height) > thumbMaxPixels {
 		return ""
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
@@ -627,7 +636,10 @@ func (s *Server) adminSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Content-Security-Policy", storedSnapshotCSP(page)+"; sandbox allow-scripts")
+	h.Set("Content-Security-Policy", storedSnapshotCSP(page)+"; frame-ancestors 'none'; sandbox allow-scripts")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("X-DNS-Prefetch-Control", "off")
 	h.Set("X-Content-Type-Options", "nosniff")
 	w.Write(page)
 }

@@ -4,6 +4,7 @@ import (
 	"html"
 	"html/template"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -25,8 +26,14 @@ var (
 	linkRe    = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)\)`)
 )
 
+const maxQuoteDepth = 8
+
 // MarkdownHTML renders block markdown.
 func MarkdownHTML(src string) template.HTML {
+	return template.HTML(markdownHTML(src, 0))
+}
+
+func markdownHTML(src string, depth int) string {
 	lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 	var b strings.Builder
 	var para []string
@@ -58,14 +65,14 @@ func MarkdownHTML(src string) template.HTML {
 			}
 			tag := "h" + string(rune('0'+lvl))
 			b.WriteString("<" + tag + ">" + inline(m[2]) + "</" + tag + ">")
-		case strings.HasPrefix(trim, ">"):
+		case strings.HasPrefix(trim, ">") && depth < maxQuoteDepth:
 			flush()
 			var q []string
 			for ; i < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i]), ">"); i++ {
 				q = append(q, strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(lines[i]), ">"), " "))
 			}
 			i--
-			b.WriteString("<blockquote>" + string(MarkdownHTML(strings.Join(q, "\n"))) + "</blockquote>")
+			b.WriteString("<blockquote>" + markdownHTML(strings.Join(q, "\n"), depth+1) + "</blockquote>")
 		case ulRe.MatchString(line) || olRe.MatchString(line):
 			flush()
 			re, tag := ulRe, "ul"
@@ -111,7 +118,7 @@ func MarkdownHTML(src string) template.HTML {
 		}
 	}
 	flush()
-	return template.HTML(b.String())
+	return b.String()
 }
 
 // InlineHTML renders one line of inline markdown (a label, an option).
@@ -129,12 +136,16 @@ func cells(row string) []string {
 // inline escapes the text, then applies code spans (whose content is kept
 // verbatim), links, bold and italic; newlines become <br>.
 func inline(src string) string {
+	// Strip NUL bytes so placeholders cannot collide with source text.
+	src = strings.ReplaceAll(src, "\x00", "")
 	var codes []string
 	s := codeRe.ReplaceAllStringFunc(src, func(m string) string {
+		id := len(codes)
 		codes = append(codes, "<code>"+html.EscapeString(m[1:len(m)-1])+"</code>")
-		return "\x00" + string(rune('A'+len(codes)-1)) + "\x00"
+		return "\x00C" + strconv.Itoa(id) + "\x00"
 	})
 	s = html.EscapeString(s)
+	var links []string
 	s = linkRe.ReplaceAllStringFunc(s, func(m string) string {
 		p := linkRe.FindStringSubmatch(m)
 		href := html.UnescapeString(p[2])
@@ -142,13 +153,20 @@ func inline(src string) string {
 		if !strings.HasPrefix(low, "https://") && !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "mailto:") {
 			return m
 		}
-		return `<a href="` + html.EscapeString(href) + `" target="_blank" rel="noopener noreferrer nofollow">` + p[1] + `</a>`
+		label := boldRe.ReplaceAllString(p[1], "<strong>$1$2</strong>")
+		label = italicRe.ReplaceAllString(label, "$1$3<em>$2$4</em>")
+		id := len(links)
+		links = append(links, `<a href="`+html.EscapeString(href)+`" target="_blank" rel="noopener noreferrer nofollow">`+label+`</a>`)
+		return "\x00L" + strconv.Itoa(id) + "\x00"
 	})
 	s = boldRe.ReplaceAllString(s, "<strong>$1$2</strong>")
 	s = italicRe.ReplaceAllString(s, "$1$3<em>$2$4</em>")
 	s = strings.ReplaceAll(s, "\n", "<br>")
+	for i, l := range links {
+		s = strings.Replace(s, "\x00L"+strconv.Itoa(i)+"\x00", l, 1)
+	}
 	for i, c := range codes {
-		s = strings.Replace(s, "\x00"+string(rune('A'+i))+"\x00", c, 1)
+		s = strings.Replace(s, "\x00C"+strconv.Itoa(i)+"\x00", c, 1)
 	}
 	return s
 }

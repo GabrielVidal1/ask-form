@@ -6,7 +6,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/GabrielVidal1/ask-form/internal/form"
@@ -41,8 +40,8 @@ func (s *Server) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	if o := r.Header.Get("Origin"); o != "" && o != "null" {
-		if u, err := url.Parse(o); err != nil || u.Host != r.Host {
+	if o := r.Header.Get("Origin"); o != "" {
+		if !sameOrigin(o, r.Host) {
 			notFound(w)
 			return
 		}

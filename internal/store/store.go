@@ -145,10 +145,13 @@ type Response struct {
 type entry struct {
 	form      Form
 	event     *Event        // the terminal event, nil while open
-	done      chan struct{} // closed with the terminal event
-	responses []Response    // a multi form's answers
-	snapshot  bool          // its snapshot is on disk
+	done      chan struct{} // closed with the terminal event or on Delete
+	doneOnce  sync.Once
+	responses []Response // a multi form's answers
+	snapshot  bool       // its snapshot is on disk
 }
+
+func (e *entry) closeDone() { e.doneOnce.Do(func() { close(e.done) }) }
 
 func newEntry(f Form) *entry {
 	return &entry{form: f, done: make(chan struct{})}
@@ -206,7 +209,7 @@ func Open(dir string) (*Store, error) {
 		}
 		if ev != nil {
 			e.event = ev
-			close(e.done)
+			e.closeDone()
 		}
 		s.forms[f.ID] = e
 	}
@@ -513,34 +516,49 @@ func (s *Store) Decline(id, reason string, files []form.FileInfo) (State, error)
 
 func (s *Store) close(id string, ev Event, secrets map[string]string) (State, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	e, ok := s.forms[id]
 	if !ok {
+		s.mu.Unlock()
 		return State{}, ErrNotFound
 	}
 	now := s.now()
 	if st := e.state(now); st.Status != Pending {
+		s.mu.Unlock()
 		return st, ErrClosed
 	}
 	if !terminal(ev.Type, e.form.Multi) {
 		if e.form.Multi {
-			return e.state(now), ErrMulti
+			st := e.state(now)
+			s.mu.Unlock()
+			return st, ErrMulti
 		}
+		s.mu.Unlock()
 		return State{}, fmt.Errorf("%s doesn't close a form", ev.Type)
 	}
 	ev.At = now.UTC().Truncate(time.Millisecond)
 	if len(secrets) > 0 {
 		if err := s.putSecrets(id, secrets, now); err != nil {
+			s.mu.Unlock()
 			return State{}, err
 		}
 	}
 	if err := s.appendEvent(id, ev); err != nil {
+		if len(secrets) > 0 {
+			os.Remove(s.secretPath(id))
+		}
+		s.mu.Unlock()
 		return State{}, err
 	}
 	e.event = &ev
-	close(e.done)
-	s.settleUploads(id, ev.Answers, ev.ReasonFiles...)
-	return e.state(now), nil
+	e.closeDone()
+	fields := e.form.Fields
+	st := e.state(now)
+	s.mu.Unlock()
+
+	s.upMu.Lock()
+	s.settleUploads(id, fields, ev.Answers, ev.ReasonFiles...)
+	s.upMu.Unlock()
+	return st, nil
 }
 
 // Answer records one respondent's answers to a multi form; reaching the
@@ -569,7 +587,7 @@ func (s *Store) Answer(id string, answers map[string]any) (State, int, error) {
 		ev := Event{Type: Closed, At: at}
 		if err := s.appendEvent(id, ev); err == nil {
 			e.event = &ev
-			close(e.done)
+			e.closeDone()
 		}
 	}
 	return e.state(now), n, nil
@@ -767,12 +785,15 @@ func (s *Store) putSecrets(id string, values map[string]string, now time.Time) e
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.secretPath(id), b, 0o600)
+	return writeAtomic(s.secretPath(id), b)
 }
 
 // Secret returns a submitted form's secret answer; forget drops it once read.
 // ErrNotFound covers unknown, left empty, expired and forgotten.
 func (s *Store) Secret(id, key string, forget bool) (string, error) {
+	if !ValidID(id) {
+		return "", ErrNotFound
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	path := s.secretPath(id)
@@ -792,9 +813,17 @@ func (s *Store) Secret(id, key string, forget bool) (string, error) {
 	if forget {
 		delete(sf.Values, key)
 		if len(sf.Values) == 0 {
-			os.Remove(path)
-		} else if b, err := json.Marshal(sf); err == nil {
-			os.WriteFile(path, b, 0o600)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return "", err
+			}
+		} else {
+			nb, err := json.Marshal(sf)
+			if err != nil {
+				return "", err
+			}
+			if err := writeAtomic(path, nb); err != nil {
+				return "", err
+			}
 		}
 	}
 	return v, nil

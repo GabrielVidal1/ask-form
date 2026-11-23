@@ -439,13 +439,50 @@ func NormalizeIn(raw json.RawMessage, lang string) ([]Field, error) {
 		}
 		f.AutoSecret = autoSecret
 		// A secret's default would put a value in the spec, which everyone sees;
-		// a file has none.
+		// a file has none. Bound default size and list row counts to prevent
+		// HTML amplification DoS on render.
 		if d, ok := m["default"]; ok && d != nil && ftype != Secret && ftype != File {
+			if err := checkDefault(ftype, f, d); err != nil {
+				return nil, fmt.Errorf("field %q: %w", key, err)
+			}
 			f.Default = d
 		}
 		out = append(out, f)
 	}
 	return withCatchAll(out, lang), nil
+}
+
+// checkDefault bounds a field's default value so an untrusted spec cannot
+// amplify a small request into a huge rendered page (e.g. 100k list rows).
+func checkDefault(ftype string, f Field, d any) error {
+	switch ftype {
+	case List:
+		if rows, ok := d.([]any); ok {
+			limit := MaxListRows
+			if f.Max != nil && int(*f.Max) < limit {
+				limit = int(*f.Max)
+			}
+			if len(rows) > limit {
+				return fmt.Errorf("default has %d rows, at most %d", len(rows), limit)
+			}
+		}
+	case Multiselect:
+		if items, ok := d.([]any); ok && len(items) > MaxOptions {
+			return fmt.Errorf("default has %d items, at most %d", len(items), MaxOptions)
+		}
+	}
+	b, err := json.Marshal(d)
+	if err != nil {
+		return errors.New("default is not valid JSON")
+	}
+	limit := MaxLongChars
+	if ftype == Widget {
+		limit = MaxWidgetValue
+	}
+	if len(b) > limit {
+		return fmt.Errorf("default is too large (%d bytes, at most %d)", len(b), limit)
+	}
+	return nil
 }
 
 func option(o any, key string, n int, lang string) (*Option, error) {

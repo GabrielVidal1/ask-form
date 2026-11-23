@@ -137,8 +137,19 @@ func condNode(v any, known map[string]string, depth int, leaves *int) (*Cond, er
 	switch op {
 	case OpIn:
 		list, ok := val.([]any)
-		if !ok || len(list) == 0 {
-			return nil, fmt.Errorf("%q on %q takes a non-empty list", op, key)
+		if !ok || len(list) == 0 || len(list) > MaxOptions {
+			return nil, fmt.Errorf("%q on %q takes a non-empty list (at most %d items)", op, key, MaxOptions)
+		}
+		for _, item := range list {
+			switch v := item.(type) {
+			case string:
+				if len(v) > MaxTextChars {
+					return nil, fmt.Errorf("%q on %q: value too long", op, key)
+				}
+			case float64, bool:
+			default:
+				return nil, fmt.Errorf("%q on %q takes text, numbers or true / false", op, key)
+			}
 		}
 	case OpGt, OpGte, OpLt, OpLte:
 		if _, ok := val.(float64); !ok {
@@ -149,8 +160,12 @@ func condNode(v any, known map[string]string, depth int, leaves *int) (*Cond, er
 			return nil, fmt.Errorf("%q on %q takes true or false", op, key)
 		}
 	default:
-		switch val.(type) {
-		case string, float64, bool:
+		switch v := val.(type) {
+		case string:
+			if len(v) > MaxTextChars {
+				return nil, fmt.Errorf("%q on %q: value too long", op, key)
+			}
+		case float64, bool:
 		default:
 			return nil, fmt.Errorf("%q on %q takes a text, number or true / false", op, key)
 		}

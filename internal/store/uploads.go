@@ -122,6 +122,10 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 	if len(c.Data) == 0 || len(c.Data) > UploadChunk {
 		return nil, "", badUpload(UploadBad, "That upload didn't make sense — try again.")
 	}
+	// Acquire upMu before reading form state (strict lock order: upMu -> mu)
+	// so PutChunk cannot race with settleUploads when the form closes.
+	s.upMu.Lock()
+	defer s.upMu.Unlock()
 	st, err := s.Get(c.Form)
 	if err != nil {
 		return nil, "", badUpload(UploadBad, "That upload didn't make sense — try again.")
@@ -133,17 +137,11 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 	if !ok || st.Multi {
 		return nil, "", badUpload(UploadBad, "That upload didn't make sense — try again.")
 	}
-
-	s.upMu.Lock()
-	defer s.upMu.Unlock()
 	if rec := s.findBySession(c.Form, c.Key, c.Session); rec != nil {
 		return &rec.File, rec.Ref, nil
 	}
 	root := s.uploadsDir(c.Form)
 	sess := filepath.Join(root, "tmp", c.Key, c.Session)
-	if err := os.MkdirAll(sess, 0o700); err != nil {
-		return nil, "", err
-	}
 	part := filepath.Join(sess, strconv.Itoa(c.Index)+".part")
 	var old int64
 	if fi, err := os.Stat(part); err == nil {
@@ -151,6 +149,9 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 	}
 	if used := dirBytes(root) - old; used+int64(len(c.Data)) > MaxFormUpload {
 		return nil, "", badUpload(UploadTooBig, "This form takes at most %s of files.", mb(MaxFormUpload))
+	}
+	if err := os.MkdirAll(sess, 0o700); err != nil {
+		return nil, "", err
 	}
 	if err := writeAtomic(part, c.Data); err != nil {
 		return nil, "", err
@@ -175,14 +176,20 @@ func (s *Store) PutChunk(c Chunk) (*form.FileInfo, string, error) {
 
 // assemble joins a session's chunks into the field's directory.
 func (s *Store) assemble(root, sess string, fld form.Field, c Chunk) (*uploadRecord, error) {
-	head := make([]byte, 512)
-	fh, err := os.Open(filepath.Join(sess, "0.part"))
-	if err != nil {
-		return nil, err
+	// Read up to 512 bytes across chunks sequentially so a tiny 1-byte 0.part
+	// cannot bypass MIME sniffing of the assembled file.
+	head := make([]byte, 0, 512)
+	for i := 0; i < c.Total && len(head) < 512; i++ {
+		fh, err := os.Open(filepath.Join(sess, strconv.Itoa(i)+".part"))
+		if err != nil {
+			return nil, err
+		}
+		buf := make([]byte, 512-len(head))
+		n, _ := io.ReadFull(fh, buf)
+		fh.Close()
+		head = append(head, buf[:n]...)
 	}
-	n, _ := io.ReadFull(fh, head)
-	fh.Close()
-	sniffed := form.SniffType(head[:n])
+	sniffed := form.SniffType(head)
 	name := form.SafeFileName(c.Name)
 	if !form.AcceptMatch(fld.Accept, name, sniffed) {
 		return nil, badUpload(UploadType, "That kind of file isn't accepted here%s.", acceptHint(fld.Accept))
@@ -292,12 +299,12 @@ func (s *Store) findBySession(id, key, session string) *uploadRecord {
 
 // settleUploads is what a form's close does to its uploads: keep the files
 // the answers name (and more: a decline's), drop the rest.
-func (s *Store) settleUploads(id string, answers map[string]any, more ...form.FileInfo) {
+func (s *Store) settleUploads(id string, fields []form.Field, answers map[string]any, more ...form.FileInfo) {
 	root := s.uploadsDir(id)
 	if _, err := os.Stat(root); err != nil {
 		return
 	}
-	keep := answerPaths(answers)
+	keep := answerPaths(fields, answers)
 	for _, f := range more {
 		keep[f.Path] = true
 	}
@@ -315,10 +322,22 @@ func (s *Store) settleUploads(id string, answers map[string]any, more ...form.Fi
 	removeEmptyDirs(root)
 }
 
-// answerPaths lists the file paths a set of answers carries.
-func answerPaths(answers map[string]any) map[string]bool {
+// answerPaths lists the file paths a set of answers carries (strictly from
+// file fields and attachable fields' <key>.files entries).
+func answerPaths(fields []form.Field, answers map[string]any) map[string]bool {
+	allowed := map[string]bool{}
+	for _, f := range fields {
+		if f.Type == form.File {
+			allowed[f.Key] = true
+		} else if f.Attachable() {
+			allowed[form.FilesKey(f.Key)] = true
+		}
+	}
 	keep := map[string]bool{}
-	for _, v := range answers {
+	for k, v := range answers {
+		if len(fields) > 0 && !allowed[k] {
+			continue
+		}
 		switch t := v.(type) {
 		case []form.FileInfo:
 			for _, f := range t {
@@ -366,7 +385,7 @@ func (s *Store) PurgeUploads() {
 			if st.ClosedAt != nil && now.Sub(*st.ClosedAt) > UploadTTL {
 				os.RemoveAll(root)
 			} else {
-				s.settleUploads(st.ID, st.Answers, st.ReasonFiles...)
+				s.settleUploads(st.ID, st.Fields, st.Answers, st.ReasonFiles...)
 			}
 		default:
 			os.RemoveAll(root)

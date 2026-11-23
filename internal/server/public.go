@@ -322,8 +322,8 @@ func (s *Server) formPost(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	if o := r.Header.Get("Origin"); o != "" && o != "null" {
-		if u, err := url.Parse(o); err != nil || u.Host != r.Host {
+	if o := r.Header.Get("Origin"); o != "" {
+		if !sameOrigin(o, r.Host) {
 			notFound(w)
 			return
 		}
@@ -451,7 +451,10 @@ func (s *Server) assetFile(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	baseHeaders(h)
 	// An SVG opened on its own must not run anything on this origin.
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; sandbox")
+	if len(s.cfg.EmbedOrigins) == 0 {
+		h.Set("X-Frame-Options", "DENY")
+	}
 	h.Set("Content-Type", a.ContentType)
 	h.Set("Cache-Control", "private, max-age=3600")
 	w.Write(b)
@@ -462,12 +465,19 @@ func (s *Server) frame(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	markup, fit := frameMarkup(st.Fields, r.PathValue("key"), r.PathValue("n"))
+	key, n := r.PathValue("key"), r.PathValue("n")
+	// A widget frame runs inline script; refuse top-level document navigations
+	// so it can only ever load inside the answer page's frame-src 'self' iframe.
+	if isWidgetFrame(st.Fields, key, n) && r.Header.Get("Sec-Fetch-Dest") == "document" {
+		notFound(w)
+		return
+	}
+	markup, fit := frameMarkup(st.Fields, key, n)
 	if markup == "" {
 		notFound(w)
 		return
 	}
-	sdk, csp := frameFor(st.Fields, r.PathValue("key"), r.PathValue("n"))
+	sdk, csp := frameFor(st.Fields, key, n)
 	doc := frameDocWith(st, Prefix+st.ID+"/assets/", markup, fit, sdk, s.look().FrameCSS(), func(name string) (string, bool) {
 		b, a, err := s.store.Asset(st.ID, name)
 		if err != nil {

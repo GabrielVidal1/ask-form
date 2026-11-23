@@ -29,7 +29,10 @@ func widgetCSP() string {
 //	askForm.theme        "light" or "dark"
 //
 // The page answers the frame's `ask-form:ready` with `ask-form:init`.
-const widgetSDK = `<script>(function(){var cbs=[],ready=false,a=window.askForm={value:null,theme:"light",` +
+const widgetSDK = `<script>(function(){` +
+	`["RTCPeerConnection","webkitRTCPeerConnection","mozRTCPeerConnection","RTCDataChannel"].forEach(function(k){` +
+	`try{Object.defineProperty(window,k,{value:undefined,writable:false,configurable:false})}catch(e){}});` +
+	`var cbs=[],ready=false,a=window.askForm={value:null,theme:"light",` +
 	`setValue:function(v){var j=null;try{j=v===undefined?null:JSON.parse(JSON.stringify(v))}catch(e){}` +
 	`parent.postMessage({type:"ask-form:value",value:j},"*")},` +
 	`setHeight:function(h){h=Math.max(0,Math.min(4000,+h||0));(document.body||document.documentElement).style.minHeight=h+"px"},` +

@@ -31,9 +31,21 @@
     del: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
 
-  // A closed page: the answers went through, the draft can go.
+  function clearFormStorage(fid) {
+    if (!fid) return;
+    store.del("ask-form:draft:" + fid);
+    var pref = "ask-form:files:" + fid + ":";
+    try {
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(pref) === 0) localStorage.removeItem(k);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // A closed page: the answers went through, the draft and file refs can go.
   var closed = document.querySelector("[data-closed]");
-  if (closed) store.del("ask-form:draft:" + closed.getAttribute("data-closed"));
+  if (closed) clearFormStorage(closed.getAttribute("data-closed"));
 
   // In a frame (serve --embed-origins): a site the machine allows — an agent
   // hub opening the form over its conversation — hears which page is showing
@@ -203,7 +215,7 @@
   // Every block and question in the spec's order (the page groups them, which
   // can reorder them): conditions look back along this order.
   var allFields = $all(".field", form).sort(function (a, b) { return Number(a.id.slice(1)) - Number(b.id.slice(1)); });
-  var byKey = {};
+  var byKey = Object.create(null);
   allFields.forEach(function (f) { byKey[f.getAttribute("data-key")] = f; });
   var touched = {};
 
@@ -372,11 +384,14 @@
   }
   $all("[data-list]", form).forEach(setupList);
 
-  // ── draft (never a secret) ──────────────────────────────────────────────
+  // ── draft (never a secret, even while revealed via "Show") ───────────────
+  function isSecretInput(i) {
+    return i.type === "password" || i.hasAttribute("data-secret") || !!i.closest('[data-type="secret"]');
+  }
   function saveDraft() {
     var v = {};
     $all("input, select, textarea", form).forEach(function (i) {
-      if (!/^[foa]\./.test(i.name) || i.type === "password") return;
+      if (!/^[foa]\./.test(i.name) || isSecretInput(i)) return;
       var had = v[i.name];
       if (typeof had === "string") had = had ? [had] : []; // a dropdown before its Other… box
       if (i.type === "radio" || i.type === "checkbox") {
@@ -392,7 +407,7 @@
   var draft = store.get(draftKey);
   if (draft && !hadErrors) {
     $all("input, select, textarea", form).forEach(function (i) {
-      if (!(i.name in draft.v) || i.type === "password") return;
+      if (!(i.name in draft.v) || isSecretInput(i)) return;
       var val = draft.v[i.name];
       if (i.type === "radio" || i.type === "checkbox") i.checked = Array.isArray(val) && val.indexOf(i.value) >= 0;
       else if (typeof val === "string") i.value = val;
@@ -854,7 +869,7 @@
   var confirmed = false;
   form.addEventListener("submit", function (e) {
     var by = e.submitter;
-    if (by && by.value === "decline") { lock(); store.del(draftKey); return; }
+    if (by && by.value === "decline") { lock(); clearFormStorage(id); return; }
     if (confirmed) { lock(); return; }
     e.preventDefault();
     var bad = fields.filter(function (f) {

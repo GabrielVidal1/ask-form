@@ -20,7 +20,10 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -37,6 +40,7 @@ type Event struct {
 // no-op, so callers can keep one field and never check.
 type Sender struct {
 	url     string
+	safeURL string // redacted URL for logs (no userinfo or query string)
 	version string
 	client  *http.Client
 	queue   chan Event
@@ -49,14 +53,67 @@ type Sender struct {
 
 const queueSize = 256
 
-// New returns nil for an empty URL.
-func New(url, version string) *Sender {
-	if url == "" {
+// redactURL strips userinfo and query parameters before logging a webhook URL.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "<invalid-url>"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
+// allowedURL accepts https:// everywhere, and http:// only for loopback,
+// RFC 1918 LAN, RFC 6598 Tailscale (100.64.0.0/10), or IPv6 ULA hosts.
+func allowedURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return true
+	case "http":
+		h := strings.ToLower(u.Hostname())
+		if h == "localhost" {
+			return true
+		}
+		ip := net.ParseIP(h)
+		if ip == nil {
+			return false
+		}
+		if ip.IsLoopback() || ip.IsPrivate() {
+			return true
+		}
+		// Tailscale CGNAT range 100.64.0.0/10.
+		if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return true
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+// New returns nil for an empty or disallowed URL.
+func New(rawURL, version string) *Sender {
+	if rawURL == "" {
+		return nil
+	}
+	if !allowedURL(rawURL) {
+		log.Printf("events: refusing insecure webhook URL %s (use https://, or http:// on loopback/LAN/Tailscale only)", redactURL(rawURL))
 		return nil
 	}
 	return &Sender{
-		url: url, version: version,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		url: rawURL, safeURL: redactURL(rawURL), version: version,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			// Never follow redirects: a 307/308 would re-POST bearer tokens
+			// and answers to another host or downgrade to cleartext HTTP.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
 		queue:   make(chan Event, queueSize),
 		tries:   3,
 		backoff: 2 * time.Second,
@@ -78,7 +135,7 @@ func (s *Sender) Notify(event string, form any) {
 		n := s.dropped
 		s.mu.Unlock()
 		if n == 1 || n%100 == 0 {
-			log.Printf("events: queue full, %d dropped (is %s up?)", n, s.url)
+			log.Printf("events: queue full, %d dropped (is %s up?)", n, s.safeURL)
 		}
 	}
 }
@@ -121,19 +178,24 @@ func (s *Sender) deliver(ctx context.Context, ev Event) {
 		req.Header.Set("User-Agent", "ask-form/"+s.version)
 		res, err := s.client.Do(req)
 		if err != nil {
-			last = err.Error()
+			// Avoid logging raw url.Error which embeds query/userinfo.
+			if ue, ok := err.(*url.Error); ok && ue.Err != nil {
+				last = ue.Err.Error()
+			} else {
+				last = "request failed"
+			}
 			continue
 		}
 		res.Body.Close()
-		if res.StatusCode < 300 {
+		if res.StatusCode >= 200 && res.StatusCode < 300 {
 			return
 		}
 		last = res.Status
-		if res.StatusCode >= 400 && res.StatusCode < 500 && res.StatusCode != 408 && res.StatusCode != 429 {
-			break // the receiver refused it: trying again won't help
+		if (res.StatusCode >= 300 && res.StatusCode < 500) && res.StatusCode != 408 && res.StatusCode != 429 {
+			break // redirect or client error: trying again won't help
 		}
 	}
 	s.once.Do(func() {
-		log.Printf("events: %s to %s not delivered (%s) — later failures are silent", ev.Event, s.url, last)
+		log.Printf("events: %s to %s not delivered (%s) — later failures are silent", ev.Event, s.safeURL, last)
 	})
 }

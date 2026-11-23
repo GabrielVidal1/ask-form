@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -14,14 +15,18 @@ func (s *Store) Delete(id string) error {
 		return ErrNotFound
 	}
 	s.mu.Lock()
-	_, ok := s.forms[id]
-	delete(s.forms, id)
+	e, ok := s.forms[id]
+	if ok {
+		delete(s.forms, id)
+		e.closeDone()
+	}
 	s.mu.Unlock()
 	if !ok {
 		return ErrNotFound
 	}
 	s.upMu.Lock()
 	defer s.upMu.Unlock()
+	var errs []error
 	for _, p := range []string{
 		filepath.Join(s.dir, "forms", id+".json"),
 		filepath.Join(s.dir, "responses", id+".jsonl"),
@@ -29,15 +34,15 @@ func (s *Store) Delete(id string) error {
 		s.snapshotPath(id),
 	} {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			return err
+			errs = append(errs, err)
 		}
 	}
 	for _, d := range []string{filepath.Join(s.dir, "assets", id), s.uploadsDir(id)} {
 		if err := os.RemoveAll(d); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // DeleteClosed removes every form closed (answered, declined, withdrawn or

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/GabrielVidal1/ask-form/internal/i18n"
@@ -484,7 +485,7 @@ func listAnswer(f Field, v url.Values, t func(string, ...any) string) (rows any,
 // before it, a dotted domain of letters, digits and dashes after it, no
 // spaces, at most MaxEmailChars. Whether it receives mail is not its job.
 func ValidEmail(s string) bool {
-	if len(s) > MaxEmailChars || strings.ContainsAny(s, " \t\r\n<>(),;:\"[]\\") {
+	if len(s) > MaxEmailChars || strings.ContainsAny(s, " \t\r\n<>(),;:\"[]\\") || strings.IndexFunc(s, unicode.IsControl) >= 0 {
 		return false
 	}
 	local, domain, ok := strings.Cut(s, "@")

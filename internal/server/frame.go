@@ -133,9 +133,10 @@ var (
 		`}html{print-color-adjust:exact;-webkit-print-color-adjust:exact}body{display:flow-root;` +
 		`font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}` +
 		`img,video,svg,canvas{max-width:100%}a{color:hsl(var(--primary))}`
-	headRe = regexp.MustCompile(`(?i)<head[^>]*>`)
-	htmlRe = regexp.MustCompile(`(?i)<html[^>]*>`)
-	bodyRe = regexp.MustCompile(`(?i)</body\s*>`)
+	headRe        = regexp.MustCompile(`(?i)<head[^>]*>`)
+	htmlRe        = regexp.MustCompile(`(?i)<html[^>]*>`)
+	bodyRe        = regexp.MustCompile(`(?i)</body\s*>`)
+	metaRefreshRe = regexp.MustCompile(`(?i)<meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh\b[^>]*>`)
 )
 
 // frameSchemeCSS is what the frame script switches between (see Legibility
@@ -180,7 +181,12 @@ func frameDocWith(st store.State, prefix, markup string, fit bool, sdk, brandCSS
 			}
 		}
 	}
+	// Strip <meta http-equiv="refresh"> so a frame opened directly in a tab
+	// cannot redirect visitors off-origin or leak their IP.
+	markup = metaRefreshRe.ReplaceAllString(markup, "")
 	head := `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+		`<meta http-equiv="x-dns-prefetch-control" content="off">` +
+		`<meta http-equiv="Content-Security-Policy" content="frame-src 'none'">` +
 		`<style>` + themeCSS + frameBaseCSS + brandCSS + frameSchemeCSS(brandCSS) + `</style>` + sdk
 	script := `<script>` + frameScript + `</script>`
 	attr := ""
