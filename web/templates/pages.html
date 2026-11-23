@@ -133,6 +133,7 @@
 {{else if eq .Type "list"}}
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
+    {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
     {{if and .Snap (not .Rows)}}<p class="snap-empty">{{t "No answer"}}</p>{{else}}
     <div class="list" data-list{{if .Num.Max}} data-max="{{.Num.Max}}"{{end}}{{if .Num.Min}} data-min="{{.Num.Min}}"{{end}}>
     {{range $row := .Rows}}
@@ -149,38 +150,37 @@
       </div>
     {{end}}
     </div>{{end}}
-    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
 {{else if eq .Type "rating"}}
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
+    {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
     <div class="rating {{.Style}}" role="radiogroup">
     {{range .Scale}}<label class="rate"><input type="radio" name="{{$.Name}}" value="{{.}}"{{if eq $.Value (printf "%d" .)}} checked{{end}}{{if $.Required}} required{{end}}><span class="rate-face" aria-hidden="true">{{if eq $.Style "stars"}}★{{else}}{{.}}{{end}}</span><span class="sr">{{.}}</span></label>{{end}}
     </div>
     {{if or .MinLabel .MaxLabel}}<div class="range-ends"><span>{{.MinLabel}}</span><span>{{.MaxLabel}}</span></div>{{end}}
-    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
 {{else if eq .Type "daterange"}}
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
+    {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
     <div class="daterange">
       <label><span>{{t "From"}}</span><input id="{{.DOMID}}-in" type="date" name="{{.Name}}.start" value="{{.RangeStart}}"></label>
       <label><span>{{t "To"}}</span><input type="date" name="{{.Name}}.end" value="{{.RangeEnd}}"></label>
     </div>
-    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
 {{else if and (eq .Type "widget") .Snap}}
   <div class="label">{{template "label" .}}</div>
   {{if .Value}}<pre class="snap-json">{{.Value}}</pre>{{else}}<p class="snap-empty">{{t "No answer"}}</p>{{end}}
 {{else if eq .Type "widget"}}
   <div class="label" id="{{.DOMID}}-lab">{{template "label" .}}</div>
+  {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
   <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-widget data-schema="{{.Schema}}" disabled>
   <iframe class="frame widget-frame{{if not .Height}} autosize{{end}}" src="{{.FrameURL}}" sandbox="allow-scripts" title="{{or .Label (t "Interactive control")}}" aria-labelledby="{{.DOMID}}-lab" referrerpolicy="no-referrer"></iframe>
   <noscript>
     <p class="help">{{if .Schema}}{{t "This question needs JavaScript. Without it, type the answer as JSON (a %s)." .Schema}}{{else}}{{t "This question needs JavaScript. Without it, type the answer as JSON."}}{{end}}</p>
     <textarea name="{{.Name}}" rows="3" maxlength="16384" aria-labelledby="{{.DOMID}}-lab"{{if .Required}} required{{end}}>{{.Value}}</textarea>
   </noscript>
-  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
 {{else if eq .Type "checkbox"}}
   <label class="check">
     <input type="checkbox" name="{{.Name}}" value="on"{{if .Checked}} checked{{end}}>
@@ -192,6 +192,7 @@
   {{if .Files}}<ul class="snap-files">{{range .Files}}<li>{{with .Thumb}}<img src="{{.}}" alt="">{{end}}<span>{{.Name}} <small>{{.Size}}</small></span></li>{{end}}</ul>{{else}}<p class="snap-empty">{{t "No files"}}</p>{{end}}
 {{else if eq .Type "file"}}
   <div class="label" id="{{.DOMID}}-label">{{template "label" .}}</div>
+  {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
   <input type="hidden" name="{{.Name}}" value="{{.Value}}" data-refs>
   {{if .UploadURL}}
   <div class="uploader" data-url="{{.UploadURL}}" data-max-bytes="{{.MaxBytes}}" data-max-files="{{.FileLimit}}" data-accept="{{.Accept}}"{{if .Multiple}} data-multiple{{end}}>
@@ -204,10 +205,10 @@
   </div>
   <noscript><p class="help">{{t "Adding a file needs a browser with JavaScript turned on."}}</p></noscript>
   {{else}}<p class="help">{{t "Uploads are switched off in this demo — nothing you add is kept."}}</p>{{end}}
-  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
 {{else if .Choice}}
   <fieldset>
     <legend class="label">{{template "label" .}}</legend>
+    {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
     {{if .Visual}}
       <div class="cards{{if .FitContent}} fit-content{{end}}">
       {{range $i, $o := .Options}}
@@ -262,10 +263,10 @@
       </div>
       {{template "other" .}}
     {{end}}
-    {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
   </fieldset>
 {{else}}
   <label class="label" for="{{.DOMID}}-in">{{template "label" .}}</label>
+  {{if .Help}}<div class="help help-top md">{{md .Help}}</div>{{end}}
   {{if eq .Type "textarea"}}
     <textarea id="{{.DOMID}}-in" name="{{.Name}}" rows="{{if .CatchAll}}3{{else}}4{{end}}" maxlength="20000"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>{{.Value}}</textarea>
     {{template "attach" .}}
@@ -296,7 +297,6 @@
   {{else}}
     <input id="{{.DOMID}}-in" type="text" name="{{.Name}}" value="{{.Value}}" maxlength="2000"{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}}{{if .Required}} required{{end}}>
   {{end}}
-  {{if .Help}}<div class="help md">{{md .Help}}</div>{{end}}
 {{end}}
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 </div>
