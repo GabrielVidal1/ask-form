@@ -156,9 +156,9 @@ func (r *Relay) statsAPI(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
-	tok, _ := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+	tok, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
 	sum := sha256.Sum256([]byte(tok))
-	if tok == "" || subtle.ConstantTimeCompare(sum[:], r.statsKey) != 1 {
+	if !ok || tok == "" || subtle.ConstantTimeCompare(sum[:], r.statsKey) != 1 {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ask-form stats"`)
 		http.Error(w, "the stats token is missing or wrong", http.StatusUnauthorized)
 		return

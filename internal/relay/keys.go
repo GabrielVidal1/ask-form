@@ -74,11 +74,7 @@ func saveKeys(path string, k Keys) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return writeFileAtomic(path, append(b, '\n'))
 }
 
 func newKey() (key, sum string, err error) {
@@ -97,30 +93,38 @@ func AddKey(path, name string) (string, error) {
 	if !validMachine(name) {
 		return "", fmt.Errorf("key name %q: use letters, digits, dash, underscore (≤ 40)", name)
 	}
-	k, err := LoadKeys(path)
-	if err != nil {
-		return "", err
-	}
 	key, sum, err := newKey()
 	if err != nil {
 		return "", err
 	}
-	k[name] = Key{SHA256: sum, By: "owner", Created: today()}
-	return key, saveKeys(path, k)
+	err = withFileLock(path, func() error {
+		k, err := LoadKeys(path)
+		if err != nil {
+			return err
+		}
+		k[name] = Key{SHA256: sum, By: "owner", Created: today()}
+		return saveKeys(path, k)
+	})
+	if err != nil {
+		return "", err
+	}
+	return key, nil
 }
 
 // RemoveKey drops a key; it registers nothing more (the machines it
 // registered stay until they're forgotten).
 func RemoveKey(path, name string) error {
-	k, err := LoadKeys(path)
-	if err != nil {
-		return err
-	}
-	if _, ok := k[name]; !ok {
-		return fmt.Errorf("no key %q", name)
-	}
-	delete(k, name)
-	return saveKeys(path, k)
+	return withFileLock(path, func() error {
+		k, err := LoadKeys(path)
+		if err != nil {
+			return err
+		}
+		if _, ok := k[name]; !ok {
+			return fmt.Errorf("no key %q", name)
+		}
+		delete(k, name)
+		return saveKeys(path, k)
+	})
 }
 
 // SortedKeys lists the names in order (for `key ls`).
@@ -172,20 +176,23 @@ func (r *Relay) loadKeys(force bool) error {
 }
 
 // saveKeysWith writes the keys back (r.mu held), merging what `key add/rm`
-// may have changed on disk since the last load.
+// may have changed on disk since the last load under an advisory flock.
 func (r *Relay) saveKeysWith(change func(Keys)) error {
-	if err := r.loadKeys(false); err != nil {
-		return err
-	}
-	k := Keys{}
-	for n, e := range r.keyEntries {
-		k[n] = e
-	}
-	change(k)
-	if err := saveKeys(r.keysFile(), k); err != nil {
-		return err
-	}
-	return r.loadKeys(true)
+	path := r.keysFile()
+	return withFileLock(path, func() error {
+		if err := r.loadKeys(true); err != nil {
+			return err
+		}
+		k := Keys{}
+		for n, e := range r.keyEntries {
+			k[n] = e
+		}
+		change(k)
+		if err := saveKeys(path, k); err != nil {
+			return err
+		}
+		return r.loadKeys(true)
+	})
 }
 
 // keyOf names the key presented; "" when it's unknown (r.mu held).
@@ -217,6 +224,11 @@ func (r *Relay) mintKey(name, by string) (string, error) {
 // exports to Claude's code sandbox.
 func (r *Relay) machineKey(w http.ResponseWriter, req *http.Request) {
 	name := req.Header.Get("X-Ask-Machine")
+	if !r.keyMintLim.hit("key:" + name) {
+		w.Header().Set("Retry-After", "3600")
+		apiErr(w, http.StatusTooManyRequests, "too many key rotations this hour")
+		return
+	}
 	r.mu.Lock()
 	if e, ok := r.entries[name]; ok && e.Ephemeral {
 		r.mu.Unlock()

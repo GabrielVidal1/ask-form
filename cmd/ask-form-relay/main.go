@@ -129,6 +129,11 @@ func serve(args []string, machines, keys string) int {
 	if *register != "open" && *register != "closed" {
 		log.Fatalf("--register %q: use open or closed", *register)
 	}
+	pubURL, err := relay.ValidatePublicURL(*publicURL)
+	if err != nil {
+		log.Fatalf("--public-url: %v", err)
+	}
+	*publicURL = pubURL
 
 	exs, err := server.LoadAllExamples(examples.FS)
 	if err != nil {
@@ -154,7 +159,12 @@ func serve(args []string, machines, keys string) int {
 	cfg := relay.Config{
 		MachinesFile: *file, KeysFile: *keysFile, ClientIPHeader: *ipHeader, PublicURL: strings.TrimRight(*publicURL, "/"), TrustCloudflare: *trustCF,
 		Landing: landing.Page, LandingFR: landing.PageFR, LandingAssets: landing.Assets,
-		Examples: server.ExamplesHandler(exs, *ipHeader),
+		Examples: server.ExamplesHandlerWithIP(exs, func(req *http.Request) string {
+			if r != nil {
+				return r.ClientIP(req)
+			}
+			return ""
+		}),
 		Register: relay.Registration{
 			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,
 			PerKey: *perKey, ForgetEphemeral: *forgetEph, WebKeysPerIP: *webKeys,

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,7 +53,11 @@ type Agent struct {
 // Run polls until ctx ends.
 func (a *Agent) Run(ctx context.Context) {
 	a.RelayURL = strings.TrimRight(a.RelayURL, "/")
-	a.client = &http.Client{Timeout: 45 * time.Second}
+	a.client = &http.Client{
+		Timeout: 45 * time.Second,
+		// Never follow redirects on authenticated machine API calls.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	a.wake = make(chan struct{}, 1)
 	n := a.Pollers
 	if n <= 0 {
@@ -161,25 +166,71 @@ func (a *Agent) poll(ctx context.Context) (*Request, error) {
 	}
 }
 
+func validRequestID(id string) bool {
+	if len(id) == 0 || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func validAnnouncedOrigin(raw string) string {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.Opaque != "" || u.User != nil ||
+		u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return strings.ToLower(u.Scheme) + "://" + u.Host
+	case "http":
+		h := strings.ToLower(u.Hostname())
+		if h == "localhost" || h == "127.0.0.1" || h == "::1" {
+			return "http://" + u.Host
+		}
+	}
+	return ""
+}
+
 // serve runs one forwarded request through the public handler and posts the
 // response back.
 func (a *Agent) serve(ctx context.Context, fr *Request) {
-	r, err := http.NewRequestWithContext(ctx, fr.Method, "http://relay"+fr.Path, bytes.NewReader(fr.Body))
+	if !validRequestID(fr.ID) {
+		log.Printf("relay: ignoring request with invalid id")
+		return
+	}
 	resp := Response{Status: http.StatusBadGateway, Header: http.Header{}}
-	if err == nil {
-		r.Host = fr.Host
-		r.Header = Filter(fr.Header, RequestHeaders)
-		r.RemoteAddr = net.JoinHostPort(fr.RemoteIP, "0")
-		r.ContentLength = int64(len(fr.Body))
-		rec := &recorder{header: http.Header{}}
-		h := a.Handler
-		if strings.HasPrefix(fr.Path, BridgePrefix) {
-			h = a.bridge(r.Header.Get("X-Ask-Account"))
-		}
-		h.ServeHTTP(rec, r)
-		resp = Response{Status: rec.code(), Header: Filter(rec.header, ResponseHeaders), Body: rec.body.Bytes()}
-		if rec.body.Len() > MaxResponseBody {
-			resp = Response{Status: http.StatusBadGateway, Header: http.Header{}}
+	if strings.HasPrefix(fr.Path, "/") && !strings.HasPrefix(fr.Path, "//") {
+		r, err := http.NewRequestWithContext(ctx, fr.Method, "http://relay"+fr.Path, bytes.NewReader(fr.Body))
+		if err == nil {
+			r.Host = fr.Host
+			isBridge := strings.HasPrefix(fr.Path, BridgePrefix)
+			if isBridge {
+				r.Header = Filter(fr.Header, BridgeRequestHeaders)
+			} else {
+				r.Header = Filter(fr.Header, RequestHeaders)
+			}
+			r.RemoteAddr = net.JoinHostPort(fr.RemoteIP, "0")
+			r.ContentLength = int64(len(fr.Body))
+			rec := &recorder{header: http.Header{}}
+			h := a.Handler
+			if isBridge {
+				h = a.bridge(r.Header.Get("X-Ask-Account"))
+			}
+			h.ServeHTTP(rec, r)
+			resp = Response{Status: rec.code(), Header: Filter(rec.header, ResponseHeaders), Body: rec.body.Bytes()}
+			if rec.body.Len() > MaxResponseBody {
+				resp = Response{Status: http.StatusBadGateway, Header: http.Header{}}
+			}
 		}
 	}
 	a.served.Add(1)
@@ -262,8 +313,11 @@ func (a *Agent) fetchInfo(ctx context.Context) {
 		PublicURL string `json:"publicUrl"`
 	}
 	json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&h)
+	pub := validAnnouncedOrigin(h.PublicURL)
 	a.mu.Lock()
-	a.publicURL = strings.TrimRight(h.PublicURL, "/")
+	if pub != "" || h.PublicURL == "" {
+		a.publicURL = pub
+	}
 	a.mu.Unlock()
 	a.haveInfo.Store(true)
 	a.infoAt.Store(time.Now().Unix())

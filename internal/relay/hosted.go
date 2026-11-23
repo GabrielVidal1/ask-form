@@ -84,7 +84,7 @@ func (r *Relay) CallMachine(ctx context.Context, name, method, path string, head
 		machine: name, resp: make(chan tunnel.Response, 1),
 		req: tunnel.Request{
 			ID: hex.EncodeToString(rid[:]), Method: method, Path: path, Host: "relay",
-			Header: tunnel.Filter(header, tunnel.RequestHeaders), Body: body, RemoteIP: "127.0.0.1",
+			Header: tunnel.Filter(header, tunnel.BridgeRequestHeaders), Body: body, RemoteIP: "127.0.0.1",
 		},
 	}
 	r.mu.Lock()
@@ -134,9 +134,14 @@ func (r *Relay) link(w http.ResponseWriter, req *http.Request) {
 }
 
 // unmetered: a path the general per-IP limit skips (Config.Unmetered).
+// Patterns ending in "/" match as a prefix; others match exact path or "/"-prefixed child.
 func (r *Relay) unmetered(path string) bool {
 	for _, p := range r.cfg.Unmetered {
-		if strings.HasPrefix(path, p) {
+		if strings.HasSuffix(p, "/") {
+			if strings.HasPrefix(path, p) {
+				return true
+			}
+		} else if path == p || strings.HasPrefix(path, p+"/") {
 			return true
 		}
 	}

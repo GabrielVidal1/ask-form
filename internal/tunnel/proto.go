@@ -70,18 +70,24 @@ type ClaimRequest struct {
 }
 
 // Header allow-lists, both ways: only what the answer pages need crosses.
+// X-Ask-Account is excluded from visitor RequestHeaders and only allowed on
+// relay-initiated BridgePrefix calls (BridgeRequestHeaders).
+// Strict-Transport-Security is excluded from ResponseHeaders: the relay sets it.
 var (
 	RequestHeaders = []string{
 		"Cookie", "Content-Type", "Accept", "Accept-Language", "User-Agent",
 		"Origin", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-Dest",
-		"X-Ask-Account", // the relay's own bridge calls (BridgePrefix)
+	}
+	BridgeRequestHeaders = []string{
+		"Content-Type", "Accept", "Accept-Language", "User-Agent",
+		"X-Ask-Account",
 	}
 	ResponseHeaders = []string{
 		"Content-Type", "Location", "Set-Cookie", "Cache-Control", "Pragma",
 		"Content-Security-Policy", "Referrer-Policy", "X-Robots-Tag",
-		"Strict-Transport-Security", "X-Content-Type-Options", "X-Frame-Options",
+		"X-Content-Type-Options", "X-Frame-Options",
 		"Permissions-Policy", "Cross-Origin-Opener-Policy", "Cross-Origin-Resource-Policy",
-		"Retry-After",
+		"X-DNS-Prefetch-Control", "Retry-After",
 	}
 )
 

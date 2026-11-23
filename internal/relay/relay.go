@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -43,7 +42,9 @@ const (
 	onlineAfter = 75 * time.Second // a machine polled within this is online
 	claimTTL    = 15 * time.Minute // an online machine that stops listing an id loses it
 
-	maxUploadsInFlight = 16 // upload chunks the relay holds in memory at once
+	maxUploadsInFlight   = 16 // upload chunks the relay holds in memory at once
+	maxResponsesInFlight = 8  // large tunnel responses decoded in memory at once
+	maxPollsPerMachine   = 16 // concurrent long-poll connections per machine
 )
 
 // Config configures a relay.
@@ -108,10 +109,11 @@ type File struct {
 }
 
 type machine struct {
-	name     string
-	queue    chan *pending
-	lastPoll time.Time
-	version  string
+	name        string
+	queue       chan *pending
+	lastPoll    time.Time
+	version     string
+	activePolls int
 }
 
 type claim struct {
@@ -123,31 +125,36 @@ type pending struct {
 	req     tunnel.Request
 	machine string
 	resp    chan tunnel.Response
+	claimed bool
 }
 
 // Relay routes visitors to machines.
 type Relay struct {
-	cfg         Config
-	mu          sync.Mutex
-	machines    map[string]*machine
-	claims      map[string]*claim
-	inflight    map[string]*pending
-	tokens      map[[32]byte]string // sha256(token) → name
-	entries     Machines
-	tokFi       os.FileInfo
-	keySums     map[[32]byte]string // sha256(registration key) → name
-	keyEntries  Keys
-	keyFi       os.FileInfo
-	general     *ipLimiter
-	regLimit    *ipLimiter
-	keyLimit    *ipLimiter    // registrations per key name
-	webKeys     *ipLimiter    // keys minted per visitor (the landing's button)
-	uploads     *ipLimiter    // upload chunks per visitor
-	upSlots     chan struct{} // upload chunks held in memory at once
-	landing     landingPage   // at /
-	landFR      landingPage   // at /fr
-	cloudPublic http.Handler  // Cloud's answer pages, nil without
-	statsKey    []byte        // SHA-256 of Config.StatsToken, nil without
+	cfg             Config
+	mu              sync.Mutex
+	machines        map[string]*machine
+	claims          map[string]*claim
+	inflight        map[string]*pending
+	tokens          map[[32]byte]string // sha256(token) → name
+	entries         Machines
+	tokFi           os.FileInfo
+	keySums         map[[32]byte]string // sha256(registration key) → name
+	keyEntries      Keys
+	keyFi           os.FileInfo
+	general         *ipLimiter
+	machineLim      *ipLimiter // per-IP limit on /_relay/*
+	machineAuthFail *ipLimiter // per-IP limit on failed auth on /_relay/*
+	keyMintLim      *ipLimiter // per-machine limit on POST /_relay/v1/key
+	regLimit        *ipLimiter
+	keyLimit        *ipLimiter    // registrations per key name
+	webKeys         *ipLimiter    // keys minted per visitor (the landing's button)
+	uploads         *ipLimiter    // upload chunks per visitor
+	upSlots         chan struct{} // upload chunks held in memory at once
+	respSlots       chan struct{} // large tunnel responses decoded at once
+	landing         landingPage   // at /
+	landFR          landingPage   // at /fr
+	cloudPublic     http.Handler  // Cloud's answer pages, nil without
+	statsKey        []byte        // SHA-256 of Config.StatsToken, nil without
 }
 
 // landingPage is a landing page and the CSP computed from its own bytes.
@@ -160,15 +167,25 @@ func newLandingPage(b []byte) landingPage { return landingPage{body: b, csp: lan
 
 // New builds a relay.
 func New(cfg Config) (*Relay, error) {
+	pub, err := ValidatePublicURL(cfg.PublicURL)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PublicURL = pub
 	cfg.Register.defaults()
 	r := &Relay{
 		cfg: cfg, machines: map[string]*machine{}, claims: map[string]*claim{},
 		inflight: map[string]*pending{}, general: newIPLimiter(600, time.Minute),
-		landing: newLandingPage(cfg.Landing), landFR: newLandingPage(cfg.LandingFR),
-		regLimit: newIPLimiter(cfg.Register.PerIP, 24*time.Hour),
-		keyLimit: newIPLimiter(cfg.Register.PerKey, 24*time.Hour),
-		webKeys:  newIPLimiter(cfg.Register.WebKeysPerIP, 24*time.Hour),
-		uploads:  newIPLimiter(120, time.Minute), upSlots: make(chan struct{}, maxUploadsInFlight),
+		machineLim:      newIPLimiter(600, time.Minute),
+		machineAuthFail: newIPLimiter(30, 15*time.Minute),
+		keyMintLim:      newIPLimiter(10, time.Hour),
+		landing:         newLandingPage(cfg.Landing), landFR: newLandingPage(cfg.LandingFR),
+		regLimit:  newIPLimiter(cfg.Register.PerIP, 24*time.Hour),
+		keyLimit:  newIPLimiter(cfg.Register.PerKey, 24*time.Hour),
+		webKeys:   newIPLimiter(cfg.Register.WebKeysPerIP, 24*time.Hour),
+		uploads:   newIPLimiter(120, time.Minute),
+		upSlots:   make(chan struct{}, maxUploadsInFlight),
+		respSlots: make(chan struct{}, maxResponsesInFlight),
 	}
 	if cfg.Cloud != nil {
 		r.cloudPublic = cfg.Cloud.Public()
@@ -200,21 +217,42 @@ func (r *Relay) MachineAPI() http.Handler {
 	mux.HandleFunc("DELETE /_relay/v1/machine", r.unregister)
 	mux.HandleFunc("POST /_relay/v1/link", r.link)
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
+		ip := r.clientIP(req)
+		sw := &statusWriter{ResponseWriter: w}
+		defer func() {
+			// Log errors and mutating/auth calls (skip quiet 204 poll keepalives).
+			if sw.status != http.StatusNoContent || req.URL.Path != "/_relay/v1/poll" {
+				log.Printf("machine %s %s %d %s ip=%s", req.Method, clip(req.URL.EscapedPath(), 120), sw.status,
+					time.Since(start).Round(time.Millisecond), ip)
+			}
+		}()
+		if !r.machineLim.hit(ip) {
+			sw.Header().Set("Retry-After", "60")
+			http.Error(sw, "Too many requests", http.StatusTooManyRequests)
+			return
+		}
 		if req.URL.Path == "/_relay/v1/register" && req.Method == http.MethodPost {
-			r.register(w, req)
+			r.register(sw, req)
 			return
 		}
 		if req.URL.Path == "/_relay/v1/stats" || req.URL.Path == "/_relay/v1/metrics" {
-			r.statsAPI(w, req) // the owner's token, not a machine's
+			r.statsAPI(sw, req) // the owner's token, not a machine's
+			return
+		}
+		if r.machineAuthFail.blocked(ip) {
+			sw.Header().Set("Retry-After", "600")
+			http.Error(sw, "Too many authentication failures", http.StatusTooManyRequests)
 			return
 		}
 		name := r.machineOf(req)
 		if name == "" {
-			http.Error(w, "unknown machine token", http.StatusUnauthorized)
+			r.machineAuthFail.hit(ip)
+			http.Error(sw, "unknown machine token", http.StatusUnauthorized)
 			return
 		}
 		req.Header.Set("X-Ask-Machine", name)
-		mux.ServeHTTP(w, req)
+		mux.ServeHTTP(sw, req)
 	})
 }
 
@@ -234,27 +272,38 @@ func (r *Relay) poll(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "bad poll body", http.StatusBadRequest)
 		return
 	}
+	ver := cleanVersion(pr.Version)
 	now := time.Now()
 	r.mu.Lock()
 	m := r.machine(name)
-	if m.lastPoll.IsZero() || now.Sub(m.lastPoll) > onlineAfter {
-		log.Printf("relay: machine %s online (%d forms, %s)", name, len(pr.Forms), pr.Version)
+	if m.activePolls >= maxPollsPerMachine {
+		r.mu.Unlock()
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "too many concurrent polls", http.StatusTooManyRequests)
+		return
 	}
-	m.lastPoll, m.version = now, pr.Version
-	room := -1 // claims this machine may still add; -1 = no cap
-	if r.self(name) {
+	m.activePolls++
+	if m.lastPoll.IsZero() || now.Sub(m.lastPoll) > onlineAfter {
+		log.Printf("relay: machine %s online (%d forms, %s)", name, len(pr.Forms), ver)
+	}
+	m.lastPoll, m.version = now, ver
+	capped := r.self(name)
+	room := 0
+	if capped {
 		room = r.cfg.Register.MaxForms - r.claimsOf(name)
 	}
 	for _, id := range pr.Forms {
-		if !store.ValidID(id) {
+		if !store.ValidID(id) || r.cloudHas(id) {
 			continue
 		}
 		c := r.claims[id]
 		if c == nil {
-			if room == 0 {
+			if capped && room <= 0 {
 				continue
 			}
-			room--
+			if capped {
+				room--
+			}
 			r.claims[id] = &claim{machine: name, seen: now}
 		} else if c.machine == name {
 			c.seen = now
@@ -262,31 +311,70 @@ func (r *Relay) poll(w http.ResponseWriter, req *http.Request) {
 	}
 	q := m.queue
 	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		if m.activePolls > 0 {
+			m.activePolls--
+		}
+		r.mu.Unlock()
+	}()
 
 	t := time.NewTimer(pollHold)
 	defer t.Stop()
-	select {
-	case p := <-q:
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tunnel.PollResponse{Request: &p.req})
-	case <-t.C:
-		w.WriteHeader(http.StatusNoContent)
-	case <-req.Context().Done():
+	for {
+		select {
+		case p := <-q:
+			// Skip requests whose visitor already timed out or disconnected.
+			r.mu.Lock()
+			_, alive := r.inflight[p.req.ID]
+			r.mu.Unlock()
+			if !alive {
+				continue
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(tunnel.PollResponse{Request: &p.req})
+			return
+		case <-t.C:
+			w.WriteHeader(http.StatusNoContent)
+			return
+		case <-req.Context().Done():
+			return
+		}
 	}
 }
 
 func (r *Relay) respond(w http.ResponseWriter, req *http.Request) {
 	name := req.Header.Get("X-Ask-Machine")
+	rid := req.PathValue("rid")
+	// Verify inflight ownership and claim this rid BEFORE reading the body so
+	// bogus or duplicate requests cannot OOM the relay container (H-4).
+	r.mu.Lock()
+	p := r.inflight[rid]
+	if p == nil || p.machine != name || p.claimed {
+		r.mu.Unlock()
+		http.Error(w, "no such request (timed out?)", http.StatusNotFound)
+		return
+	}
+	p.claimed = true
+	r.mu.Unlock()
+
+	select {
+	case r.respSlots <- struct{}{}:
+		defer func() { <-r.respSlots }()
+	default:
+		w.Header().Set("Retry-After", "2")
+		http.Error(w, "busy", http.StatusServiceUnavailable)
+		return
+	}
+	// Base64 overhead for MaxResponseBody plus JSON/header slack (~10.7 MiB).
+	const maxRespondJSON = tunnel.MaxResponseBody*4/3 + (64 << 10)
 	var resp tunnel.Response
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, tunnel.MaxResponseBody*2)).Decode(&resp); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, maxRespondJSON)).Decode(&resp); err != nil {
 		http.Error(w, "bad response body", http.StatusBadRequest)
 		return
 	}
-	r.mu.Lock()
-	p := r.inflight[req.PathValue("rid")]
-	r.mu.Unlock()
-	if p == nil || p.machine != name {
-		http.Error(w, "no such request (timed out?)", http.StatusNotFound)
+	if len(resp.Body) > tunnel.MaxResponseBody {
+		http.Error(w, "response body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	select {
@@ -433,8 +521,9 @@ func (r *Relay) Public() http.Handler {
 	mux.Handle("GET /f/_static/{file}", server.StaticHandler())
 	mux.Handle("GET /forms/_static/{file}", server.StaticHandler())
 	for p, f := range r.cfg.Files {
+		f := f
 		mux.HandleFunc("GET "+p, func(w http.ResponseWriter, req *http.Request) {
-			serveFile(w, File{Body: r.withOrigin(f.Body, req), ContentType: f.ContentType})
+			serveFile(w, File{Body: r.withOrigin(f.Body, req), ContentType: f.ContentType}, r.cfg.PublicURL != "")
 		})
 	}
 	if r.cfg.Examples != nil {
@@ -480,17 +569,21 @@ func (r *Relay) clientIP(req *http.Request) string {
 }
 
 // peerIP is the address the proxy in front reports (ClientIPHeader), else
-// the socket peer.
+// the socket peer. For comma-separated X-Forwarded-For chains, takes the
+// rightmost hop appended by the trusted proxy (matching server.clientIP).
 func (r *Relay) peerIP(req *http.Request) string {
 	for _, h := range strings.Split(r.cfg.ClientIPHeader, ",") {
 		if h = strings.TrimSpace(h); h == "" {
 			continue
 		}
-		// X-Forwarded-For may list hops: the first is the visitor (a proxy
-		// that doesn't trust the client, like Caddy's default, sets it fresh).
-		v, _, _ := strings.Cut(req.Header.Get(h), ",")
-		if v = strings.TrimSpace(v); net.ParseIP(v) != nil {
-			return v
+		vals := req.Header.Values(h)
+		for i := len(vals) - 1; i >= 0; i-- {
+			parts := strings.Split(vals[i], ",")
+			for j := len(parts) - 1; j >= 0; j-- {
+				if v := strings.TrimSpace(parts[j]); net.ParseIP(v) != nil {
+					return v
+				}
+			}
 		}
 	}
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
@@ -510,7 +603,12 @@ func (r *Relay) serveLanding(p landingPage) http.HandlerFunc {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		h.Set("Cache-Control", "public, max-age=300")
+		if r.cfg.PublicURL != "" {
+			h.Set("Cache-Control", "public, max-age=300")
+		} else {
+			// Origin is derived from Host; never let a shared cache store it.
+			h.Set("Cache-Control", "private, no-store")
+		}
 		w.Write(r.withOrigin(p.body, req))
 	}
 }
@@ -564,16 +662,20 @@ func (r *Relay) withOrigin(b []byte, req *http.Request) []byte {
 	return bytes.ReplaceAll(b, []byte("{{HOST}}"), []byte(host))
 }
 
-var hostRe = regexp.MustCompile(`^[A-Za-z0-9.-]+(:[0-9]{1,5})?$`)
+var hostRe = strictHostRe
 
-func serveFile(w http.ResponseWriter, f File) {
+func serveFile(w http.ResponseWriter, f File, cacheable bool) {
 	h := w.Header()
 	h.Set("Content-Type", f.ContentType)
 	h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-	h.Set("Cache-Control", "public, max-age=300")
+	if cacheable {
+		h.Set("Cache-Control", "public, max-age=300")
+	} else {
+		h.Set("Cache-Control", "private, no-store")
+	}
 	w.Write(f.Body)
 }
 
@@ -700,18 +802,7 @@ func (r *Relay) forward(w http.ResponseWriter, req *http.Request) {
 	defer t.Stop()
 	select {
 	case resp := <-p.resp:
-		h := w.Header()
-		for k, v := range tunnel.Filter(resp.Header, tunnel.ResponseHeaders) {
-			h[k] = v
-		}
-		status := resp.Status
-		if status < 200 || status > 599 {
-			status = http.StatusBadGateway
-		}
-		w.WriteHeader(status)
-		if req.Method != http.MethodHead {
-			w.Write(resp.Body)
-		}
+		writeForwarded(w, req, id, resp)
 	case <-t.C:
 		page(w, http.StatusGatewayTimeout, offlinePage)
 	case <-req.Context().Done():
@@ -765,16 +856,19 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// ipLimiter is a fixed window per address.
+// ipLimiter is a bounded fixed-window counter per key (IPv6 normalized to /64).
 type ipLimiter struct {
-	mu     sync.Mutex
-	max    int
-	window time.Duration
-	hits   map[string]*struct {
+	mu        sync.Mutex
+	max       int
+	window    time.Duration
+	lastSweep time.Time
+	hits      map[string]*struct {
 		start time.Time
 		n     int
 	}
 }
+
+const maxIPLimiterEntries = 50000
 
 func newIPLimiter(max int, window time.Duration) *ipLimiter {
 	return &ipLimiter{max: max, window: window, hits: map[string]*struct {
@@ -783,24 +877,44 @@ func newIPLimiter(max int, window time.Duration) *ipLimiter {
 	}{}}
 }
 
+func (l *ipLimiter) blocked(ip string) bool {
+	key := ipBucket(ip)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	w := l.hits[key]
+	return w != nil && time.Since(w.start) <= l.window && w.n >= l.max
+}
+
 func (l *ipLimiter) hit(ip string) bool {
+	key := ipBucket(ip)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	if len(l.hits) > 50000 {
-		for k, v := range l.hits {
-			if now.Sub(v.start) > l.window {
-				delete(l.hits, k)
+	w := l.hits[key]
+	if w == nil || now.Sub(w.start) > l.window {
+		if w == nil && len(l.hits) >= maxIPLimiterEntries {
+			// Amortized sweep + bounded eviction so >50k unique keys never
+			// trigger O(N^2) mutex stalls or container OOM.
+			if now.Sub(l.lastSweep) > 5*time.Second {
+				l.lastSweep = now
+				for k, v := range l.hits {
+					if now.Sub(v.start) > l.window {
+						delete(l.hits, k)
+					}
+				}
+			}
+			for len(l.hits) >= maxIPLimiterEntries {
+				for k := range l.hits {
+					delete(l.hits, k)
+					break
+				}
 			}
 		}
-	}
-	w := l.hits[ip]
-	if w == nil || now.Sub(w.start) > l.window {
 		w = &struct {
 			start time.Time
 			n     int
 		}{start: now}
-		l.hits[ip] = w
+		l.hits[key] = w
 	}
 	w.n++
 	return w.n <= l.max

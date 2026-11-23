@@ -202,14 +202,39 @@ func (r *Recorder) Flush() error {
 }
 
 func writeFile(path string, b []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, ".stats-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	name := tmp.Name()
+	if err := os.Chmod(name, 0o600); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
 }
 
 // Close stops the flusher and writes the file a last time.
@@ -496,9 +521,12 @@ func (r *Recorder) FormClosed(formID, status string, closedAt time.Time) {
 		return
 	}
 	delete(r.db.Pending, h)
-	outcome := status
-	if status == "submitted" {
+	outcome := "other"
+	switch status {
+	case "submitted", "answered":
 		outcome = "answered"
+	case "declined", "revoked", "expired", "closed", "unknown":
+		outcome = status
 	}
 	r.add(1, "forms_closed", "where", p.Where, "outcome", outcome)
 	if outcome != "answered" {

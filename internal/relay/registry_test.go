@@ -194,11 +194,13 @@ func TestClientIPCloudflare(t *testing.T) {
 		return q
 	}
 	cases := []struct{ xff, cf, want string }{
-		{"172.70.1.2", "203.0.113.9", "203.0.113.9"},     // through a Cloudflare edge
-		{"2606:4700::1", "2001:db8::5", "2001:db8::5"},   // IPv6 edge
-		{"198.51.100.7", "203.0.113.9", "198.51.100.7"},  // forged: not from Cloudflare
-		{"172.70.1.2", "not-an-ip", "172.70.1.2"},        // edge without a usable header
-		{"198.51.100.7, 172.70.1.2", "", "198.51.100.7"}, // first hop wins
+		{"172.70.1.2", "203.0.113.9", "203.0.113.9"},                // through a Cloudflare edge
+		{"2606:4700::1", "2001:db8::5", "2001:db8::5"},              // IPv6 edge
+		{"198.51.100.7", "203.0.113.9", "198.51.100.7"},             // forged: not from Cloudflare
+		{"172.70.1.2", "not-an-ip", "172.70.1.2"},                   // edge without a usable header
+		{"198.51.100.7, 172.70.1.2", "", "172.70.1.2"},              // rightmost hop appended by proxy wins
+		{"198.51.100.7, 172.70.1.2", "203.0.113.9", "203.0.113.9"},  // rightmost Cloudflare hop trusts Cf-Connecting-Ip
+		{"172.70.1.2, 198.51.100.7", "203.0.113.9", "198.51.100.7"}, // spoofed leftmost Cloudflare IP cannot forge Cf-Connecting-Ip
 	}
 	for _, c := range cases {
 		if got := r.clientIP(req(c.xff, c.cf)); got != c.want {

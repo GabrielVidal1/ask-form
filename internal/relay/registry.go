@@ -77,29 +77,37 @@ func AddMachine(path, name string) (string, error) {
 	if !validMachine(name) {
 		return "", fmt.Errorf("machine name %q: use letters, digits, dash, underscore (≤ 40)", name)
 	}
-	m, err := LoadMachines(path)
-	if err != nil {
-		return "", err
-	}
 	token, sum, err := newToken()
 	if err != nil {
 		return "", err
 	}
-	m[name] = Machine{SHA256: sum, Created: today()}
-	return token, saveMachines(path, m)
+	err = withFileLock(path, func() error {
+		m, err := LoadMachines(path)
+		if err != nil {
+			return err
+		}
+		m[name] = Machine{SHA256: sum, Created: today()}
+		return saveMachines(path, m)
+	})
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // RemoveMachine drops a machine; its token stops working at once.
 func RemoveMachine(path, name string) error {
-	m, err := LoadMachines(path)
-	if err != nil {
-		return err
-	}
-	if _, ok := m[name]; !ok {
-		return fmt.Errorf("no machine %q", name)
-	}
-	delete(m, name)
-	return saveMachines(path, m)
+	return withFileLock(path, func() error {
+		m, err := LoadMachines(path)
+		if err != nil {
+			return err
+		}
+		if _, ok := m[name]; !ok {
+			return fmt.Errorf("no machine %q", name)
+		}
+		delete(m, name)
+		return saveMachines(path, m)
+	})
 }
 
 func saveMachines(path string, m Machines) error {
@@ -107,11 +115,7 @@ func saveMachines(path string, m Machines) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return writeFileAtomic(path, append(b, '\n'))
 }
 
 func validMachine(s string) bool {
@@ -158,27 +162,29 @@ func (r *Relay) loadTokens(force bool) error {
 }
 
 // save writes r.entries back (r.mu held), merging what `machine add/rm` may
-// have changed on disk since the last load.
+// have changed on disk since the last load under an advisory flock.
 func (r *Relay) save(change func(Machines)) error {
-	if err := r.loadTokens(false); err != nil {
-		return err
-	}
-	m := Machines{}
-	for k, v := range r.entries {
-		m[k] = v
-	}
-	change(m)
-	if err := saveMachines(r.cfg.MachinesFile, m); err != nil {
-		return err
-	}
-	return r.loadTokens(true)
+	return withFileLock(r.cfg.MachinesFile, func() error {
+		if err := r.loadTokens(true); err != nil {
+			return err
+		}
+		m := Machines{}
+		for k, v := range r.entries {
+			m[k] = v
+		}
+		change(m)
+		if err := saveMachines(r.cfg.MachinesFile, m); err != nil {
+			return err
+		}
+		return r.loadTokens(true)
+	})
 }
 
 // machineOf authenticates a machine API call; "" when the token is unknown.
 // A map lookup on the token's SHA-256 leaks nothing usable about the token.
 func (r *Relay) machineOf(req *http.Request) string {
-	tok := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
-	if tok == "" {
+	tok, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+	if !ok || tok == "" {
 		return ""
 	}
 	sum := sha256.Sum256([]byte(tok))
@@ -299,12 +305,24 @@ func (r *Relay) register(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	n := 0
-	for _, e := range r.entries {
+	var evictName, evictDate string
+	for k, e := range r.entries {
 		if e.Self {
 			n++
+			// If full, allow evicting the oldest offline ephemeral machine so
+			// ephemeral sandbox churn cannot permanently starve persistent machines.
+			if e.Ephemeral {
+				mm := r.machines[k]
+				if mm == nil || time.Since(mm.lastPoll) > onlineAfter {
+					last := maxStr(e.Seen, e.Created)
+					if evictName == "" || last < evictDate {
+						evictName, evictDate = k, last
+					}
+				}
+			}
 		}
 	}
-	if n >= r.cfg.Register.MaxMachines {
+	if n >= r.cfg.Register.MaxMachines && evictName == "" {
 		apiErr(w, http.StatusServiceUnavailable, "this relay is full for now")
 		return
 	}
@@ -317,11 +335,19 @@ func (r *Relay) register(w http.ResponseWriter, req *http.Request) {
 	}
 	d := today()
 	entry := Machine{SHA256: sum, Self: true, Created: d, Seen: d, Ephemeral: keyName != "", Key: keyName}
-	if err := r.save(func(m Machines) { m[name] = entry }); err != nil {
+	if err := r.save(func(m Machines) {
+		if n >= r.cfg.Register.MaxMachines && evictName != "" {
+			delete(m, evictName)
+			delete(r.machines, evictName)
+			r.dropClaimsOf(evictName)
+		}
+		m[name] = entry
+	}); err != nil {
 		log.Printf("relay: register: %v", err)
 		apiErr(w, http.StatusInternalServerError, "couldn't save the machine")
 		return
 	}
+	ver := cleanVersion(body.Version)
 	if keyName != "" {
 		if e, ok := r.keyEntries[keyName]; ok && e.Seen != d {
 			if err := r.saveKeysWith(func(k Keys) {
@@ -333,15 +359,24 @@ func (r *Relay) register(w http.ResponseWriter, req *http.Request) {
 				log.Printf("relay: keys file: %v", err)
 			}
 		}
-		log.Printf("relay: machine %s registered with key %s (%s, ip=%s)", name, keyName, clip(body.Version, 40), r.clientIP(req))
+		log.Printf("relay: machine %s registered with key %s (%s, ip=%s)", name, keyName, ver, r.clientIP(req))
 		r.cfg.Stats.Count("machines_registered", "how", "key")
 	} else {
-		log.Printf("relay: machine %s registered itself (%s, ip=%s)", name, clip(body.Version, 40), r.clientIP(req))
+		log.Printf("relay: machine %s registered itself (%s, ip=%s)", name, ver, r.clientIP(req))
 		r.cfg.Stats.Count("machines_registered", "how", "self")
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(map[string]string{"machine": name, "token": token})
+}
+
+// dropClaimsOf removes all form claims belonging to name (r.mu held).
+func (r *Relay) dropClaimsOf(name string) {
+	for id, c := range r.claims {
+		if c.machine == name {
+			delete(r.claims, id)
+		}
+	}
 }
 
 // unregister lets a machine delete itself (`ask-form uninstall --purge`).
@@ -354,11 +389,7 @@ func (r *Relay) unregister(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	delete(r.machines, name)
-	for id, c := range r.claims {
-		if c.machine == name {
-			delete(r.claims, id)
-		}
-	}
+	r.dropClaimsOf(name)
 	log.Printf("relay: machine %s unregistered itself", name)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -398,7 +429,7 @@ func (r *Relay) forgetIdle(now time.Time) {
 		if !e.Self {
 			continue
 		}
-		if m := r.machines[name]; m != nil && now.Sub(m.lastPoll) < onlineAfter && e.Seen != d {
+		if m := r.machines[name]; m != nil && !m.lastPoll.IsZero() && now.Sub(m.lastPoll) < 24*time.Hour && e.Seen != d {
 			changed = true
 		} else if last := maxStr(e.Seen, e.Created); last != "" && last < cutoffOf(e) {
 			changed = true
@@ -412,13 +443,14 @@ func (r *Relay) forgetIdle(now time.Time) {
 			if !e.Self {
 				continue
 			}
-			if mm := r.machines[name]; mm != nil && now.Sub(mm.lastPoll) < onlineAfter {
+			if mm := r.machines[name]; mm != nil && !mm.lastPoll.IsZero() && now.Sub(mm.lastPoll) < 24*time.Hour {
 				e.Seen = d
 				m[name] = e
 			} else if last := maxStr(e.Seen, e.Created); last != "" && last < cutoffOf(e) {
 				log.Printf("relay: forgetting machine %s (unseen since %s)", name, last)
 				delete(m, name)
 				delete(r.machines, name)
+				r.dropClaimsOf(name)
 			}
 		}
 	})

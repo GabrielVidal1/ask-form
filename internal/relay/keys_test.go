@@ -185,7 +185,7 @@ func TestWebSkillDownload(t *testing.T) {
 			md = string(b)
 		}
 	}
-	key := regexp.MustCompile(`--key (afk_[A-Za-z0-9_-]+)`).FindStringSubmatch(md)
+	key := regexp.MustCompile(`--key '?(afk_[A-Za-z0-9_-]+)'?`).FindStringSubmatch(md)
 	if key == nil {
 		t.Fatalf("no key in the skill:\n%s", md)
 	}
