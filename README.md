@@ -26,8 +26,11 @@ Other ways: `npm install -g ask-form` or `go install
 github.com/GabrielVidal1/ask-form/cmd/ask-form@latest`, then `ask-form setup`;
 or a binary from
 [Releases](https://github.com/GabrielVidal1/ask-form/releases).
-`ask-form setup --local` skips the relay; forms are then answered on the same
-machine only.
+`ask-form setup --local` skips the relay; forms stay on `http://127.0.0.1:7462`
+and never leave the machine (recommended for confidential or internal work,
+since forms opened through `ask-form.xyz` transit Cloudflare and the relay in
+TLS-terminated plaintext rather than end-to-end encryption — or
+[run your own relay](#your-own-relay) on your own domain).
 
 ## In Claude, ChatGPT and other chat apps
 
@@ -115,11 +118,11 @@ for agents other than Claude Code.
 
 ## Upgrade
 
-`ask-form serve` installs new releases by itself. Set
-`ASK_FORM_AUTO_UPGRADE` to `minor` (no new major versions), `notify` or `off`
-to change that.
-`ask-form upgrade` upgrades by hand, and `ask-form uninstall` removes the
-service and the skill.
+`ask-form serve` checks for new releases and reports them in `ask-form status`
+(`notify`, the default). Run `ask-form upgrade` to update, or set
+`ASK_FORM_AUTO_UPGRADE` to `minor` (auto-install minor and patch releases),
+`all` (every release) or `off`. `ask-form uninstall` removes the service and
+the skill.
 
 ## Branding
 

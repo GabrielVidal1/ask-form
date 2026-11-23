@@ -31,7 +31,7 @@ func TestClaudeAIZip(t *testing.T) {
 	if _, ok := files["ask-form/reference.md"]; !ok {
 		t.Fatal("no reference.md")
 	}
-	for _, want := range []string{"--relay https://ask-form.xyz --key afk_secret", "add `ask-form.xyz` to the allowed",
+	for _, want := range []string{"--relay 'https://ask-form.xyz' --key 'afk_secret'", "add `ask-form.xyz` to the allowed",
 		"ask-form v9.9.9", "{{asset:file.png}}"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("SKILL.md lacks %q", want)

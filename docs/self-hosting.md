@@ -373,7 +373,8 @@ docker compose exec ask-form-relay /ask-form-relay machine rm <name>
 ```
 
 - **Back up** `data/machines.json`. Without it every machine needs a new token.
-- **Upgrade** with each release. Machines install new releases by themselves;
+- **Upgrade** with each release. Machines notify of new releases (or upgrade
+  when `ASK_FORM_AUTO_UPGRADE` is set to `minor` / `all`);
   the relay doesn't. It serves the answer pages' stylesheet and script, so a
   relay older than its machines can show new form features unstyled. Watch
   the repository's releases (Watch → Custom → Releases) and:
@@ -479,7 +480,7 @@ sign-in (`/.well-known/oauth-*`, `/oauth/…`) and the plugin zip
 | `--keys`, `--register-per-key`, `--forget-ephemeral`, `--web-keys-per-ip` | see [Registration keys](#registration-keys-claudes-code-sandbox) | | machines registered with a key |
 | `--hosted` | `ASK_FORM_RELAY_HOSTED` | off | run the [chat-app connector](#chat-apps-the-connector) with its data in this directory |
 | `--cloud-retention` | `ASK_FORM_RELAY_CLOUD_RETENTION` | `24h` | delete a cloud form this long after it closes |
-| `--cloud-max-open`, `--cloud-per-day` | `ASK_FORM_RELAY_CLOUD_MAX_OPEN`, `…_PER_DAY` | `20`, `100` | pending cloud forms per account; forms an account creates a day |
+| `--cloud-max-open`, `--cloud-per-day` | `ASK_FORM_RELAY_CLOUD_MAX_OPEN`, `…_PER_DAY` | `20`, `50` | pending cloud forms per account; forms an account creates a day |
 | `--stats` | `ASK_FORM_RELAY_STATS` | `stats.json` next to the machines file | [usage counts](how-it-works.md#usage-counts); `off`: none |
 | `--stats-token` | `ASK_FORM_RELAY_STATS_TOKEN` | none (closed) | opens `GET /_relay/v1/stats` and `/_relay/v1/metrics` to `Authorization: Bearer <token>`; prefer the env var |
 

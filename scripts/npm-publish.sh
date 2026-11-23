@@ -19,6 +19,10 @@ set -eu
 usage() { echo "usage: $0 TAG [--dist DIR] [--trust] [--dry-run]" >&2; exit 2; }
 [ $# -ge 1 ] || usage
 tag=$1; shift
+if ! printf '%s\n' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+  echo "npm-publish: $tag is not a release tag like v0.17.0" >&2
+  exit 2
+fi
 dist=""; trust=""; dry=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -40,30 +44,34 @@ if [ -z "$dist" ]; then
   base="https://github.com/$gh_repo/releases/download/$tag"
   echo "Downloading the $tag binaries from GitHub…" >&2
   # GitHub's release CDN answers a 5xx now and then: retry those.
-  get() { curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors "$1" -o "$2"; }
+  get() { curl -fsSL --proto '=https' --tlsv1.2 --retry 4 --retry-delay 3 --retry-all-errors "$1" -o "$2"; }
   get "$base/checksums.txt" "$dist/checksums.txt"
   for a in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do
     get "$base/ask-form-$a" "$dist/ask-form-$a"
   done
   if command -v sha256sum >/dev/null 2>&1; then sum="sha256sum"; else sum="shasum -a 256"; fi # macOS: shasum
+  # Verify all 4 platform binaries are present in checksums.txt before checking.
+  grep -E '^[0-9a-f]{64}  ?\*?ask-form-(linux|darwin)-(amd64|arm64)$' "$dist/checksums.txt" > "$dist/npm-checksums.txt"
+  count=$(wc -l < "$dist/npm-checksums.txt" | tr -d ' ')
+  [ "$count" -eq 4 ] || { echo "npm-publish: expected 4 checksums in checksums.txt, got $count" >&2; exit 1; }
   # shellcheck disable=SC2086 # sum is a word list
-  (cd "$dist" && grep -E ' ask-form-(linux|darwin)-(amd64|arm64)$' checksums.txt | $sum -c --quiet -)
+  (cd "$dist" && $sum -c --quiet npm-checksums.txt)
 fi
 
 "$here/scripts/npm-packages.sh" "$tag" "$dist" "$work/npm"
 version=${tag#v}
 
-flags="--access public --registry $registry"
-[ -n "${GITHUB_ACTIONS:-}" ] && flags="$flags --provenance"
-case "$version" in *-*) flags="$flags --tag next" ;; esac # a prerelease never becomes `latest`
+set -- --access public --registry "$registry"
+[ -n "${GITHUB_ACTIONS:-}" ] && set -- "$@" --provenance
+case "$version" in *-*) set -- "$@" --tag next ;; esac # a prerelease never becomes `latest`
+[ -n "$dry" ] && set -- "$@" "$dry"
 for name in ask-form-linux-x64 ask-form-linux-arm64 ask-form-darwin-x64 ask-form-darwin-arm64 ask-form; do
   if npm view "$name@$version" version --registry "$registry" >/dev/null 2>&1; then
     echo "$name@$version is on npm already" >&2
     continue
   fi
   echo "Publishing $name@$version…" >&2
-  # shellcheck disable=SC2086 # flags is a word list
-  npm publish "$work/npm/$name" $flags $dry
+  npm publish "$work/npm/$name" "$@"
 done
 
 if [ -n "$trust" ]; then

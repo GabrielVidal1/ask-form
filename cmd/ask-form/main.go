@@ -25,6 +25,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -724,7 +725,7 @@ func cmdGet(args []string) int {
 		q = "?fields=1"
 	}
 	var out map[string]any
-	if _, err := c.do(context.Background(), http.MethodGet, "/v1/forms/"+id+q, nil, &out); err != nil {
+	if _, err := c.do(context.Background(), http.MethodGet, "/v1/forms/"+url.PathEscape(id)+q, nil, &out); err != nil {
 		return fail(exitErr, "%v", err)
 	}
 	printJSON(out)
@@ -742,7 +743,7 @@ func cmdList(args []string) int {
 	var out map[string]any
 	path := "/v1/forms"
 	if *status != "" {
-		path += "?status=" + *status
+		path += "?status=" + url.QueryEscape(*status)
 	}
 	if _, err := c.do(context.Background(), http.MethodGet, path, nil, &out); err != nil {
 		return fail(exitErr, "%v", err)
@@ -765,7 +766,7 @@ func closeCmd(args []string, what string) int {
 		return fail(exitErr, "%v", err)
 	}
 	var out map[string]any
-	code, err := c.do(context.Background(), http.MethodPost, "/v1/forms/"+id+"/"+what, map[string]any{}, &out)
+	code, err := c.do(context.Background(), http.MethodPost, "/v1/forms/"+url.PathEscape(id)+"/"+what, map[string]any{}, &out)
 	if code == http.StatusConflict {
 		printJSON(out)
 		return exitClosed
@@ -860,7 +861,7 @@ func cmdWait(args []string) int {
 		}
 		var out map[string]any
 		ctx, cancel := context.WithTimeout(context.Background(), step+15*time.Second)
-		code, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/v1/forms/%s/wait?timeout=%s", id, step.Round(time.Second)), nil, &out)
+		code, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/v1/forms/%s/wait?timeout=%s", url.PathEscape(id), step.Round(time.Second)), nil, &out)
 		cancel()
 		switch {
 		case code == http.StatusNotFound:
@@ -971,7 +972,7 @@ func cmdSecret(args []string) int {
 		Value string `json:"value"`
 		Chars int    `json:"chars"`
 	}
-	if _, err := c.do(context.Background(), http.MethodPost, "/v1/forms/"+id+"/secret",
+	if _, err := c.do(context.Background(), http.MethodPost, "/v1/forms/"+url.PathEscape(id)+"/secret",
 		map[string]any{"key": key, "forget": *forget}, &out); err != nil {
 		return fail(exitErr, "%v", err)
 	}
@@ -981,17 +982,16 @@ func cmdSecret(args []string) int {
 		fmt.Fprintf(os.Stderr, "ask-form: secret %s.%s (%d chars) written to the pipe\n", id, key, out.Chars)
 		return exitOK
 	case *file != "":
-		if err := os.WriteFile(*file, []byte(out.Value+"\n"), 0o600); err != nil {
+		if err := writeFileAtomic(*file, []byte(out.Value+"\n"), 0o600); err != nil {
 			return fail(exitErr, "write %s: %v", *file, err)
 		}
-		os.Chmod(*file, 0o600)
 		printJSON(map[string]any{"id": id, "key": key, "chars": out.Chars, "written": *file})
 	default:
 		v := pos[2]
 		if !envVarRe.MatchString(v) {
 			return fail(exitUsage, "%q is not an env variable name", v)
 		}
-		if err := setEnv(*envFile, v, out.Value); err != nil {
+		if err := setEnvSecret(*envFile, v, out.Value); err != nil {
 			return fail(exitErr, "%v", err)
 		}
 		printJSON(map[string]any{"id": id, "key": key, "chars": out.Chars, "written": *envFile, "var": v})
@@ -999,8 +999,53 @@ func cmdSecret(args []string) int {
 	return exitOK
 }
 
+// writeFileAtomic creates a 0600 temp file in the destination's directory
+// (O_CREATE|O_EXCL, never following a predictable symlink), writes, fsyncs,
+// applies mode, and renames atomically over path.
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".ask-form-tmp-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	cleanup := func() { os.Remove(name) }
+	if err := os.Chmod(name, mode); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
+}
+
 // setEnv sets or replaces VAR in a .env file, keeping every other line.
-func setEnv(path, name, value string) error {
+func setEnv(path, name, value string) error { return setEnvMode(path, name, value, false) }
+
+// setEnvSecret is setEnv hardened for secrets: always strips group/other bits (0600).
+func setEnvSecret(path, name, value string) error { return setEnvMode(path, name, value, true) }
+
+func setEnvMode(path, name, value string, forcePrivate bool) error {
 	if strings.ContainsAny(value, "\n\r") {
 		return errors.New("the secret holds a newline — use --file instead")
 	}
@@ -1031,12 +1076,13 @@ func setEnv(path, name, value string) error {
 		lines = append(lines, line)
 	}
 	mode := os.FileMode(0o600)
-	if fi, err := os.Stat(path); err == nil {
-		mode = fi.Mode().Perm()
+	if !forcePrivate {
+		if fi, err := os.Stat(path); err == nil {
+			mode = fi.Mode().Perm() & 0o600
+			if mode == 0 {
+				mode = 0o600
+			}
+		}
 	}
-	tmp := path + ".ask-form.tmp"
-	if err := os.WriteFile(tmp, []byte(strings.Join(lines, "\n")+"\n"), mode); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return writeFileAtomic(path, []byte(strings.Join(lines, "\n")+"\n"), mode)
 }

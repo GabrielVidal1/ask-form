@@ -15,7 +15,7 @@ func TestBrowserCmd(t *testing.T) {
 		look       func(string) (string, error)
 		want       []string
 	}{
-		{"mac", "darwin", nil, missing, []string{"open"}},
+		{"mac", "darwin", nil, missing, []string{"open", "--"}},
 		{"mac over ssh", "darwin", map[string]string{"SSH_CONNECTION": "1.2.3.4 22 5.6.7.8 22"}, missing, nil},
 		{"linux x11", "linux", map[string]string{"DISPLAY": ":0"}, found, []string{"/usr/bin/xdg-open"}},
 		{"linux wayland", "linux", map[string]string{"WAYLAND_DISPLAY": "wayland-0"}, found, []string{"/usr/bin/xdg-open"}},

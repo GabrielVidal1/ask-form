@@ -75,9 +75,11 @@ func cmdUpgrade(args []string) int {
 	}
 	out["upgraded"], out["path"] = true, exe
 	// The new binary brings its own skill text.
-	refresh := exec.Command(exe, "skill", "refresh")
+	rctx, rcancel := context.WithTimeout(ctx, 20*time.Second)
+	refresh := exec.CommandContext(rctx, exe, "skill", "refresh")
 	refresh.Stdout, refresh.Stderr = nil, os.Stderr
 	refresh.Run()
+	rcancel()
 	// Restart the local server so it runs the new binary.
 	if c, err := newClient(); err == nil {
 		if code, err := c.do(ctx, http.MethodPost, "/v1/restart", map[string]any{}, nil); err == nil && code == http.StatusAccepted {
@@ -184,9 +186,11 @@ func (u *autoUpgrader) check(ctx context.Context) bool {
 		return false
 	}
 	log.Printf("auto-upgrade: installed %s over %s, restarting", tag, server.Version)
-	refresh := exec.Command(exe, "skill", "refresh")
+	rctx, rcancel := context.WithTimeout(ctx, 20*time.Second)
+	refresh := exec.CommandContext(rctx, exe, "skill", "refresh")
 	refresh.Stderr = os.Stderr
 	refresh.Run()
+	rcancel()
 	if u.restart != nil {
 		u.restart()
 	}

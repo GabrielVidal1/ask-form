@@ -19,7 +19,7 @@ it. The forms live as long as this sandbox does.
 ```bash
 command -v ask-form >/dev/null 2>&1 || npm install -g --silent ask-form@latest \
   || npm install -g --silent --prefix "$HOME/.local" ask-form@latest
-ask-form start --relay {{RELAY}} --key {{KEY}}
+ask-form start --relay '{{RELAY}}' --key '{{KEY}}'
 ```
 
 If `ask-form` is still not found, call `$HOME/.local/bin/ask-form` instead.
@@ -45,11 +45,13 @@ Write the questions as a JSON array (the field types are in `reference.md`,
 next to this file), then create the form:
 
 ```bash
-cat > /tmp/spec.json <<'JSON'
+SPEC="$(mktemp)"
+cat > "$SPEC" <<'JSON'
 [{"key":"stack","label":"Which stack?","type":"radio","required":true,"options":["Vite + React","Next.js"]},
  {"key":"notes","label":"Anything I should know?","type":"textarea"}]
 JSON
-ask-form create --title "Project setup" --description "Two choices before I start." --fields-file /tmp/spec.json
+ask-form create --title "Project setup" --description "Two choices before I start." --fields-file "$SPEC"
+rm -f "$SPEC"
 ```
 
 Put the `url` from the output in your reply as a link, then go to step 3 in

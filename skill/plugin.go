@@ -3,9 +3,9 @@ package skill
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"path"
-	"strings"
 	"time"
 )
 
@@ -17,7 +17,19 @@ const PluginOrigin = "https://ask-form.xyz"
 // "ask-form/" folder, the shape both Claude's "Upload plugin" and ChatGPT's
 // plugin upload take, with origin as its connector's address.
 func PluginZip(plugin fs.FS, origin string) ([]byte, error) {
-	origin = strings.TrimRight(origin, "/")
+	var repl []byte
+	if origin != "" {
+		clean, _, err := validOrigin(origin)
+		if err != nil {
+			return nil, err
+		}
+		// Marshal as a JSON string so the replacement is guaranteed valid JSON.
+		repl, err = json.Marshal(clean + "/mcp")
+		if err != nil {
+			return nil, err
+		}
+	}
+	wantJSON, _ := json.Marshal(PluginOrigin + "/mcp")
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	err := fs.WalkDir(plugin, ".", func(p string, d fs.DirEntry, err error) error {
@@ -28,8 +40,8 @@ func PluginZip(plugin fs.FS, origin string) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		if base := path.Base(p); (base == ".mcp.json" || base == "mcp.json") && origin != "" {
-			b = bytes.ReplaceAll(b, []byte(PluginOrigin+"/mcp"), []byte(origin+"/mcp"))
+		if base := path.Base(p); (base == ".mcp.json" || base == "mcp.json") && len(repl) > 0 {
+			b = bytes.ReplaceAll(b, wantJSON, repl)
 		}
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: "ask-form/" + p, Method: zip.Deflate, Modified: time.Unix(0, 0)})
 		if err != nil {

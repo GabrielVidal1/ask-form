@@ -118,7 +118,7 @@ be installed.
 - **Where the forms live** is the account's choice on that page:
   - **cloud**: the relay's own forms server keeps them. A form and its answers
     are deleted `--cloud-retention` (24 h) after it closes; it stays open 7
-    days at most; an account has at most 20 forms waiting and creates 100 a
+    days at most; an account has at most 20 forms waiting and creates 50 a
     day; a request is 2 MB at most, pictures included, a `multi` form takes
     200 answers, and the relay keeps 2000 forms in all. No snapshot is kept,
     and the page says it was made from a chat and never to type a password
@@ -315,11 +315,12 @@ Releases are GitHub releases: one binary per platform and a
 4. rename it over the running one (same directory, so the swap is atomic),
 5. re-exec `serve` in place (same PID, so systemd and launchd don't notice).
 
-`serve --auto-upgrade` (or `ASK_FORM_AUTO_UPGRADE`): `all` (default: every
-release), `minor` (minor and patch releases only; a new major waits for
-`ask-form upgrade`), `notify` (log it and show it in `ask-form status`), `off`. It checks a few minutes after start and then
-every 6 hours. Dev builds and pre-releases never upgrade by themselves.
-Each release also carries a build provenance attestation:
+`serve --auto-upgrade` (or `ASK_FORM_AUTO_UPGRADE`): `notify` (default: log it
+and show it in `ask-form status`, wait for `ask-form upgrade`), `minor` (minor
+and patch releases only; a new major waits for `ask-form upgrade`), `all`
+(every release), `off`. It checks a few minutes after start and then every 6
+hours. Dev builds and pre-releases never upgrade by themselves. Each release
+also carries a build provenance attestation:
 `gh attestation verify ask-form-linux-amd64 -R GabrielVidal1/ask-form`.
 
 The same binaries go to npm with each release (`ask-form`, plus
@@ -375,6 +376,19 @@ asked it. Without it no site may frame them (`frame-ancestors 'none'`,
 
 ## Security
 
+- **Transport & trust boundary**: forms opened through a relay travel over
+  HTTPS to the relay (and Cloudflare, on `ask-form.xyz`), where TLS terminates
+  before the request is forwarded over the machine's outbound HTTPS long-poll.
+  Pages and answers are **not end-to-end encrypted** against the relay
+  operator. For confidential or internal work, use `ask-form setup --local`
+  (forms never leave `127.0.0.1`) or [run your own closed relay](self-hosting.md).
+- **Relay origin guard**: on an open relay where untrusted machines share one
+  origin, the relay strips or validates forwarded headers before sending them
+  to browsers — owning `Strict-Transport-Security` and baseline security
+  headers, allowing only `ask_form` / `ask_form_sent` cookies scoped strictly
+  to `/f/<id>` (`HttpOnly; Secure`), allowing only relative `/f/<id>`
+  redirects, and enforcing strict `Content-Security-Policy` and `Content-Type`
+  allow-lists on every forwarded HTML or asset response.
 - **Tokens**: 32 random bytes, base64url. Only the SHA-256 is stored, and it's
   compared in constant time.
 - **First visit**: the token is traded for an `HttpOnly; Secure; SameSite=Lax`

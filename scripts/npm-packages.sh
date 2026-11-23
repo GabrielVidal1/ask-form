@@ -17,10 +17,10 @@ out=$3
 here=$(cd "$(dirname "$0")/.." && pwd)
 repo='{"type": "git", "url": "git+https://github.com/GabrielVidal1/ask-form.git"}'
 
-case "$version" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *) echo "npm-packages: $1 is not a version like v0.17.0" >&2; exit 2 ;;
-esac
+if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+  echo "npm-packages: $1 is not a version like v0.17.0" >&2
+  exit 2
+fi
 
 rm -rf "$out"
 mkdir -p "$out"

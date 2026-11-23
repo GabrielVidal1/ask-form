@@ -9,9 +9,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -26,10 +29,24 @@ import (
 
 const (
 	defaultRelay       = "https://ask-form.xyz"
-	defaultAutoUpgrade = "all"
+	defaultAutoUpgrade = "notify"
 	launchdLabel       = "xyz.gabvdl.ask-form"
 	localListen        = "127.0.0.1:7462"
 )
+
+// allowedServeEnv restricts serve.env to explicit serve configuration keys so
+// serve.env cannot silently override CLI execution hooks (e.g. ASK_FORM_NOTIFY_CMD
+// or ASK_FORM_UPDATE_URL).
+var allowedServeEnv = map[string]bool{
+	"ASK_FORM_RELAY":         true,
+	"ASK_FORM_PUBLIC_URL":    true,
+	"ASK_FORM_LISTEN":        true,
+	"ASK_FORM_EVENTS_URL":    true,
+	"ASK_FORM_LANG":          true,
+	"ASK_FORM_SNAPSHOTS":     true,
+	"ASK_FORM_EMBED_ORIGINS": true,
+	"ASK_FORM_AUTO_UPGRADE":  true,
+}
 
 // ── serve.env ────────────────────────────────────────────────────────────────
 
@@ -37,8 +54,8 @@ const (
 // start (systemd and launchd units then only run `ask-form serve`).
 func serveEnvPath() string { return filepath.Join(configDir(), "serve.env") }
 
-// loadServeEnv sets the ASK_FORM_* variables of serve.env that the
-// environment doesn't already set: an explicit variable always wins.
+// loadServeEnv sets the allow-listed ASK_FORM_* variables of serve.env that
+// the environment doesn't already set: an explicit variable always wins.
 func loadServeEnv(path string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -52,7 +69,7 @@ func loadServeEnv(path string) {
 		}
 		k, v, ok := strings.Cut(strings.TrimPrefix(l, "export "), "=")
 		k = strings.TrimSpace(k)
-		if !ok || !strings.HasPrefix(k, "ASK_FORM_") {
+		if !ok || !allowedServeEnv[k] {
 			continue
 		}
 		v = strings.TrimSpace(v)
@@ -93,7 +110,8 @@ func cmdSetup(args []string) int {
 	snapshots := fs.Bool("snapshots", false, "keep one again (undoes --no-snapshots)")
 	embedFlag := fs.String("embed-origins", "", "sites that may show the forms in a frame, https://host[:port] split on spaces or commas (serve's --embed-origins; \"-\" clears it)")
 	local := fs.Bool("local", false, "no relay: forms are answered at http://"+localListen+" (this machine only)")
-	token := fs.String("token", "", "machine token for the relay (default: register this machine, or keep the saved one)")
+	token := fs.String("token", os.Getenv("ASK_FORM_TOKEN"), "machine token for the relay (prefer ASK_FORM_TOKEN or --token-file)")
+	tokenFile := fs.String("token-file", "", "read the relay machine token from this file")
 	name := fs.String("name", "", "machine name hint for the relay (default: the hostname)")
 	noService := fs.Bool("no-service", false, "don't install the background service")
 	noSkill := fs.Bool("no-skill", false, "don't install the Claude Code skill")
@@ -176,12 +194,23 @@ func cmdSetup(args []string) int {
 		}
 	} else {
 		base := strings.TrimRight(*relayURL, "/")
+		if err := checkRelayURL(base); err != nil {
+			return fail(exitUsage, "--relay: %v", err)
+		}
+		tokVal := strings.TrimSpace(*token)
+		if *tokenFile != "" {
+			b, err := os.ReadFile(*tokenFile)
+			if err != nil {
+				return fail(exitErr, "--token-file: %v", err)
+			}
+			tokVal = strings.TrimSpace(string(b))
+		}
 		rep.Mode, rep.Relay, rep.PublicURL = "relay", base, base
 		tokPath := filepath.Join(configDir(), "relay-token")
 		saved, _ := secretFile(tokPath, false)
 		switch {
-		case *token != "":
-			if err := writeSecret(tokPath, *token); err != nil {
+		case tokVal != "":
+			if err := writeSecret(tokPath, tokVal); err != nil {
 				return fail(exitErr, "%v", err)
 			}
 		case saved != "":
@@ -252,10 +281,44 @@ func cmdSetup(args []string) int {
 }
 
 func writeSecret(path, v string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
+	return writeFileAtomic(path, []byte(strings.TrimSpace(v)+"\n"), 0o600)
+}
+
+var relayHTTP = &http.Client{
+	Timeout: 20 * time.Second,
+	// Never follow redirects on authenticated machine API calls (prevents
+	// leaking Bearer tokens or registration keys across hosts/HTTP downgrades).
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
+func checkRelayURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%q is not a URL", raw)
 	}
-	return os.WriteFile(path, []byte(strings.TrimSpace(v)+"\n"), 0o600)
+	if u.User != nil {
+		return fmt.Errorf("%q must not contain credentials", raw)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		h := strings.ToLower(u.Hostname())
+		if h == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(h); ip != nil {
+			if ip.IsLoopback() || ip.IsPrivate() {
+				return nil
+			}
+			if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+				return nil // Tailscale CGNAT
+			}
+		}
+		return fmt.Errorf("%q: use https:// (http is allowed on loopback/private/Tailscale networks only)", raw)
+	default:
+		return fmt.Errorf("%q: use https://", raw)
+	}
 }
 
 var nameHintRe = regexp.MustCompile(`[^a-z0-9-]+`)
@@ -278,7 +341,7 @@ func register(base, hint, key string) (string, string, error) {
 	if key != "" {
 		req.Header.Set("X-Ask-Register-Key", key)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := relayHTTP.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("register with %s: %v", base, err)
 	}
@@ -324,7 +387,7 @@ func relayWhoami(base, tokPath string) (string, string, error) {
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/_relay/v1/health", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
-	res, err := http.DefaultClient.Do(req)
+	res, err := relayHTTP.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("reach %s: %v", base, err)
 	}
@@ -418,6 +481,7 @@ const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
   <key>Label</key><string>%s</string>
   <key>ProgramArguments</key>
   <array><string>%s</string><string>serve</string></array>
+  <key>Umask</key><integer>63</integer>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>%s</string>
@@ -460,6 +524,11 @@ func installService(exe string) (string, error) {
 		logf := filepath.Join(filepath.Dir(filepath.Dir(plist)), "Logs", "ask-form.log")
 		os.MkdirAll(filepath.Dir(plist), 0o755)
 		os.MkdirAll(filepath.Dir(logf), 0o755)
+		// Pre-create log file with 0600 so local users cannot read it.
+		if lf, err := os.OpenFile(logf, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			lf.Close()
+			os.Chmod(logf, 0o600)
+		}
 		body := fmt.Sprintf(launchdPlist, launchdLabel, xmlEscape(exe), xmlEscape(logf), xmlEscape(logf))
 		if err := os.WriteFile(plist, []byte(body), 0o644); err != nil {
 			return "", err
@@ -473,7 +542,9 @@ func installService(exe string) (string, error) {
 	case hasSystemdUser():
 		unit := systemdUnitPath()
 		os.MkdirAll(filepath.Dir(unit), 0o755)
-		if err := os.WriteFile(unit, []byte(fmt.Sprintf(systemdUnit, exe)), 0o644); err != nil {
+		// Escape % -> %% for systemd specifiers.
+		systemdExe := strings.ReplaceAll(exe, "%", "%%")
+		if err := os.WriteFile(unit, []byte(fmt.Sprintf(systemdUnit, systemdExe)), 0o644); err != nil {
 			return "", err
 		}
 		if err := run("systemctl", "--user", "daemon-reload"); err != nil {
@@ -486,10 +557,10 @@ func installService(exe string) (string, error) {
 			return "", err
 		}
 		desc := "systemd user unit ask-form.service"
-		if u := os.Getenv("USER"); u != "" {
-			out, _ := exec.Command("loginctl", "show-user", u, "--property=Linger").Output()
+		if cu, err := user.Current(); err == nil && cu.Username != "" {
+			out, _ := exec.Command("loginctl", "show-user", "--property=Linger", "--", cu.Username).Output()
 			if !strings.Contains(string(out), "Linger=yes") {
-				if exec.Command("loginctl", "enable-linger", u).Run() == nil {
+				if exec.Command("loginctl", "enable-linger", "--", cu.Username).Run() == nil {
 					desc += " (lingering enabled: keeps running when you log out)"
 				} else {
 					desc += " (stops when you log out: `loginctl enable-linger` to keep it)"
@@ -596,7 +667,7 @@ func installSkill(force, onlyRefresh bool) string {
 func refreshSkill() { installSkill(false, true) }
 
 func cmdSkill(args []string) int {
-	const use = "usage: ask-form skill install [--force] | print [--body] | refresh | export --claude-ai [-o FILE] [--key KEY]"
+	const use = "usage: ask-form skill install [--force] | print [--body] | refresh | export --claude-ai [-o FILE] [--key KEY | --key-file FILE]"
 	if len(args) == 0 {
 		return fail(exitUsage, use)
 	}
@@ -605,7 +676,8 @@ func cmdSkill(args []string) int {
 	body := fs.Bool("body", false, "print without the frontmatter (for AGENTS.md and other agents)")
 	claudeAI := fs.Bool("claude-ai", false, "export: the skill for Claude's code sandbox (claude.ai, the Claude apps)")
 	out := fs.String("o", "ask-form-skill.zip", "export: the zip to write")
-	key := fs.String("key", "", "export: this registration key (default: a new one from the relay, for this machine)")
+	key := fs.String("key", "", "export: this registration key (prefer --key-file or ASK_FORM_KEY; default: a new one from the relay)")
+	keyFile := fs.String("key-file", "", "export: read the registration key from FILE (or - for stdin)")
 	relayFlag := fs.String("relay", "", "export: the relay the sandbox connects to (default: this machine's)")
 	interleaved(fs, args[1:])
 	switch args[0] {
@@ -623,7 +695,24 @@ func cmdSkill(args []string) int {
 		if !*claudeAI {
 			return fail(exitUsage, "skill export: pass --claude-ai (the only target so far)")
 		}
-		return exportClaudeAI(*out, *key, *relayFlag)
+		k := *key
+		if k == "" && *keyFile != "" {
+			var b []byte
+			var err error
+			if *keyFile == "-" {
+				b, err = io.ReadAll(io.LimitReader(os.Stdin, 4096))
+			} else {
+				b, err = os.ReadFile(*keyFile)
+			}
+			if err != nil {
+				return fail(exitErr, "read --key-file: %v", err)
+			}
+			k = strings.TrimSpace(string(b))
+		}
+		if k == "" {
+			k = strings.TrimSpace(os.Getenv("ASK_FORM_KEY"))
+		}
+		return exportClaudeAI(*out, k, *relayFlag)
 	default:
 		return fail(exitUsage, use)
 	}
@@ -658,7 +747,7 @@ func exportClaudeAI(out, key, relayURL string) int {
 	if err != nil {
 		return fail(exitErr, "build the skill: %v", err)
 	}
-	if err := os.WriteFile(out, zip, 0o600); err != nil {
+	if err := writeFileAtomic(out, zip, 0o600); err != nil {
 		return fail(exitErr, "%v", err)
 	}
 	abs, _ := filepath.Abs(out)
@@ -676,7 +765,7 @@ func relayCall(base, tok, method, path string, out any) error {
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, method, base+path, nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
-	res, err := http.DefaultClient.Do(req)
+	res, err := relayHTTP.Do(req)
 	if err != nil {
 		return err
 	}
@@ -711,12 +800,14 @@ func cmdUninstall(args []string) int {
 		loadServeEnv(serveEnvPath())
 		if base := os.Getenv("ASK_FORM_RELAY"); base != "" {
 			if tok, err := secretFile(filepath.Join(configDir(), "relay-token"), false); err == nil {
-				req, _ := http.NewRequest(http.MethodDelete, strings.TrimRight(base, "/")+"/_relay/v1/machine", nil)
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, strings.TrimRight(base, "/")+"/_relay/v1/machine", nil)
 				req.Header.Set("Authorization", "Bearer "+tok)
-				if res, err := http.DefaultClient.Do(req); err == nil {
+				if res, err := relayHTTP.Do(req); err == nil {
 					res.Body.Close()
 					out["relay"] = fmt.Sprintf("unregistered (HTTP %d)", res.StatusCode)
 				}
+				cancel()
 			}
 		}
 		os.RemoveAll(configDir())

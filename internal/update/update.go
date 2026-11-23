@@ -39,10 +39,18 @@ import (
 // (a fork, a mirror, a test server).
 const DefaultRepo = "https://github.com/GabrielVidal1/ask-form"
 
-// Repo is the release source in use.
+// Repo is the release source in use. Non-loopback http:// URLs are refused
+// so binary downloads cannot be downgraded to cleartext.
 func Repo() string {
-	if u := os.Getenv("ASK_FORM_UPDATE_URL"); u != "" {
-		return strings.TrimRight(u, "/")
+	if u := strings.TrimSpace(os.Getenv("ASK_FORM_UPDATE_URL")); u != "" {
+		u = strings.TrimRight(u, "/")
+		if p, err := url.Parse(u); err == nil && p.Host != "" {
+			scheme := strings.ToLower(p.Scheme)
+			h := strings.ToLower(p.Hostname())
+			if scheme == "https" || (scheme == "http" && (h == "localhost" || h == "127.0.0.1" || h == "::1")) {
+				return u
+			}
+		}
 	}
 	return DefaultRepo
 }
@@ -84,6 +92,20 @@ func Parse(s string) (Version, bool) {
 		}
 		n[i] = v
 	}
+	if pre != "" {
+		if i := strings.IndexByte(pre, '+'); i >= 0 {
+			pre = pre[:i]
+		}
+		if pre == "" {
+			return Version{}, false
+		}
+		for i := 0; i < len(pre); i++ {
+			c := pre[i]
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '-') {
+				return Version{}, false
+			}
+		}
+	}
 	return Version{Major: n[0], Minor: n[1], Patch: n[2], Pre: pre}, true
 }
 
@@ -115,7 +137,25 @@ func (v Version) Release() bool { return v.Pre == "" }
 
 // ── fetching ────────────────────────────────────────────────────────────────
 
-var client = &http.Client{Timeout: 2 * time.Minute}
+var client = &http.Client{
+	Timeout: 2 * time.Minute,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		// Never allow HTTPS -> HTTP downgrade across redirects.
+		if strings.EqualFold(via[0].URL.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+			return fmt.Errorf("refusing redirect downgrade to %s", req.URL.Scheme)
+		}
+		// Restrict redirect targets to the configured repo host or GitHub's release CDNs.
+		h := strings.ToLower(req.URL.Hostname())
+		origHost := strings.ToLower(via[0].URL.Hostname())
+		if h == origHost || h == "github.com" || h == "objects.githubusercontent.com" || h == "release-assets.githubusercontent.com" {
+			return nil
+		}
+		return fmt.Errorf("refusing redirect to unexpected host %q", h)
+	},
+}
 
 // Latest returns the newest release's tag.
 func Latest(ctx context.Context) (string, error) {
@@ -235,7 +275,9 @@ func Install(exe string, bin []byte, want string) error {
 	dir := filepath.Dir(exe)
 	mode := os.FileMode(0o755)
 	if fi, err := os.Stat(exe); err == nil {
-		mode = fi.Mode().Perm() | 0o100
+		// Strip group/other write bits so another local user cannot tamper
+		// with the binary before smoke() or Rename().
+		mode = (fi.Mode().Perm() | 0o100) &^ 0o022
 	}
 	tmp, err := os.CreateTemp(dir, ".ask-form-upgrade-*")
 	if err != nil {
@@ -254,10 +296,13 @@ func Install(exe string, bin []byte, want string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(name, mode); err != nil {
+	if err := os.Chmod(name, 0o700); err != nil {
 		return err
 	}
 	if err := smoke(name, want); err != nil {
+		return err
+	}
+	if err := os.Chmod(name, mode); err != nil {
 		return err
 	}
 	if runtime.GOOS == "windows" {
@@ -271,11 +316,13 @@ func Install(exe string, bin []byte, want string) error {
 	return os.Rename(name, exe)
 }
 
-// smoke runs `<bin> version` and checks what it reports.
+// smoke runs `<bin> version` with an empty environment and checks what it reports.
 func smoke(bin, want string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "version").Output()
+	cmd := exec.CommandContext(ctx, bin, "version")
+	cmd.Env = []string{}
+	out, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("the downloaded binary doesn't run here: %v", err)
 	}
@@ -304,6 +351,9 @@ func Due(cur, latest string, majors bool) (bool, string) {
 	l, ok := Parse(latest)
 	if !ok {
 		return false, "latest " + latest + " is not a version"
+	}
+	if !l.Release() {
+		return false, "pre-release (" + latest + ")"
 	}
 	if !c.Less(l) {
 		return false, "up to date"

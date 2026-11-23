@@ -12,8 +12,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version: "1.24"
           cache: false # stdlib only: no go.sum to key a cache on
@@ -21,17 +23,18 @@ jobs:
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
       - run: go test -race ./...
-      - name: Install script
-        run: sh -n install.sh
+      - name: Shell scripts
+        run: sh -n install.sh scripts/npm-packages.sh scripts/npm-publish.sh
 
   build:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # git describe for the version
-      - uses: actions/setup-go@v7
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version: "1.24"
           cache: false # stdlib only: no go.sum to key a cache on
@@ -43,7 +46,7 @@ jobs:
       # misses only shows here (v0.17.0's skill/).
       - name: Relay image
         run: docker build -q --build-arg VERSION=ci -t ask-form-relay:ci . && docker run --rm ask-form-relay:ci version
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ask-form-${{ github.sha }}
           path: dist/

@@ -32,7 +32,7 @@ Another chat app's sandbox (ChatGPT…) does not fit: it can't reach {{HOST}}
 or keep a server running. Tell the user to paste the same prompt into a coding
 agent on their computer instead.
 
-If you're not sure where you are, run `curl -fsS {{ORIGIN}}/robots.txt`. If
+If you're not sure where you are, run `curl -fsS '{{ORIGIN}}/robots.txt'`. If
 the network refuses it (a 403 from a proxy, "host not allowed", a DNS
 failure), you are in such a sandbox.
 
@@ -40,17 +40,20 @@ failure), you are in such a sandbox.
 
 On Linux or macOS (x86-64 or arm64), run:
 
-    curl -fsSL {{ORIGIN}}/install.sh | sh
+    curl -fsSL '{{ORIGIN}}/install.sh' | sh
 
 The script downloads this machine's release binary from GitHub, checks its
 SHA-256 against the release's checksums.txt, installs it at
 ~/.local/bin/ask-form, then runs `ask-form setup`. Setup does three things:
 
 - It registers this machine with the relay at {{ORIGIN}}. Forms and answers
-  stay on this machine; the relay only passes page requests through.
+  stay on this machine; the relay only passes page requests through (note:
+  pages and answers transit the relay in TLS-terminated plaintext, not
+  end-to-end encrypted — use `--local` for confidential work).
 - It starts `ask-form serve` as a background service (a systemd user unit on
-  Linux, a launchd agent on macOS). The service installs new releases by
-  itself.
+  Linux, a launchd agent on macOS). The service checks for new releases and
+  reports them in `ask-form status`; run `ask-form upgrade` to update (or set
+  `ASK_FORM_AUTO_UPGRADE=minor` to auto-install minor/patch releases).
 - It installs the Claude Code skill at ~/.claude/skills/ask-form/SKILL.md,
   if ~/.claude exists.
 
@@ -59,8 +62,10 @@ Setup prints a JSON report. Check it for "warnings".
 If your tool won't pipe a downloaded script into `sh`, download it, read it
 (it is short), then run it:
 
-    curl -fsSL {{ORIGIN}}/install.sh -o /tmp/ask-form-install.sh
-    sh /tmp/ask-form-install.sh
+    f="$(mktemp)"
+    curl -fsSL '{{ORIGIN}}/install.sh' -o "$f"
+    sh "$f"
+    rm -f "$f"
 
 The script reaches {{ORIGIN}}, github.com and release-assets.githubusercontent.com.
 Behind a firewall or a sandbox allowlist, those three must be allowed.
@@ -75,9 +80,9 @@ On Windows or another OS, tell the user there is no prebuilt binary. With Go
 `ask-form setup`.
 
 Useful setup flags (pass them after `sh -s --`, as in
-`curl -fsSL {{ORIGIN}}/install.sh | sh -s -- --local`):
-- `--local`: no relay. Forms open at http://127.0.0.1:7462, so they can only
-  be answered on this machine.
+`curl -fsSL '{{ORIGIN}}/install.sh' | sh -s -- --local`):
+- `--local`: no relay (recommended for confidential or internal work). Forms
+  open at http://127.0.0.1:7462 and never leave this machine.
 - `--no-skill`: don't install the Claude Code skill.
 - `--no-service`: don't install a service. The user then runs `ask-form serve`
   themselves.
@@ -109,7 +114,8 @@ you a task instead (for example "review this branch and send me the findings
 with ask-form"), do that task, asking through ask-form where it says to. If
 it gives you neither, use this test form:
 
-    cat > /tmp/ask-form-hello.json <<'JSON'
+    SPEC="$(mktemp)"
+    cat > "$SPEC" <<'JSON'
     [{"type":"markdown","text":"ask-form is installed. This is a test form: two quick questions."},
      {"key":"works","label":"Did this page open fine?","type":"radio","required":true,"options":["Yes","Not really"]},
      {"key":"use_for","label":"What should I ask you through forms?","type":"textarea","help":"Optional"}]
@@ -118,7 +124,8 @@ it gives you neither, use this test form:
 Create the form and show the user the "url" field from the output. It opens
 on this computer; "publicUrl" opens on any device, their phone included:
 
-    ask-form create --title "ask-form is ready" --fields-file /tmp/ask-form-hello.json
+    ask-form create --title "ask-form is ready" --fields-file "$SPEC"
+    rm -f "$SPEC"
 
 Then wait for the answer. Run this in the background if your tool can, so
 you aren't blocked:

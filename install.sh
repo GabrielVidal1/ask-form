@@ -38,6 +38,23 @@ need() { command -v "$1" >/dev/null 2>&1 || die "needs $1"; }
 need curl
 need uname
 
+# Enforce HTTPS + TLS 1.2 for downloads; allow plain http only for local test servers.
+CURL_PROTO="=https"
+case "$REPO" in
+  https://*) ;;
+  http://127.0.0.1* | http://localhost* | http://\[::1\]*) CURL_PROTO="=http,https" ;;
+  *) die "ASK_FORM_UPDATE_URL must use https:// (got $REPO)" ;;
+esac
+if [ -n "$RELAY" ]; then
+  case "$RELAY" in
+    https://* | http://127.0.0.1* | http://localhost* | http://\[::1\]*) ;;
+    *) die "relay URL must use https:// (got $RELAY)" ;;
+  esac
+  case "$RELAY" in
+    *[[:space:]]* | *\"* | *\'* | *\;* | *\`* | *\$*) die "invalid relay URL" ;;
+  esac
+fi
+
 case "$(uname -s)" in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
@@ -53,16 +70,20 @@ asset="ask-form-${os}-${arch}"
 tag="${ASK_FORM_VERSION:-}"
 if [ -z "$tag" ]; then
   # /releases/latest redirects to /releases/tag/<tag>: no API, no rate limit.
-  loc="$(curl -fsSI "$REPO/releases/latest" | tr -d '\r' | sed -n 's/^[Ll]ocation: *//p' | tail -n1)"
+  loc="$(curl -fsSI --proto "$CURL_PROTO" --tlsv1.2 "$REPO/releases/latest" | tr -d '\r' | sed -n 's/^[Ll]ocation: *//p' | tail -n1)"
   tag="${loc##*/}"
-  case "$tag" in v[0-9]*) ;; *) die "couldn't find the latest release at $REPO/releases" ;; esac
+fi
+# Always validate the tag (whether from /releases/latest or ASK_FORM_VERSION)
+# so path traversal or query injection can't redirect the download URL.
+if ! printf '%s\n' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+  die "invalid release tag '$tag' from $REPO/releases"
 fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 say "Downloading ask-form $tag ($os/$arch)…"
-curl -fsSL "$REPO/releases/download/$tag/$asset" -o "$tmp/ask-form" || die "download failed: $REPO/releases/download/$tag/$asset"
-curl -fsSL "$REPO/releases/download/$tag/checksums.txt" -o "$tmp/checksums.txt" || die "download failed: checksums.txt"
+curl -fsSL --proto "$CURL_PROTO" --tlsv1.2 "$REPO/releases/download/$tag/$asset" -o "$tmp/ask-form" || die "download failed: $REPO/releases/download/$tag/$asset"
+curl -fsSL --proto "$CURL_PROTO" --tlsv1.2 "$REPO/releases/download/$tag/checksums.txt" -o "$tmp/checksums.txt" || die "download failed: checksums.txt"
 
 want="$(awk -v a="$asset" '$2 == a || $2 == "*" a { print $1 }' "$tmp/checksums.txt")"
 [ -n "$want" ] || die "$asset is not in checksums.txt"
@@ -77,8 +98,9 @@ chmod 755 "$tmp/ask-form"
 
 mkdir -p "$BIN_DIR"
 dest="$BIN_DIR/ask-form"
-# Don't clobber another program that happens to be called ask-form.
-if [ -e "$dest" ] && [ "$FORCE" = 0 ] && ! "$dest" help 2>/dev/null | grep -q "ask-form serve"; then
+# Don't clobber another program that happens to be called ask-form (and never
+# execute an untrusted existing file just to inspect it).
+if [ -e "$dest" ] && [ "$FORCE" = 0 ] && ! grep -a -q "ask-form serve" "$dest" 2>/dev/null; then
   die "$dest exists and isn't ask-form — set ASK_FORM_BIN_DIR to install elsewhere, or pass --force"
 fi
 mv -f "$tmp/ask-form" "$dest"

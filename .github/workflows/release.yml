@@ -17,19 +17,22 @@ on:
         required: true
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   release:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version: "1.24"
           cache: false # stdlib only: no go.sum to key a cache on
@@ -38,9 +41,11 @@ jobs:
         run: make dist VERSION="${GITHUB_REF_NAME}"
       - name: Check the stamped version
         run: test "$(./dist/ask-form-linux-amd64 version)" = "{\"version\":\"${GITHUB_REF_NAME}\"}"
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
-          subject-path: dist/ask-form*
+          subject-path: |
+            dist/ask-form*
+            dist/checksums.txt
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,7 +62,7 @@ jobs:
       # No registry-url: setup-node would write an .npmrc whose token is
       # NODE_AUTH_TOKEN, and an empty one (no NPM_TOKEN secret) makes npm
       # stop at ENEEDAUTH instead of trying the OIDC token (v0.18.0).
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "24"
       - name: Publish to npm
@@ -65,18 +70,24 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm install -g npm@^11.10.0
+          npm install -g npm@11.10.0
           if [ -n "$NPM_TOKEN" ]; then
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+            umask 077
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
           fi
           scripts/npm-publish.sh "$GITHUB_REF_NAME" --dist dist
 
   npm:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "24"
       - name: Publish the release to npm
@@ -84,10 +95,14 @@ jobs:
           TAG: ${{ inputs.tag }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a release tag: $TAG" >&2; exit 1 ;; esac
-          npm install -g npm@^11.10.0
+          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "not a release tag: $TAG" >&2
+            exit 1
+          fi
+          npm install -g npm@11.10.0
           if [ -n "$NPM_TOKEN" ]; then
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+            umask 077
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
           fi
           # The binaries come from the GitHub release, checked against its
           # checksums.txt.
