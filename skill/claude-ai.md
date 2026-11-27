@@ -61,6 +61,21 @@ ask-form create "$FORM"
 rm -f "$FORM"
 ```
 
+If `create` answers `create takes no positional argument`, npm gave you an
+ask-form older than form files (v0.21). Write the same questions as a JSON
+array instead, one object per field with its `key` (and its page as `group`),
+options as `{"value","label"}`, and pass the rest as flags:
+
+```bash
+SPEC="$(mktemp)"
+cat > "$SPEC" <<'JSON'
+[{"key":"stack","label":"Which stack?","type":"radio","required":true,"options":["Vite + React","Next.js"]},
+ {"key":"notes","label":"Anything I should know?","type":"textarea"}]
+JSON
+ask-form create --title "Project setup" --description "Two choices before I start." --fields-file "$SPEC"
+rm -f "$SPEC"
+```
+
 Put the `url` from the output in your reply as a link, then go to step 3 in
 the same turn. The url holds the form's token: don't repeat it elsewhere. It
 opens on any device, phone included.
