@@ -4,7 +4,7 @@
 //	ask-form serve                         run the form server (once per machine)
 //	ask-form create --title T --fields-file spec.json [--asset img.png]… [--multi [--max N]]
 //	ask-form wait <id> [--timeout 30m]     block until answered (exit 0), closed (3), timeout (4)
-//	ask-form get <id> | list | revoke <id> | close <id> | status
+//	ask-form get <id> | list | revoke <id> | close <id> | delete <id> | prune | status
 //	ask-form secret <id> <key> --env FILE VAR | --file PATH | --stdout
 //	ask-form setup                         connect to a relay, start serve as a service, install the skill
 //	ask-form start --key K                 serve for this session only (Claude's code sandbox)
@@ -81,6 +81,8 @@ Client (JSON on stdout):
   ask-form list [--status pending|submitted|declined|revoked|expired|closed]
   ask-form revoke <id>
   ask-form close <id>                  a multi form stops taking answers, keeps the ones it has
+  ask-form delete <id>                 forget a form and its answers (one still waiting is withdrawn first)
+  ask-form prune [--closed-for 48h]    delete the forms closed (answered, declined, withdrawn, expired) that long ago
   ask-form secret <id> <key> (--env FILE VAR | --file PATH | --stdout) [--forget]
   ask-form status
   ask-form link CODE | --off           let a chat app's connector (Claude, ChatGPT… at <relay>/mcp) keep its
@@ -133,6 +135,10 @@ func main() {
 		code = cmdRevoke(args)
 	case "close":
 		code = cmdClose(args)
+	case "delete", "rm":
+		code = cmdDelete(args)
+	case "prune":
+		code = cmdPrune(args)
 	case "secret":
 		code = cmdSecret(args)
 	case "link":
@@ -333,7 +339,7 @@ func cmdServe(args []string) int {
 		}
 		link := &server.Link{File: filepath.Join(*conf, "chat-link.json")}
 		agent := &tunnel.Agent{
-			RelayURL: *relayURL, Token: tok, Handler: srv.Public(), Forms: st.RoutableIDs,
+			RelayURL: *relayURL, Token: tok, Handler: srv.Public(), Forms: st.RoutableIDs, Open: st.OpenIDs,
 			Version: server.Version, Bridge: srv.AccountAPI(), BridgeAllows: link.Allows,
 		}
 		link.Relay = func(ctx context.Context, code string) (server.LinkInfo, error) {
@@ -772,6 +778,47 @@ func closeCmd(args []string, what string) int {
 		return exitClosed
 	}
 	if err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	printJSON(out)
+	return exitOK
+}
+
+// cmdDelete forgets one form and everything kept of it.
+func cmdDelete(args []string) int {
+	id, ok := oneID(flag.NewFlagSet("delete", flag.ExitOnError), args, "delete")
+	if !ok {
+		return exitUsage
+	}
+	c, err := newClient()
+	if err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	var out map[string]any
+	if _, err := c.do(context.Background(), http.MethodDelete, "/v1/forms/"+url.PathEscape(id), nil, &out); err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	printJSON(out)
+	return exitOK
+}
+
+// cmdPrune deletes the forms closed longer than --closed-for; the ones still
+// waiting for an answer stay.
+func cmdPrune(args []string) int {
+	fs := flag.NewFlagSet("prune", flag.ExitOnError)
+	closedFor := fs.Duration("closed-for", 48*time.Hour, "delete the forms closed at least this long ago (0: every closed form)")
+	if pos := interleaved(fs, args); len(pos) != 0 {
+		return fail(exitUsage, "usage: ask-form prune [--closed-for 48h]")
+	}
+	if *closedFor < 0 {
+		return fail(exitUsage, "--closed-for: 0 or more")
+	}
+	c, err := newClient()
+	if err != nil {
+		return fail(exitErr, "%v", err)
+	}
+	var out map[string]any
+	if _, err := c.do(context.Background(), http.MethodPost, "/v1/prune", map[string]any{"closedFor": closedFor.String()}, &out); err != nil {
 		return fail(exitErr, "%v", err)
 	}
 	printJSON(out)

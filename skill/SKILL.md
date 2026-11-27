@@ -256,12 +256,18 @@ question required while its condition holds. A condition looks at questions
 | `ask-form list [--status pending]` | your forms |
 | `ask-form revoke <id>` | close an open form |
 | `ask-form close <id>` | a `--multi` form stops taking answers; the ones in stay |
+| `ask-form delete <id>` | forget a form and its answers (one still open is withdrawn first) |
+| `ask-form prune [--closed-for 48h]` | delete the forms closed that long ago; the open ones stay |
 | `ask-form status` | is the local server up, connected to its relay, up to date? |
 | `ask-form upgrade` | install the latest release |
 | `ask-form brand show` | the look this machine's forms wear (the user sets it with `ask-form brand set`) |
 | `ask-form link CODE` | the user connected a chat app (Claude, ChatGPT…) to ask-form and picked "my computer": the code from its sign-in page lets that chat's forms live on this machine (`--off` undoes it) |
 
 Every command prints JSON on stdout; an error is `{"error":"…"}` with exit 1.
+A public relay keeps a limited number of open forms per machine (50 on
+ask-form.xyz): when `create` says this machine has too many, revoke the ones
+nobody will answer (`ask-form list --status pending`). Answered forms don't
+count.
 If a command says the server is unreachable, run `ask-form setup` (it starts
 the background service) or `ask-form serve`.
 

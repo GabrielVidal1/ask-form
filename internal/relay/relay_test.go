@@ -50,7 +50,7 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	srv := server.New(server.Config{PublicURL: pub.URL, AdminToken: "admintok", Key: []byte("k")}, st)
-	ag := &tunnel.Agent{RelayURL: mach.URL, Token: tok, Handler: srv.Public(), Forms: st.RoutableIDs, Pollers: 2}
+	ag := &tunnel.Agent{RelayURL: mach.URL, Token: tok, Handler: srv.Public(), Forms: st.RoutableIDs, Open: st.OpenIDs, Pollers: 2}
 	srv.Relay = ag
 	ctx, cancel := context.WithCancel(context.Background())
 	go ag.Run(ctx)
@@ -457,5 +457,41 @@ func TestMultiAnswersThroughRelay(t *testing.T) {
 	}
 	if code, _ := rg.api(t, "POST", "/v1/forms/"+id+"/close", map[string]any{}, nil); code != http.StatusConflict {
 		t.Fatalf("closing a closed form: %d", code)
+	}
+}
+
+// The machine's poll tells the relay which of its forms still wait for an
+// answer: a withdrawn one keeps its route but stops counting as open.
+func TestPollSaysWhichFormsAreOpen(t *testing.T) {
+	rg := newRig(t)
+	var ids []string
+	for i := 0; i < 2; i++ {
+		code, f := rg.api(t, "POST", "/v1/forms", map[string]any{
+			"title": "Q", "fields": json.RawMessage(`[{"key":"a","type":"text"}]`)}, nil)
+		if code != http.StatusCreated {
+			t.Fatalf("create: %d %v", code, f)
+		}
+		ids = append(ids, f["id"].(string))
+	}
+	if h := rg.relay.Health("box"); h.Forms != 2 || h.Open != 2 {
+		t.Fatalf("after create: %d forms %d open, want 2 2", h.Forms, h.Open)
+	}
+	if code, _ := rg.api(t, "POST", "/v1/forms/"+ids[0]+"/revoke", map[string]any{}, nil); code != 200 {
+		t.Fatalf("revoke: %d", code)
+	}
+	// A visit hands a held poll a request; the poll after it re-announces.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if res, err := http.Get(rg.pub.URL + "/f/" + ids[1]); err == nil {
+			res.Body.Close()
+		}
+		h := rg.relay.Health("box")
+		if h.Forms == 2 && h.Open == 1 && len(h.Machines) == 1 && h.Machines[0].Open == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after revoke: %+v, want 2 forms, 1 open", h)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

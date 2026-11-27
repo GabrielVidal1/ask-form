@@ -34,9 +34,12 @@ type Agent struct {
 	Bridge       http.Handler
 	BridgeAllows func(account string) bool
 	Forms        func() []string
-	Pollers      int
-	Version      string
-	client       *http.Client
+	// Open lists the part of Forms still waiting for an answer, the forms the
+	// relay counts toward its cap. Nil: unknown, every form counts.
+	Open    func() []string
+	Pollers int
+	Version string
+	client  *http.Client
 
 	connected atomic.Bool
 	mu        sync.Mutex
@@ -146,7 +149,11 @@ type cancelBody struct {
 func (c *cancelBody) Close() error { err := c.ReadCloser.Close(); c.cancel(); return err }
 
 func (a *Agent) poll(ctx context.Context) (*Request, error) {
-	res, err := a.call(ctx, http.MethodPost, "/_relay/v1/poll", PollRequest{Forms: a.Forms(), Version: a.Version}, 40*time.Second)
+	pr := PollRequest{Forms: a.Forms(), Version: a.Version}
+	if a.Open != nil {
+		pr.Open = append([]string{}, a.Open()...) // never null: [] says "none open"
+	}
+	res, err := a.call(ctx, http.MethodPost, "/_relay/v1/poll", pr, 40*time.Second)
 	if err != nil {
 		return nil, err
 	}

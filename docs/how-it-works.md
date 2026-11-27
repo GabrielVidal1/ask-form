@@ -33,7 +33,10 @@ A relay runs with `--register closed` (the default) or `--register open`.
   machine's `~/.config/ask-form/relay-token`, or `ask-form setup --token`.
 - **open**: `ask-form setup` registers the machine itself
   (`POST /_relay/v1/register`) and gets a token of its own. Such a machine:
-  - is limited to `--max-forms` open forms (50),
+  - is limited to `--max-forms` forms waiting for an answer (50), plus
+    `--max-closed` closed ones whose links still show their thank-you page
+    (10 × `--max-forms`). Each poll lists the machine's forms and says which
+    are open; a machine too old to say has all of them counted,
   - sees only itself in the relay's health,
   - is forgotten after `--forget-after` without a poll (90 days),
   - can delete itself (`ask-form uninstall --purge`).
@@ -267,7 +270,9 @@ same cookie as the form's guards it, and it works with snapshots off.
 
 A form that stops taking answers (submitted, declined, revoked, expired, or a
 multi form closed) gets a snapshot: one HTML page written to
-`<data>/snapshots/<id>.html` once and kept forever, like the form itself.
+`<data>/snapshots/<id>.html` once and kept as long as the form itself:
+until `ask-form delete <id>`, or `ask-form prune` once it has been closed
+`--closed-for` (48 h by default).
 It is the answer page drawn read-only: every question as the respondent saw
 it (the ones a condition hid from them left out), with the answers filled
 in. A declined, withdrawn or expired form shows its questions empty (a

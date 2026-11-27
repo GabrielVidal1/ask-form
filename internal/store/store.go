@@ -477,6 +477,22 @@ func (s *Store) RoutableIDs() []string {
 	return ids
 }
 
+// OpenIDs lists the forms still waiting for an answer: the part of
+// RoutableIDs a relay counts toward a machine's cap.
+func (s *Store) OpenIDs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	ids := []string{}
+	for id, e := range s.forms {
+		if e.event == nil && now.Before(e.form.ExpiresAt) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // Authorize checks a respondent token against a form in constant time; an
 // unknown form costs the same hash and compare as a wrong token.
 func (s *Store) Authorize(id, token string) (State, bool) {

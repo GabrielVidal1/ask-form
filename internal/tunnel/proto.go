@@ -55,7 +55,12 @@ type Response struct {
 
 // PollRequest is a machine's poll: the forms it serves, re-announced each time.
 type PollRequest struct {
-	Forms   []string `json:"forms"`
+	Forms []string `json:"forms"`
+	// Open: the part of Forms still waiting for an answer, always sent by a
+	// machine that knows ([] when none). Only those count toward a
+	// self-registered machine's cap; absent (an older machine), every form
+	// counts.
+	Open    []string `json:"open"`
 	Version string   `json:"version"`
 }
 

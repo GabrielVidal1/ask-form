@@ -273,7 +273,8 @@ forgotten after a while without a poll:
 
 | flag | env | default |
 |------|-----|---------|
-| `--max-forms` | `ASK_FORM_RELAY_MAX_FORMS` | 50 open forms per machine |
+| `--max-forms` | `ASK_FORM_RELAY_MAX_FORMS` | 50 forms waiting for an answer per machine |
+| `--max-closed` | `ASK_FORM_RELAY_MAX_CLOSED` | 10 × `--max-forms`: closed forms still routed to their thank-you page (they take no `--max-forms` slot) |
 | `--register-per-ip` | `ASK_FORM_RELAY_REGISTER_PER_IP` | 5 registrations per address per day |
 | `--max-machines` | `ASK_FORM_RELAY_MAX_MACHINES` | 1000 self-registered machines |
 | `--forget-after` | | 2160h (90 days; negative: never) |
@@ -476,7 +477,7 @@ sign-in (`/.well-known/oauth-*`, `/oauth/…`) and the plugin zip
 | `--client-ip-header` | `ASK_FORM_RELAY_CLIENT_IP_HEADER` | the socket peer | header(s) your proxy sets to the visitor's address, comma-separated, first present wins |
 | `--trust-cloudflare` | `ASK_FORM_RELAY_TRUST_CLOUDFLARE=1` | off | take `Cf-Connecting-Ip` from Cloudflare's edges |
 | `--register` | `ASK_FORM_RELAY_REGISTER` | `closed` | `open`: machines register themselves |
-| `--max-forms`, `--register-per-ip`, `--max-machines`, `--forget-after` | see [Open](#open-machines-register-themselves) | | limits on self-registered machines |
+| `--max-forms`, `--max-closed`, `--register-per-ip`, `--max-machines`, `--forget-after` | see [Open](#open-machines-register-themselves) | | limits on self-registered machines |
 | `--keys`, `--register-per-key`, `--forget-ephemeral`, `--web-keys-per-ip` | see [Registration keys](#registration-keys-claudes-code-sandbox) | | machines registered with a key |
 | `--hosted` | `ASK_FORM_RELAY_HOSTED` | off | run the [chat-app connector](#chat-apps-the-connector) with its data in this directory |
 | `--cloud-retention` | `ASK_FORM_RELAY_CLOUD_RETENTION` | `24h` | delete a cloud form this long after it closes |

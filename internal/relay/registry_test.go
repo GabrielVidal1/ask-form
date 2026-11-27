@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/GabrielVidal1/ask-form/internal/tunnel"
 )
 
 type regRig struct {
@@ -144,6 +146,85 @@ func TestSelfMachineLimits(t *testing.T) {
 	}
 	if h["forms"].(float64) != 2 {
 		t.Fatalf("self health forms = %v, want its own 2", h["forms"])
+	}
+}
+
+// Only the forms waiting for an answer take a self-registered machine's
+// MaxForms slots; the closed ones it lists are routed under MaxClosed. A
+// machine that doesn't say which are open (an older version) has every form
+// counted, as before.
+func TestSelfMachineOpenCap(t *testing.T) {
+	g := newRegRig(t, Registration{Open: true, MaxForms: 2, MaxClosed: 3})
+	name, tok, _ := g.register("1.1.1.1", "a")
+	claim := func(id string) int {
+		code, _ := g.call("POST", "/_relay/v1/claim", tok, "", `{"id":"`+id+`"}`)
+		return code
+	}
+	announce := func(forms, open []string) {
+		g.relay.mu.Lock()
+		defer g.relay.mu.Unlock()
+		g.relay.machine(name).states = open != nil
+		g.relay.announce(name, tunnel.PollRequest{Forms: forms, Open: open}, time.Now())
+	}
+	counts := func(wantOpen, wantClosed int) {
+		t.Helper()
+		g.relay.mu.Lock()
+		defer g.relay.mu.Unlock()
+		if o, c := g.relay.claimsOf(name); o != wantOpen || c != wantClosed {
+			t.Fatalf("claims: %d open %d closed, want %d %d", o, c, wantOpen, wantClosed)
+		}
+	}
+	routed := func(id string) bool {
+		g.relay.mu.Lock()
+		defer g.relay.mu.Unlock()
+		return g.relay.claims[id] != nil
+	}
+	message := func() string {
+		g.relay.mu.Lock()
+		defer g.relay.mu.Unlock()
+		return g.relay.fullMessage(name)
+	}
+	a, b, c, d, e, f, h := "a_aaaaaa", "b_bbbbbb", "c_cccccc", "d_dddddd", "e_eeeeee", "f_ffffff", "h_hhhhhh"
+	if claim(a) != 200 || claim(b) != 200 {
+		t.Fatal("claims under the cap refused")
+	}
+	if claim(c) != http.StatusTooManyRequests {
+		t.Fatal("a third open form got a slot")
+	}
+	if !strings.Contains(message(), "ask-form upgrade") {
+		t.Fatalf("a machine that never said which forms are open must be told to upgrade: %q", message())
+	}
+	// a is answered: it keeps its route and frees its slot.
+	announce([]string{a, b}, []string{b})
+	counts(1, 1)
+	if claim(c) != 200 {
+		t.Fatal("an answered form still holds a slot")
+	}
+	counts(2, 1)
+	if !strings.Contains(message(), "ask-form revoke") {
+		t.Fatalf("a machine that says which forms are open is told to revoke: %q", message())
+	}
+	// Closed forms the relay didn't route yet: two more fit under MaxClosed.
+	announce([]string{a, b, c, d, e, f}, []string{b, c})
+	counts(2, 3)
+	if !routed(d) || !routed(e) || routed(f) {
+		t.Fatalf("closed routes past MaxClosed: d %v e %v f %v", routed(d), routed(e), routed(f))
+	}
+	// A form the machine stopped listing (deleted) gives its slot back at
+	// once; prune drops its route after claimTTL.
+	announce([]string{a, c, d, e}, []string{c})
+	counts(1, 4)
+	if !routed(b) {
+		t.Fatal("an unlisted form lost its route before claimTTL")
+	}
+	// An older machine (no Open list): every form it lists counts as open,
+	// and nothing new gets a slot past MaxForms.
+	announce([]string{a, c, d, e, h}, nil)
+	if routed(h) {
+		t.Fatal("an older machine past its cap got a new route")
+	}
+	if claim(h) != http.StatusTooManyRequests {
+		t.Fatal("an older machine's closed forms must still count")
 	}
 }
 
