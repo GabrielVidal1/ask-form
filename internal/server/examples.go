@@ -13,6 +13,7 @@ import (
 	"path"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/brand"
@@ -29,7 +30,9 @@ type Example struct {
 	Order                int
 	Questions, Groups    int
 	State                store.State
-	Spec                 []byte
+	SpecFile             string // spec.yaml, or spec.json for an example still in JSON
+	Spec                 []byte // the file as written
+	SpecJSON             []byte // the same form as the JSON of a create call: links to spec.json still work
 	assets               map[string]exampleAsset
 }
 
@@ -40,11 +43,39 @@ type exampleAsset struct {
 
 type exampleSpec struct {
 	Title       string          `json:"title"`
-	Summary     string          `json:"summary"`
-	Description string          `json:"description"`
+	Summary     string          `json:"summary,omitempty"`
+	Description string          `json:"description,omitempty"`
 	Order       int             `json:"order"`
-	Multi       bool            `json:"multi"`
+	Multi       bool            `json:"multi,omitempty"`
 	Fields      json.RawMessage `json:"fields"`
+}
+
+// readExample reads an example's form file: the title, description and
+// fields any form file holds, plus an example's own summary, order and multi.
+func readExample(raw []byte) (exampleSpec, error) {
+	doc, err := form.ParseDoc(raw)
+	if err != nil {
+		return exampleSpec{}, err
+	}
+	sp := exampleSpec{Title: doc.Title, Description: doc.Description, Fields: doc.Fields}
+	for k, v := range doc.Extra {
+		switch k {
+		case "summary":
+			sp.Summary, _ = v.(string)
+		case "order":
+			n, _ := v.(json.Number)
+			o, err := strconv.Atoi(string(n))
+			if err != nil {
+				return exampleSpec{}, fmt.Errorf("order is a whole number")
+			}
+			sp.Order = o
+		case "multi":
+			sp.Multi, _ = v.(bool)
+		default:
+			return exampleSpec{}, fmt.Errorf("no key %q in an example (%v, summary, order, multi)", k, form.DocKeys)
+		}
+	}
+	return sp, nil
 }
 
 // ExamplesPrefix is where the examples in lang live: /examples for English,
@@ -56,8 +87,8 @@ func ExamplesPrefix(lang string) string {
 	return "/" + lang + "/examples"
 }
 
-// LoadExamples reads every <name>/spec.json of fsys, with the images next to
-// it as the form's assets ({{asset:<file>}} in the spec).
+// LoadExamples reads every <name>/spec.yaml (or spec.json) of fsys, with the
+// images next to it as the form's assets ({{asset:<file>}} in the spec).
 func LoadExamples(fsys fs.FS) ([]Example, error) { return LoadExamplesIn(fsys, i18n.EN) }
 
 // LoadAllExamples is LoadExamplesIn for every language, by language.
@@ -73,9 +104,9 @@ func LoadAllExamples(fsys fs.FS) (map[string][]Example, error) {
 	return out, nil
 }
 
-// LoadExamplesIn is LoadExamples for the examples in lang: <name>/spec.<lang>.json
-// where there is one (a translation), else spec.json, laid out under
-// ExamplesPrefix(lang).
+// LoadExamplesIn is LoadExamples for the examples in lang: <name>/spec.<lang>.yaml
+// (or .json) where there is one (a translation), else spec.yaml (or spec.json),
+// laid out under ExamplesPrefix(lang).
 func LoadExamplesIn(fsys fs.FS, lang string) ([]Example, error) {
 	lang = i18n.Of(lang)
 	dirs, err := fs.ReadDir(fsys, ".")
@@ -88,19 +119,35 @@ func LoadExamplesIn(fsys fs.FS, lang string) ([]Example, error) {
 			continue
 		}
 		name := d.Name()
-		raw, err := fs.ReadFile(fsys, path.Join(name, "spec."+lang+".json"))
-		if err != nil || lang == i18n.EN {
-			raw, err = fs.ReadFile(fsys, path.Join(name, "spec.json"))
+		candidates := []string{"spec.yaml", "spec.json"}
+		if lang != i18n.EN {
+			candidates = append([]string{"spec." + lang + ".yaml", "spec." + lang + ".json"}, candidates...)
 		}
-		if err != nil {
+		var raw []byte
+		var file string
+		for _, c := range candidates {
+			if b, err := fs.ReadFile(fsys, path.Join(name, c)); err == nil {
+				raw, file = b, c
+				break
+			}
+		}
+		if raw == nil {
 			continue
 		}
-		var sp exampleSpec
-		if err := json.Unmarshal(raw, &sp); err != nil {
+		sp, err := readExample(raw)
+		if err != nil {
+			return nil, fmt.Errorf("example %s/%s: %w", name, file, err)
+		}
+		specJSON, err := json.MarshalIndent(sp, "", " ")
+		if err != nil {
 			return nil, fmt.Errorf("example %s: %w", name, err)
 		}
 		files, _ := fs.ReadDir(fsys, name)
-		ex := Example{Name: name, Title: sp.Title, Summary: sp.Summary, Order: sp.Order, Spec: raw, assets: map[string]exampleAsset{}}
+		ex := Example{Name: name, Title: sp.Title, Summary: sp.Summary, Order: sp.Order,
+			SpecFile: "spec.yaml", Spec: raw, SpecJSON: specJSON, assets: map[string]exampleAsset{}}
+		if strings.HasSuffix(file, ".json") {
+			ex.SpecFile = "spec.json"
+		}
 		var assets []store.Asset
 		for _, f := range files {
 			ct, ok := store.AssetContentType(f.Name())
@@ -234,6 +281,7 @@ func examplesMux(hs ...*examplesHandler) http.Handler {
 		mux.HandleFunc("GET "+p+"/{name}", h.page)
 		mux.HandleFunc("POST "+p+"/{name}", h.submit)
 		mux.HandleFunc("GET "+p+"/{name}/spec.json", h.spec)
+		mux.HandleFunc("GET "+p+"/{name}/spec.yaml", h.spec)
 		mux.HandleFunc("GET "+p+"/{name}/assets/{file}", h.asset)
 		mux.HandleFunc("GET "+p+"/{name}/frame/{key}", h.frame)
 		mux.HandleFunc("GET "+p+"/{name}/frame/{key}/{n}", h.frame)
@@ -277,7 +325,7 @@ func (h *examplesHandler) renderForm(w http.ResponseWriter, ex *Example, values 
 	nonce := newNonce()
 	base := h.prefix + "/" + ex.Name
 	page := buildPage(ex.State, base, values, errs, "", nonce)
-	page.Demo = &demoInfo{Index: h.prefix, Spec: base + "/spec.json", Preview: h.brand != nil}
+	page.Demo = &demoInfo{Index: h.prefix, Spec: base + "/" + ex.SpecFile, Preview: h.brand != nil}
 	page.Brand = pageLook(h.look())
 	renderPage(w, h.lang, "form", page, pageCSP(nonce), code)
 }
@@ -344,7 +392,7 @@ func (h *examplesHandler) submit(w http.ResponseWriter, r *http.Request) {
 	b, _ := json.MarshalIndent(toJSON(st, false, true), "", "  ")
 	base := h.prefix + "/" + ex.Name
 	p := demoResultPage{Title: ex.Title, Nonce: newNonce(), JSON: string(b), Back: base, Recap: recap(h.lang, st.Fields, res.Answers),
-		Demo: &demoInfo{Index: h.prefix, Spec: base + "/spec.json", Preview: h.brand != nil}, Brand: pageLook(h.look())}
+		Demo: &demoInfo{Index: h.prefix, Spec: base + "/" + ex.SpecFile, Preview: h.brand != nil}, Brand: pageLook(h.look())}
 	log.Printf("example %s answered (%d answers, not stored)", ex.Name, len(res.Answers))
 	renderPage(w, h.lang, "demo-result", p, pageCSP(p.Nonce), http.StatusOK)
 }
@@ -368,9 +416,22 @@ func (h *examplesHandler) spec(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
 	baseHeaders(hd)
 	hd.Set("Content-Security-Policy", "default-src 'none'; sandbox")
-	hd.Set("Content-Type", "application/json; charset=utf-8")
 	hd.Set("Cache-Control", "public, max-age=300")
-	w.Write(ex.Spec)
+	// spec.yaml: the form file as written, as text a browser shows; spec.json:
+	// the same form as JSON (the file itself for an example still in JSON).
+	switch {
+	case strings.HasSuffix(r.URL.Path, ".yaml") && ex.SpecFile == "spec.yaml":
+		hd.Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(ex.Spec)
+	case strings.HasSuffix(r.URL.Path, ".yaml"):
+		notFound(w)
+	case ex.SpecFile == "spec.json":
+		hd.Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(ex.Spec)
+	default:
+		hd.Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(ex.SpecJSON)
+	}
 }
 
 func (h *examplesHandler) asset(w http.ResponseWriter, r *http.Request) {

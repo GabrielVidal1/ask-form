@@ -1,0 +1,97 @@
+title: Relire une modification avant que je fusionne
+description: |-
+  J'ai corrigé la boucle de retry de l'uploader. Lisez le diff, donnez un verdict, et le formulaire ne demande que ce que ce verdict exige : les modifications demandées si vous approuvez avec modifications, une raison si vous refusez, une fenêtre de merge si ça passe.
+summary: Des questions de suivi qui n'apparaissent que si elles s'appliquent, un diff à lire, une note en étoiles, un tableau de modifications demandées et des champs d'heure.
+order: 8
+sections:
+  La modification:
+    fields:
+      uploader-retry-go:
+        type: diff
+        label: uploader/retry.go
+        text: |-
+          diff --git a/uploader/retry.go b/uploader/retry.go
+          index 3f2a1c9..8be07d4 100644
+          --- a/uploader/retry.go
+          +++ b/uploader/retry.go
+          @@ -18,12 +18,17 @@ func (u *Uploader) send(ctx context.Context, chunk []byte) error {
+           	var err error
+          -	for i := 0; i < 5; i++ {
+          -		err = u.post(ctx, chunk)
+          -		if err == nil {
+          -			return nil
+          -		}
+          -		time.Sleep(time.Second)
+          +	backoff := 250 * time.Millisecond
+          +	for i := 0; i < 5; i++ {
+          +		err = u.post(ctx, chunk)
+          +		if err == nil || !retryable(err) {
+          +			return err
+          +		}
+          +		select {
+          +		case <-time.After(backoff):
+          +			backoff *= 2
+          +		case <-ctx.Done():
+          +			return ctx.Err()
+          +		}
+           	}
+           	return err
+           }
+      why-exponential-backoff:
+        type: details
+        label: Pourquoi un backoff exponentiel, et pourquoi seules certaines erreurs sont rejouées
+        text: |-
+          Une pause fixe d'une seconde martelait un serveur en difficulté cinq fois en cinq secondes, et rejouait les **400**, qui ne peuvent jamais réussir.
+
+          - 250 ms, 500 ms, 1 s, 2 s, 4 s : environ 8 s au total, comme avant.
+          - `retryable` est vrai uniquement pour les erreurs réseau, les 429 et les 5xx.
+          - Un contexte annulé arrête désormais la boucle immédiatement.
+  Verdict:
+    fields:
+      verdict:
+        type: radio
+        label: Verdict
+        required: true
+        default: approve
+        options:
+          approve: {label: Approuver, description: Fusionner tel quel}
+          changes:
+            label: Approuver avec modifications
+            description: Fusionner une fois les points ci-dessous traités
+          reject: {label: Refuser, description: Ne pas fusionner}
+      clarity: {type: rating, label: Le diff est-il clair ?, minLabel: confus, maxLabel: évident}
+      requested:
+        type: list
+        label: Modifications demandées
+        required: true
+        help: Une ligne par point. Demandé uniquement parce que vous approuvez avec modifications.
+        showIf: {key: verdict, equals: changes}
+        columns:
+          where: {label: Où, placeholder: fichier ou fonction}
+          what: {label: Quoi modifier}
+          severity: {label: Gravité, type: select, options: [nit, souhaitable, obligatoire]}
+      reason:
+        type: textarea
+        label: Qu'est-ce qui vous ferait changer d'avis ?
+        help: Facultatif si vous approuvez avec modifications, obligatoire si vous refusez.
+        showIf: {key: verdict, in: [changes, reject]}
+        requiredIf: {key: verdict, equals: reject}
+  Déploiement:
+    showIf: {key: verdict, in: [approve, changes]}   # the whole page
+    fields:
+      window:
+        type: time
+        label: La fenêtre de merge commence à
+        default: '22:00'
+      freeze:
+        type: daterange
+        label: Dates où je ne dois pas déployer
+        help: 'Facultatif : des vacances, un lancement.'
+      tell:
+        type: checkbox
+        label: Prévenir l'équipe une fois fusionné
+      team_email:
+        type: email
+        label: Adresse de l'équipe
+        showIf: {key: tell, equals: true}
+        requiredIf: {key: tell, equals: true}

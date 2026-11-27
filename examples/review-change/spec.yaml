@@ -1,0 +1,95 @@
+title: Review a change before I merge
+description: |-
+  I fixed the retry loop in the uploader. Read the diff, give a verdict, and the form asks only what that verdict needs: requested changes if you approve with changes, a reason if you reject, a merge window if it goes ahead.
+summary: Follow-up questions that appear only when they apply, a diff to read, a star rating, a table of requested changes, and time fields.
+order: 8
+sections:
+  The change:
+    fields:
+      uploader-retry-go:
+        type: diff
+        label: uploader/retry.go
+        text: |-
+          diff --git a/uploader/retry.go b/uploader/retry.go
+          index 3f2a1c9..8be07d4 100644
+          --- a/uploader/retry.go
+          +++ b/uploader/retry.go
+          @@ -18,12 +18,17 @@ func (u *Uploader) send(ctx context.Context, chunk []byte) error {
+           	var err error
+          -	for i := 0; i < 5; i++ {
+          -		err = u.post(ctx, chunk)
+          -		if err == nil {
+          -			return nil
+          -		}
+          -		time.Sleep(time.Second)
+          +	backoff := 250 * time.Millisecond
+          +	for i := 0; i < 5; i++ {
+          +		err = u.post(ctx, chunk)
+          +		if err == nil || !retryable(err) {
+          +			return err
+          +		}
+          +		select {
+          +		case <-time.After(backoff):
+          +			backoff *= 2
+          +		case <-ctx.Done():
+          +			return ctx.Err()
+          +		}
+           	}
+           	return err
+           }
+      why-exponential-backoff:
+        type: details
+        label: Why exponential backoff, and why only some errors retry
+        text: |-
+          A fixed one-second sleep hammered a struggling server five times in five seconds, and it retried **400s**, which can never succeed.
+
+          - 250 ms, 500 ms, 1 s, 2 s, 4 s: about 8 s in total, the same as before.
+          - `retryable` is true for network errors, 429 and 5xx only.
+          - A cancelled context now stops the loop at once.
+  Verdict:
+    fields:
+      verdict:
+        type: radio
+        label: Verdict
+        required: true
+        default: approve
+        options:
+          approve: {label: Approve, description: Merge as it is}
+          changes: {label: Approve with changes, description: Merge once the points below are done}
+          reject: {label: Reject, description: Don't merge}
+      clarity: {type: rating, label: How clear is the diff?, minLabel: confusing, maxLabel: obvious}
+      requested:
+        type: list
+        label: Requested changes
+        required: true
+        help: One row per point. Only asked because you approve with changes.
+        showIf: {key: verdict, equals: changes}
+        columns:
+          where: {label: Where, placeholder: file or function}
+          what: {label: What to change}
+          severity: {label: Severity, type: select, options: [nit, should, must]}
+      reason:
+        type: textarea
+        label: What would make you change your mind?
+        help: Optional when you approve with changes, required when you reject.
+        showIf: {key: verdict, in: [changes, reject]}
+        requiredIf: {key: verdict, equals: reject}
+  Rollout:
+    showIf: {key: verdict, in: [approve, changes]}   # the whole page
+    fields:
+      window:
+        type: time
+        label: Merge window starts at
+        default: '22:00'
+      freeze:
+        type: daterange
+        label: Dates I must not deploy
+        help: 'Optional: a holiday, a launch.'
+      tell:
+        type: checkbox
+        label: Tell the team when it's merged
+      team_email:
+        type: email
+        label: Team address
+        showIf: {key: tell, equals: true}
+        requiredIf: {key: tell, equals: true}

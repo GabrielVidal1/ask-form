@@ -114,18 +114,26 @@ you a task instead (for example "review this branch and send me the findings
 with ask-form"), do that task, asking through ask-form where it says to. If
 it gives you neither, use this test form:
 
-    SPEC="$(mktemp)"
-    cat > "$SPEC" <<'JSON'
-    [{"type":"markdown","text":"ask-form is installed. This is a test form: two quick questions."},
-     {"key":"works","label":"Did this page open fine?","type":"radio","required":true,"options":["Yes","Not really"]},
-     {"key":"use_for","label":"What should I ask you through forms?","type":"textarea","help":"Optional"}]
-    JSON
+    FORM="$(mktemp)"
+    cat > "$FORM" <<'YAML'
+    title: ask-form is ready
+    fields:
+      about:
+        type: markdown
+        text: "ask-form is installed. This is a test form: two quick questions."
+      works:
+        type: radio
+        label: Did this page open fine?
+        required: true
+        options: [Yes, Not really]
+      use_for: {type: textarea, label: What should I ask you through forms?, help: Optional}
+    YAML
 
 Create the form and show the user the "url" field from the output. It opens
 on this computer; "publicUrl" opens on any device, their phone included:
 
-    ask-form create --title "ask-form is ready" --fields-file "$SPEC"
-    rm -f "$SPEC"
+    ask-form create "$FORM"
+    rm -f "$FORM"
 
 Then wait for the answer. Run this in the background if your tool can, so
 you aren't blocked:

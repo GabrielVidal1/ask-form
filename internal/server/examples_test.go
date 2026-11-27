@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,8 +44,21 @@ func TestExamples(t *testing.T) {
 				t.Fatal("new-project: slider end labels missing")
 			}
 		}
-		if code, _ := get("/examples/" + ex.Name + "/spec.json"); code != 200 {
-			t.Fatalf("%s spec: %d", ex.Name, code)
+		// The form file as written, and the same form as JSON (links to
+		// spec.json from before the examples were YAML still answer).
+		if code, body := get("/examples/" + ex.Name + "/spec.yaml"); code != 200 || !strings.HasPrefix(body, "title: ") {
+			t.Fatalf("%s spec.yaml: %d", ex.Name, code)
+		}
+		code, body := get("/examples/" + ex.Name + "/spec.json")
+		var sp struct {
+			Title  string            `json:"title"`
+			Fields []json.RawMessage `json:"fields"`
+		}
+		if code != 200 || json.Unmarshal([]byte(body), &sp) != nil || sp.Title != ex.Title {
+			t.Fatalf("%s spec.json: %d", ex.Name, code)
+		}
+		if fields, err := form.Normalize(mustJSON(t, sp.Fields)); err != nil || len(fields) != len(ex.State.Fields) {
+			t.Fatalf("%s spec.json: %v, %d fields, want %d", ex.Name, err, len(fields), len(ex.State.Fields))
 		}
 		// Every html block and mockup has its document; none may carry a
 		// script the frame CSP would have to allow. (A widget's may: it is
@@ -120,4 +134,13 @@ func TestExamples(t *testing.T) {
 	if code, _ := get("/examples/nope"); code != 404 {
 		t.Fatalf("unknown example: %d", code)
 	}
+}
+
+func mustJSON(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

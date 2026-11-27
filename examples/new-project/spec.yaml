@@ -1,0 +1,128 @@
+title: 'Habit tracker: before I scaffold'
+description: |-
+  The repo is empty, so a few choices before I generate anything. I pre-selected what fits what you told me: a small app for you and a few friends, cheap to run. Accept a page in one tap or change anything.
+summary: |-
+  Kick off a project: stack, data, accounts, tooling and deploy in one form, my recommendations pre-selected.
+order: 1
+sections:
+  Look & stack:
+    fields:
+      home:
+        type: radio
+        label: Home screen
+        required: true
+        default: today
+        help: What you see when you open the app. A list is the quickest to tick through on a phone.
+        options:
+          today:
+            label: Today list
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;"><div style="font-weight:750;font-size:16px;margin-bottom:2px">Today</div><div style="display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px"><span style="flex:none;width:18px;height:18px;border-radius:50%;border:2px solid hsl(var(--primary));background:hsl(var(--primary));display:grid;place-items:center;box-sizing:border-box"><span style="color:#fff;font-size:10px;font-weight:800">✓</span></span><b style="font-weight:600">Read</b></div><div style="display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px"><span style="flex:none;width:18px;height:18px;border-radius:50%;border:2px solid hsl(var(--primary));background:hsl(var(--primary));display:grid;place-items:center;box-sizing:border-box"><span style="color:#fff;font-size:10px;font-weight:800">✓</span></span><b style="font-weight:600">Run</b></div><div style="display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px"><span style="flex:none;width:18px;height:18px;border-radius:50%;border:2px solid hsl(var(--border));background:transparent;display:grid;place-items:center;box-sizing:border-box"></span><b style="font-weight:600">Water</b></div><div style="display:flex;gap:9px;align-items:center;border:1px solid hsl(var(--border));border-radius:9px;padding:8px 9px"><span style="flex:none;width:18px;height:18px;border-radius:50%;border:2px solid hsl(var(--border));background:transparent;display:grid;place-items:center;box-sizing:border-box"></span><b style="font-weight:600">Sleep</b></div></div>
+          week:
+            label: Week grid
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;"><div style="font-weight:750;font-size:16px;margin-bottom:2px">This week</div><div style="display:grid;grid-template-columns:44px repeat(7,1fr);gap:5px;align-items:center"><span></span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">M</span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">T</span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">W</span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">T</span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">F</span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">S</span><span style="font-size:10px;text-align:center;color:hsl(var(--muted-foreground))">S</span><span style="font-size:11px;color:hsl(var(--muted-foreground))">Read</span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="font-size:11px;color:hsl(var(--muted-foreground))">Run</span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="font-size:11px;color:hsl(var(--muted-foreground))">Water</span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="font-size:11px;color:hsl(var(--muted-foreground))">Sleep</span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--primary))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span><span style="aspect-ratio:1;border-radius:4px;background:hsl(var(--muted))"></span></div></div>
+          streaks:
+            label: Streak cards
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;"><div style="font-weight:750;font-size:16px;margin-bottom:2px">Streaks</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div style="border:1px solid hsl(var(--border));border-radius:10px;padding:9px"><div style="color:hsl(var(--primary))">🔥</div><div style="font-size:24px;font-weight:800">12</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">Read</div></div><div style="border:1px solid hsl(var(--border));border-radius:10px;padding:9px"><div style="color:hsl(var(--primary))">🔥</div><div style="font-size:24px;font-weight:800">5</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">Run</div></div><div style="border:1px solid hsl(var(--border));border-radius:10px;padding:9px"><div style="color:hsl(var(--primary))">🔥</div><div style="font-size:24px;font-weight:800">21</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">Water</div></div><div style="border:1px solid hsl(var(--border));border-radius:10px;padding:9px"><div style="color:hsl(var(--primary))">🔥</div><div style="font-size:24px;font-weight:800">3</div><div style="font-size:11px;color:hsl(var(--muted-foreground))">Sleep</div></div></div></div>
+        aspect: 3/4
+      framework:
+        type: radio
+        label: Front end
+        required: true
+        default: vite-react
+        help: A habit tracker is mostly client-side; its API fits in one small server.
+        options:
+          vite-react:
+            label: Vite + React
+            description: 'A static SPA: cheapest to host, fastest dev loop'
+          next: {label: Next.js, description: Server rendering and API routes in one app}
+          sveltekit: {label: SvelteKit, description: 'Less code per screen, smaller bundles'}
+          astro: {label: Astro + islands, description: Best when most pages are content}
+      backend:
+        type: radio
+        label: Back end
+        required: true
+        default: hono
+        options:
+          hono: {label: Hono on Node, description: One small typed API server}
+          pocketbase: {label: PocketBase, description: 'Auth, database and admin UI in one binary'}
+          supabase: {label: Supabase, description: 'Hosted Postgres + auth, generous free tier'}
+      database:
+        type: radio
+        label: Database
+        required: true
+        default: sqlite
+        help: SQLite holds this app's data for years; moving to Postgres later is a driver swap with the ORM I'd use (Drizzle).
+        options:
+          sqlite: {label: SQLite, description: 'One file, backed up with the app'}
+          postgres: {label: Postgres, description: A separate service to run}
+  Accounts & features:
+    fields:
+      auth:
+        type: radio
+        label: How do people sign in?
+        required: true
+        default: magic-link
+        options:
+          magic-link: {label: Email magic link, description: No passwords to store}
+          oauth: {label: Google / GitHub, description: 'One tap, needs OAuth apps'}
+          passkeys: Passkeys
+          none: 'No accounts: one shared board'
+      features:
+        type: multiselect
+        label: What goes in the first version?
+        default: [streaks, share, dark]
+        options:
+          streaks: Streaks and a monthly heatmap
+          share:
+            label: Share a habit with friends
+            description: They see your streak, you see theirs
+          reminders: {label: Daily reminders, description: 'Web push, needs the PWA'}
+          dark: Dark mode
+          export: CSV export
+      offline:
+        type: checkbox
+        label: Works offline (installable PWA, syncs when back online)
+        default: true
+  Tooling & delivery:
+    fields:
+      language:
+        type: radio
+        label: Language
+        default: ts-strict
+        options: {ts-strict: 'TypeScript, strict', ts: 'TypeScript, relaxed', js: JavaScript}
+      styling:
+        type: select
+        label: Styling
+        default: tailwind
+        options:
+          tailwind: Tailwind CSS
+          shadcn: Tailwind + shadcn/ui components
+          css-modules: CSS modules
+      tests:
+        type: multiselect
+        label: Tests and CI
+        default: [unit, ci]
+        options:
+          unit: Unit tests (Vitest)
+          e2e: End-to-end tests of the main flows (Playwright)
+          ci: CI on every push (GitHub Actions)
+      deploy:
+        type: radio
+        label: Where does it run?
+        default: fly
+        options:
+          fly:
+            label: Fly.io
+            description: One container plus a volume for SQLite, about $2/month
+          vps: My own VPS, with Docker
+          local: 'Nowhere yet: local only'
+      scope:
+        type: slider
+        label: How far should I take the first pass?
+        min: 1
+        max: 5
+        step: 1
+        default: 3
+        minLabel: skeleton
+        maxLabel: polished
+        help: 1 = a clickable skeleton · 3 = the features above, working, plain looks · 5 = polished and deployed
