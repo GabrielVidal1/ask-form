@@ -1,5 +1,6 @@
-// Package form holds the field spec of a form — the JSON an agent writes —
-// its normalisation, and the validation of the answers a respondent sends.
+// Package form holds the field spec of a form — what an agent writes, as a
+// form file (doc.go: YAML, or JSON) read into a JSON array of fields — its
+// normalisation, and the validation of the answers a respondent sends.
 //
 // The spec is the one the ai-agent's forms use (backend/forms/store.py), so a
 // spec written for one works with the other: text, textarea, number, select,

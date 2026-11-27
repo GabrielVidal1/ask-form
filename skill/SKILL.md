@@ -13,16 +13,23 @@ link, they answer in a browser, you read the answers as JSON.
 ## Ask
 
 ```bash
-# 1. Write the field spec (a JSON array) to a temp file (or pipe via stdin), then
-#    create the form. It returns at once. Show the user the "url": it holds the
-#    form's token, so don't log it anywhere else.
-SPEC="$(mktemp)"
-cat > "$SPEC" <<'JSON'
-[{"key":"stack","label":"Which stack?","type":"radio","required":true,"options":["Vite","Next"]}]
-JSON
-ask-form create --title "Project setup" --description "Two choices before I scaffold." \
-  --fields-file "$SPEC" [--asset shot.png]… [--ttl 24h] [--public] [--open] [--lang fr] [--no-snapshot]
-rm -f "$SPEC"
+# 1. Write the form file (YAML, see "The form file" below) to a temp file (or
+#    pipe it: `ask-form create -`), then create the form. It returns at once.
+#    Show the user the "url": it holds the form's token, so don't log it
+#    anywhere else.
+FORM="$(mktemp)"
+cat > "$FORM" <<'YAML'
+title: Project setup
+description: Two choices before I scaffold.
+fields:
+  stack:
+    type: radio
+    label: Which stack?
+    required: true
+    options: [Vite, Next]
+YAML
+ask-form create "$FORM" [--asset shot.png]… [--ttl 24h] [--public] [--open] [--lang fr] [--no-snapshot]
+rm -f "$FORM"
 
 # 2. Wait for the answer IN THE BACKGROUND (a background shell task, or under a
 #    monitor). You are re-invoked when it exits; keep working meanwhile.
@@ -68,8 +75,7 @@ expires (set `--ttl`, e.g. `72h`), reaches `--max N`, or you run
 `ask-form close <id>`.
 
 ```bash
-ask-form create --title "Onboarding: which one?" --multi --ttl 72h [--max 20] [--hide-count] \
-  --fields-file "$SPEC"
+ask-form create "$FORM" --multi --ttl 72h [--max 20] [--hide-count]
 ask-form wait <id> --timeout 0     # in the background: returns once it closes, with every answer
 ask-form get <id>                  # the answers so far, any time
 ```
@@ -88,8 +94,8 @@ Ask for a file (a screenshot, a log, a PDF, a photo from the phone) with a
 `file` field. The browser uploads it as soon as it is picked; you get the
 file's path on **this computer**, not its bytes.
 
-```json
-{"key":"shot","label":"Screenshot of the bug","type":"file","accept":"image/*","maxMB":20,"multiple":true,"maxFiles":3,"required":true}
+```yaml
+shot: {type: file, label: Screenshot of the bug, accept: image/*, maxMB: 20, multiple: true, maxFiles: 3, required: true}
 ```
 
 - `accept`: media types and extensions as in `<input accept>` (`image/*`,
@@ -110,46 +116,92 @@ the focus, or drop / paste them in (any type, 10 MB each, 5 per box). They
 come back next to the text, under `<key>.files`, in the file field's shape:
 `"anything_else": "see the screenshot", "anything_else.files": [{name,size,contentType,sha256,path}]`.
 Files sent with no words answer the question with their names as the text
-(`"stack": "mock.pdf", "stack.files": […]`). `"attach": false` on a textarea
+(`"stack": "mock.pdf", "stack.files": […]`). `attach: false` on a textarea
 or a choice field takes the paperclip off. None in a `--multi` form.
 
-## Field spec
+## The form file
 
-```json
-[{"type":"markdown","text":"Context the user needs, **markdown**."},
- {"key":"name","label":"Project name","type":"text","required":true,"group":"Basics"},
- {"key":"stack","label":"Stack","type":"radio","required":true,"options":["Vite","Next",{"value":"astro","label":"Astro","description":"static first"}]},
- {"key":"features","label":"Features","type":"multiselect","options":["auth","db"]},
- {"key":"deploy","label":"Deploy after","type":"checkbox"},
- {"key":"polish","label":"Polish","type":"slider","min":1,"max":5,"default":3,"minLabel":"rough","maxLabel":"pixel-perfect"},
- {"key":"budget","label":"Budget (€)","type":"number","min":0},
- {"key":"when","label":"Deadline","type":"date"},
- {"key":"email","label":"Your email","type":"email"},
- {"key":"api_token","label":"API token","type":"secret"},
- {"key":"hero","label":"Hero image","type":"radio","options":[{"value":"a","label":"Fjord","image":"{{asset:a.jpg}}"},{"value":"b","label":"Peaks","html":"<div style=\"width:360px\">…</div>"}]},
- {"type":"html","label":"Current layout","html":"<svg …>…</svg>"}]
+One YAML file holds the whole form. Each **section** is a page, keyed by its
+title; each **field** is keyed by its key (the name its answer comes back
+under); each **option** by its value. Pages, fields and options appear in the
+order you write them.
+
+```yaml
+title: Project setup                  # (--title / --description / --lang on the command line win)
+description: |
+  The repo is empty, so a few choices before I generate anything. **Markdown.**
+lang: en
+sections:
+  Basics:                             # a page, titled
+    intro: What it is and who it's for.   # markdown under the page's title
+    fields:
+      name: {type: text, label: Project name, required: true}
+      stack:
+        type: radio
+        label: Stack
+        required: true
+        default: vite                 # your recommendation…
+        help: A small app; a static SPA is cheapest to host.   # …and why
+        options:
+          vite: Vite + React                                  # value: label
+          next: {label: Next.js, description: Server rendering}
+          astro:                                              # value alone: it is the label
+      features: {type: multiselect, label: Features, options: [auth, db, dark mode]}
+  Delivery:
+    showIf: {key: stack, notEquals: astro}   # the whole page, only while it holds
+    fields:
+      deploy: {type: checkbox, label: Deploy after}
+      polish: {type: slider, label: Polish, min: 1, max: 5, default: 3, minLabel: rough, maxLabel: pixel-perfect}
+      budget: {type: number, label: Budget (€), min: 0}
+      when: {type: date, label: Deadline}
+      email: {type: email, label: Your email}
+      api_token: {type: secret, label: API token}
+      hero:
+        type: radio
+        label: Hero image
+        options:
+          a: {label: Fjord, image: "{{asset:a.jpg}}"}
+          b: {label: Peaks, html: '<div style="width:360px">…</div>'}
+      layout:                         # a display block takes a name too (never in the answers)
+        type: html
+        label: Current layout
+        html: |
+          <svg …>…</svg>
 ```
 
+- A form of one page can give `fields:` in place of `sections:`.
+- Multi-line text (markdown, mockups, diffs): a `|` block, indented under its
+  key, written as is, no escaping.
+- Quote a text that holds `: ` or ` #` (a comment starts there), or starts with
+  one of `[ { & * ! | > ' " % @ -`. Only `true` / `false` are booleans;
+  `yes`, `no`, `22:00` and `3.10` stay as you wrote them.
+- A key given twice is an error, with its line: `form.yaml:14: key "stack" appears twice`.
+- Options may also be a plain list of texts, each its own value and label:
+  `options: [nit, should, must]`.
+- The JSON array of fields of older ask-form versions is still read
+  (`ask-form create --title T --fields-file spec.json`), with `group` naming
+  each field's page.
 - Types: `text textarea number select multiselect radio checkbox slider date email secret
   time datetime daterange rating list widget`, plus the display blocks `markdown`, `html` (no
   scripts; inline styles are fine), `diff` and `details`.
   A `widget` is a control you write yourself: see "Widgets" below.
 - A slider's `minLabel` / `maxLabel` name its two ends (shown beside the numbers).
 - `rating`: one tap on a scale, `min` (default 1) to `max` (default 5, at most 11
-  steps), drawn as `"style":"stars"` (the default up to 7) or `"numbers"` (an NPS
+  steps), drawn as `style: stars` (the default up to 7) or `numbers` (an NPS
   is `min 0, max 10`); `minLabel` / `maxLabel` as on a slider. → a number.
 - `time` (HH:MM), `datetime` (YYYY-MM-DDTHH:MM, the person's own clock, no zone)
   and `daterange` (two dates, the end not before the start).
 - `list`: rows the person adds and removes. Without `columns` each row is one text
-  (→ an array of strings); with `"columns":[{"key","label","type":"text|number|select","options"}]`
-  it is a table (→ an array of objects, blank cells left out). `min` / `max` bound
-  the rows (default max 50); `required` needs one filled row.
+  (→ an array of strings); with `columns`, keyed like fields
+  (`where: {label: Where}`, `severity: {type: select, options: [nit, must]}`; `type`
+  text, number or select) it is a table (→ an array of objects, blank cells left
+  out). `min` / `max` bound the rows (default max 50); `required` needs one filled row.
 - `diff` shows a unified diff (`text`), added and removed lines tinted, scrolling
   sideways on a phone. `details` is a collapsible section: `label` is its summary,
-  `text` its markdown, `"open":true` starts it expanded. Both ask nothing.
+  `text` its markdown, `open: true` starts it expanded. Both ask nothing.
 - `file` is a field type too (see Files above).
-- Any field takes `required`, `default`, `help` and `group`. Past ~4 questions,
-  give them `group`s: each group is one page.
+- Any field takes `required`, `default` and `help`. Past ~4 questions, split
+  them into sections: each section is one page.
 - Every choice field gets an "Other…" free-text choice (on a select or radio
   it can be ticked next to the option, to add a detail), and every form ends
   with an optional `anything_else` textarea. Don't add your own. Both take
@@ -160,7 +212,7 @@ or a choice field takes the paperclip off. None in a `--multi` form.
   (`columns` 1–6 changes that count, never the phone's). Each card is the
   picture over a title bar (the check, `label`, `description`); give every
   option a `label`. A card takes the ratio of what it shows, unless the field
-  sets `"aspect"`: `"1/2"` (tall), `"1"` or `"2/1"` (wide). Draw a mockup at a
+  sets `aspect`: `1/2` (tall), `1` or `2/1` (wide). Draw a mockup at a
   fixed width (240–600 px): it is scaled to fill its card, and the fullscreen
   view, whole; a photo fills its card, cropped.
 - Colour an `html` block or mockup with the theme variables
@@ -176,9 +228,16 @@ or a choice field takes the paperclip off. None in a `--multi` form.
 When no field type fits (drag items onto a grid, tap a mockup, tune a colour,
 sketch), write the control as HTML plus script. What it reports is the answer.
 
-```json
-{"key":"spot","label":"Where should the button go?","type":"widget","schema":"object","required":true,"height":320,
- "html":"<div id=p style=\"height:300px\"></div><script>p.onclick=e=>askForm.setValue({x:e.offsetX,y:e.offsetY})</script>"}
+```yaml
+spot:
+  type: widget
+  label: Where should the button go?
+  schema: object
+  required: true
+  height: 320
+  html: |
+    <div id=p style="height:300px"></div>
+    <script>p.onclick = e => askForm.setValue({x: e.offsetX, y: e.offsetY})</script>
 ```
 
 - It runs in a locked frame: its own origin, **no network** (no fetch, no remote
@@ -230,22 +289,22 @@ Any field or block takes `showIf`; it is drawn, and counted, only while the
 condition holds. A hidden question is not required and is left out of `answers`
 (the server checks it too, whatever the browser sent). `requiredIf` makes a
 question required while its condition holds. A condition looks at questions
-**above** it in the spec:
+**above** it in the file:
 
-```json
-{"key":"stack","type":"radio","options":["Vite","Next"]},
-{"key":"ssr","type":"checkbox","label":"Server rendering","showIf":{"key":"stack","equals":"Next"}},
-{"key":"region","type":"text","showIf":{"key":"ssr","equals":true},"requiredIf":{"key":"ssr","equals":true}}
+```yaml
+stack: {type: radio, options: [Vite, Next]}
+ssr: {type: checkbox, label: Server rendering, showIf: {key: stack, equals: Next}}
+region: {type: text, showIf: {key: ssr, equals: true}, requiredIf: {key: ssr, equals: true}}
 ```
 
-- A test is `{"key":"q","<op>":value}` with one op: `equals`, `notEquals`, `in`
+- A test is `{key: q, <op>: value}` with one op: `equals`, `notEquals`, `in`
   (a list), `includes` (a multiselect or list holds the value, or a text contains it),
   `gt` `gte` `lt` `lte` (numbers, ratings, sliders) or `answered` (true / false).
-- Combine with `{"all":[…]}`, `{"any":[…]}` and `{"not":{…}}` (nest at most 4 deep).
+- Combine with `{all: […]}`, `{any: […]}` and `{not: {…}}` (nest at most 4 deep).
 - A test on a hidden question fails, so hiding cascades to what hangs on it
   (`notEquals` and `answered:false` included).
-- A page (`group`) whose questions are all hidden disappears; to skip a page, give
-  each of its fields the same `showIf`.
+- A page whose questions are all hidden disappears. To skip a page, give the
+  section a `showIf`: it holds for each of its fields, on top of their own.
 - You can't test a `secret` or a block.
 
 ## Other commands

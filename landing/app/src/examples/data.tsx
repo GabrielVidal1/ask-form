@@ -1,8 +1,8 @@
 // The examples the landing cycles through: what you type, what the agent says
 // back, and the form it sends. Each one mirrors a real demo form under
-// /examples/<name> (examples/<name>/spec.json), so "Answer it yourself" opens
+// /examples/<name> (examples/<name>/spec.yaml), so "Answer it yourself" opens
 // the same questions. data.fr.tsx is the French page's copy of this list, in
-// the same order and shape, mirroring examples/<name>/spec.fr.json.
+// the same order and shape, mirroring examples/<name>/spec.fr.yaml.
 import type { ComponentType } from 'react'
 import { Code, KeyRound, Sparkles, Users, type LucideIcon } from 'lucide-react'
 

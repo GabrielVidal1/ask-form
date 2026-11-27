@@ -210,6 +210,7 @@ func TestFrenchExamples(t *testing.T) {
 	for i, fr := range sets[i18n.FR] {
 		en := sets[i18n.EN][i]
 		get("/fr/examples/" + fr.Name)
+		get("/fr/examples/" + fr.Name + "/spec.yaml")
 		get("/fr/examples/" + fr.Name + "/spec.json")
 		if en.Name == "review-change" {
 			continue // its severity options are plain strings: the French text is the value

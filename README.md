@@ -88,7 +88,15 @@ while the chat is open. Details in [how it works](docs/how-it-works.md#in-claude
 ## Use
 
 ```bash
-ask-form create --title "Project setup" --fields-file spec.json
+cat > form.yaml <<'YAML'
+title: Project setup
+sections:
+  Stack:
+    fields:
+      stack: {type: radio, label: Which stack?, required: true, options: [Vite, Next]}
+      deploy: {type: checkbox, label: Deploy after}
+YAML
+ask-form create form.yaml
 # {"id":"project-setup_k3f9q2","status":"pending","url":"https://ask-form.xyz/f/project-setup_k3f9q2?token=…",…}
 
 ask-form wait project-setup_k3f9q2 --timeout 30m     # in the background

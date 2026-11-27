@@ -1,0 +1,61 @@
+title: 'Dépendances : 14 en retard'
+description: |-
+  `npm outdated` liste 14 paquets. Les 10 mises à jour mineures et correctifs passent les tests ensemble. J'ai lu les changelogs des 4 versions majeures au regard de ce code : voici ce que chacune toucherait. Choisissez le périmètre de ce tour.
+summary: |-
+  Tour de mises à jour : les paquets obsolètes avec ce que chaque montée de version majeure casse dans ce code, puis ceux qui passent maintenant.
+order: 7
+sections:
+  Ce qui est en retard:
+    fields:
+      the-four-majors:
+        type: markdown
+        label: Les quatre versions majeures
+        text: |-
+          | Paquet | Actuel → dernière | Ce que ça casse ici | Travail |
+          |---|---|---|---|
+          | react, react-dom | 18.3 → 19.2 | `forwardRef` dans 3 composants (`ref` est désormais une prop) | ~1 h |
+          | vite | 5.4 → 7.1 | Node 20.19+ requis ; notre config est compatible | ~15 min |
+          | eslint | 8.57 → 9.36 | `.eslintrc` doit devenir un `eslint.config.js` au format flat | ~30 min |
+          | zod | 3.23 → 4.1 | API des messages d'erreur renommée, 41 points d'appel | ~2 h |
+      majors:
+        type: multiselect
+        label: Quelles montées de version majeure faire maintenant ?
+        default: [vite, eslint, react]
+        help: Zod 4 est le seul qui demande vraiment du travail ; je lui consacrerais un tour à part.
+        options:
+          react: {label: React 19, description: 3 composants}
+          vite: Vite 7
+          eslint: {label: ESLint 9, description: Je réécris la config}
+          zod: {label: Zod 4, description: 41 points d'appel}
+      minor:
+        type: checkbox
+        label: Appliquer aussi les 10 mises à jour mineures et correctifs
+        default: true
+  Livraison:
+    fields:
+      delivery:
+        type: radio
+        label: Comment les voulez-vous ?
+        required: true
+        default: pr-each
+        options:
+          pr-each:
+            label: Une PR par version majeure, une pour le reste
+            description: Facile d'en annuler une
+          one-pr: Une seule PR pour tout
+          main: Directement sur main une fois les tests au vert
+      node:
+        type: select
+        label: Version de Node (.nvmrc et CI)
+        default: '22'
+        options: {'20': 20 (≥ 20.19 requis pour Vite 7), '22': 22 LTS, '24': '24'}
+      keep_current:
+        type: radio
+        label: Après ce tour
+        default: renovate
+        options:
+          renovate:
+            label: Configurer Renovate
+            description: PR groupées chaque semaine ; les correctifs se fusionnent tout seuls quand la CI est verte
+          dependabot: Configurer Dependabot
+          nothing: 'Rien : reposez-moi la question dans quelques mois'

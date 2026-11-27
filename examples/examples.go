@@ -1,7 +1,7 @@
 // Package examples embeds the demo forms shown at /examples: one directory
-// per example, a spec.json (title, summary, description, order, fields — the
-// same field spec `ask-form create` takes) and the images it references as
-// {{asset:<file>}}.
+// per example, a spec.yaml (the form file `ask-form create` takes — title,
+// description, sections — plus an example's summary, order and multi), its
+// French twin spec.fr.yaml, and the images it references as {{asset:<file>}}.
 package examples
 
 import "embed"

@@ -1,0 +1,75 @@
+title: 'Stripe + Sentry : clés et paramètres'
+description: |-
+  Le code de facturation est prêt sur `feat/billing` ; il lui faut vos clés. **Les champs secrets ne me parviennent jamais** : je sais seulement qu'ils sont renseignés et leur longueur, et ils vont directement dans `.env.local`. Des clés en mode test suffisent pour l'instant.
+summary: |-
+  Des identifiants sans passer par le chat : les champs secrets vont directement dans .env, l'agent apprend seulement qu'ils sont renseignés.
+order: 3
+sections:
+  Stripe:
+    fields:
+      where-to-find:
+        type: markdown
+        label: Où les trouver
+        text: |-
+          Tableau de bord Stripe → **Developers → API keys**, mode test activé. Le secret du webhook peut attendre : si vous le laissez vide, je crée l'endpoint avec la CLI Stripe et je le renseigne moi-même.
+      stripe_secret_key: {type: secret, label: Clé secrète Stripe (`sk_test_…`), required: true}
+      stripe_webhook_secret: {type: secret, label: Secret de signature du webhook (`whsec_…`)}
+      billing_model:
+        type: radio
+        label: Pour quoi vos utilisateurs paient-ils ?
+        required: true
+        default: monthly
+        options:
+          one-time: Un achat unique
+          monthly: Un abonnement mensuel
+          monthly-yearly: {label: Mensuel ou annuel, description: Annuel = deux mois offerts}
+      pricing_page:
+        type: radio
+        label: Page de tarifs
+        required: true
+        default: toggle
+        help: Si vos utilisateurs peuvent payer à l'année, le sélecteur met l'économie en avant.
+        options:
+          one:
+            label: Une seule offre
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;"><div style="font-weight:750;font-size:16px;margin-bottom:2px">Pro</div><div style="font-size:34px;font-weight:800;letter-spacing:-.02em">9 €<small style="font-size:13px;color:hsl(var(--muted-foreground));font-weight:500">/mois</small></div><div style="height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))"></div><div style="height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))"></div><div style="height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))"></div><div style="margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0">S'abonner</div></div>
+          toggle:
+            label: Bascule mensuel / annuel
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;"><div style="display:flex;border:1px solid hsl(var(--border));border-radius:99px;padding:3px;font-size:11px;font-weight:600"><span style="padding:3px 10px;color:hsl(var(--muted-foreground))">Mensuel</span><span style="padding:3px 10px;border-radius:99px;background:hsl(var(--primary));color:#fff">Annuel</span></div><div style="font-size:34px;font-weight:800;letter-spacing:-.02em">90 €<small style="font-size:13px;color:hsl(var(--muted-foreground));font-weight:500">/an</small></div><div style="font-size:11px;font-weight:700;color:hsl(140 55% 36%)">2 mois offerts</div><div style="height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))"></div><div style="height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))"></div><div style="margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0">S'abonner</div></div>
+        aspect: 3/4
+      price: {type: number, label: Prix par mois, required: true, min: 1, step: 0.5, default: 9}
+      currency:
+        type: select
+        label: Devise
+        default: eur
+        options: {eur: EUR (€), usd: USD ($), gbp: GBP (£)}
+      stripe_tax:
+        type: checkbox
+        label: Laisser Stripe Tax calculer la TVA et les taxes de vente
+        default: true
+  Sentry:
+    fields:
+      sentry_dsn:
+        type: text
+        label: DSN Sentry
+        required: true
+        placeholder: https://…@o123456.ingest.sentry.io/789
+        help: |-
+          Sentry → Project settings → Client Keys. Ce n'est pas un secret : il est inclus dans le bundle du navigateur.
+      sentry_auth_token:
+        type: secret
+        label: Token d'authentification Sentry, pour téléverser les source maps
+        help: Facultatif. Sans lui, les stack traces pointent vers du code minifié.
+      environments:
+        type: multiselect
+        label: Remonter les erreurs depuis
+        default: [production, staging]
+        options: {production: Production, staging: Staging, local: Dev local}
+      trace_rate:
+        type: slider
+        label: Part des requêtes à tracer (%)
+        min: 0
+        max: 100
+        step: 5
+        default: 10
+        help: 10 % reste largement dans le quota du plan gratuit avec votre trafic.
