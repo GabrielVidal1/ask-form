@@ -64,3 +64,34 @@ func TestDeleteClosed(t *testing.T) {
 		t.Errorf("second delete: %v", err)
 	}
 }
+
+// OpenIDs: the forms still waiting for an answer, none closed or expired.
+func TestOpenIDs(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	fields := []form.Field{{Key: "a", Type: form.Text, Label: "A"}}
+	mk := func(ttl time.Duration) string {
+		st, _, err := s.Create(context.Background(), CreateParams{Title: "t", Fields: fields, TTL: ttl})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.ID
+	}
+	if ids := s.OpenIDs(); ids == nil || len(ids) != 0 {
+		t.Fatalf("empty store: %#v, want a non-nil []", ids)
+	}
+	answered, revoked, expiring, waiting := mk(time.Hour), mk(time.Hour), mk(time.Hour), mk(48*time.Hour)
+	s.Close(answered, Submitted, map[string]any{"a": "x"}, nil)
+	s.Close(revoked, Revoked, nil, nil)
+	now = now.Add(2 * time.Hour)
+	if ids := s.OpenIDs(); len(ids) != 1 || ids[0] != waiting {
+		t.Fatalf("OpenIDs = %v, want [%s] (not %s %s %s)", ids, waiting, answered, revoked, expiring)
+	}
+	if ids := s.RoutableIDs(); len(ids) != 4 {
+		t.Fatalf("RoutableIDs = %v: the closed ones still route", ids)
+	}
+}

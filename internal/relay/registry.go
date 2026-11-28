@@ -209,8 +209,14 @@ type Registration struct {
 	PerIP int
 	// MaxMachines caps the self-registered machines kept (default 1000).
 	MaxMachines int
-	// MaxForms caps the open forms of one self-registered machine (default 50).
+	// MaxForms caps the forms of one self-registered machine that wait for an
+	// answer (default 50).
 	MaxForms int
+	// MaxClosed caps the closed forms it routes besides, to their thank-you
+	// page (default 10 × MaxForms); past it a closed form's link shows "not
+	// found". They take no MaxForms slot, so a busy agent isn't stopped by
+	// the forms that were answered.
+	MaxClosed int
 	// ForgetAfter drops a self-registered machine unseen this long
 	// (default 90 days; negative = never), and a key nobody used this long.
 	ForgetAfter time.Duration
@@ -234,6 +240,9 @@ func (c *Registration) defaults() {
 	}
 	if c.MaxForms <= 0 {
 		c.MaxForms = 50
+	}
+	if c.MaxClosed <= 0 {
+		c.MaxClosed = 10 * c.MaxForms
 	}
 	if c.ForgetAfter == 0 {
 		c.ForgetAfter = 90 * 24 * time.Hour

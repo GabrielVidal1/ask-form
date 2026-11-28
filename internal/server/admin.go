@@ -26,6 +26,8 @@ import (
 //	GET  /v1/forms/{id}/wait?timeout=50s
 //	POST /v1/forms/{id}/revoke
 //	POST /v1/forms/{id}/close      a multi form stops taking answers
+//	DELETE /v1/forms/{id}          forget it and everything kept of it
+//	POST /v1/prune                 {"closedFor": "48h"} → delete the forms closed that long
 //	POST /v1/forms/{id}/secret     {"key", "forget"} → the value
 //	GET  /v1/forms/{id}/snapshot   the form as it closed, one HTML page (snapshot.go)
 //	GET  /v1/health
@@ -117,6 +119,8 @@ func (s *Server) adminHandler() http.Handler {
 	mux.HandleFunc("GET /v1/forms/{id}/wait", s.adminWait)
 	mux.HandleFunc("POST /v1/forms/{id}/revoke", s.adminRevoke)
 	mux.HandleFunc("POST /v1/forms/{id}/close", s.adminClose)
+	mux.HandleFunc("DELETE /v1/forms/{id}", s.adminDelete)
+	mux.HandleFunc("POST /v1/prune", s.adminPrune)
 	mux.HandleFunc("POST /v1/forms/{id}/secret", s.adminSecret)
 	mux.HandleFunc("GET /v1/forms/{id}/snapshot", s.adminSnapshot)
 	mux.HandleFunc("POST /v1/restart", s.adminRestart)
@@ -374,6 +378,52 @@ func (s *Server) adminClose(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) adminRevoke(w http.ResponseWriter, r *http.Request) {
 	s.closeWith(w, r.PathValue("id"), store.Revoked)
+}
+
+// adminDelete forgets a form and everything kept of it, its answers too. One
+// still waiting is withdrawn first (revoked, or closed for a multi form), so
+// a waiter and the events feed (a hub mirroring this machine's forms) see it
+// end rather than vanish.
+func (s *Server) adminDelete(w http.ResponseWriter, r *http.Request) {
+	st, ok := s.getOr404(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if st.Status == store.Pending {
+		typ := store.Revoked
+		if st.Multi {
+			typ = store.Closed
+		}
+		if closed, err := s.store.Close(st.ID, typ, nil, nil); err == nil {
+			st = closed
+			s.notify(st.Status, toJSON(st, false, true))
+		}
+	}
+	if err := s.store.Delete(st.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		apiError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	apiJSON(w, http.StatusOK, map[string]any{"id": st.ID, "status": st.Status, "deleted": true})
+}
+
+// adminPrune deletes every form closed (answered, declined, withdrawn or
+// expired) for longer than closedFor ("0s": every closed form). A form still
+// waiting for an answer is never pruned.
+func (s *Server) adminPrune(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ClosedFor string `json:"closedFor"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "bad body: "+err.Error())
+		return
+	}
+	keep, err := time.ParseDuration(req.ClosedFor)
+	if err != nil || keep < 0 {
+		apiError(w, http.StatusBadRequest, "closedFor: a duration like 48h, 0s or more")
+		return
+	}
+	gone := append([]string{}, s.store.DeleteClosed(keep)...)
+	apiJSON(w, http.StatusOK, map[string]any{"deleted": gone, "count": len(gone)})
 }
 
 func (s *Server) closeWith(w http.ResponseWriter, id, typ string) {

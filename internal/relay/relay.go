@@ -114,11 +114,19 @@ type machine struct {
 	lastPoll    time.Time
 	version     string
 	activePolls int
+	// states: its last poll said which of its forms still wait for an answer
+	// (PollRequest.Open). An older machine doesn't, and all its forms count
+	// toward the cap.
+	states bool
 }
 
 type claim struct {
 	machine string
 	seen    time.Time
+	// open: still waiting for an answer, so it takes one of the machine's
+	// MaxForms slots; a closed form is only routed (its thank-you page),
+	// under MaxClosed.
+	open bool
 }
 
 type pending struct {
@@ -286,29 +294,8 @@ func (r *Relay) poll(w http.ResponseWriter, req *http.Request) {
 	if m.lastPoll.IsZero() || now.Sub(m.lastPoll) > onlineAfter {
 		log.Printf("relay: machine %s online (%d forms, %s)", name, len(pr.Forms), ver)
 	}
-	m.lastPoll, m.version = now, ver
-	capped := r.self(name)
-	room := 0
-	if capped {
-		room = r.cfg.Register.MaxForms - r.claimsOf(name)
-	}
-	for _, id := range pr.Forms {
-		if !store.ValidID(id) || r.cloudHas(id) {
-			continue
-		}
-		c := r.claims[id]
-		if c == nil {
-			if capped && room <= 0 {
-				continue
-			}
-			if capped {
-				room--
-			}
-			r.claims[id] = &claim{machine: name, seen: now}
-		} else if c.machine == name {
-			c.seen = now
-		}
-	}
+	m.lastPoll, m.version, m.states = now, ver, pr.Open != nil
+	r.announce(name, pr, now)
 	q := m.queue
 	r.mu.Unlock()
 	defer func() {
@@ -398,11 +385,13 @@ func (r *Relay) claim(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "taken", http.StatusConflict)
 		return
 	}
-	if c == nil && r.self(name) && r.claimsOf(name) >= r.cfg.Register.MaxForms {
-		http.Error(w, fmt.Sprintf("this machine has %d open forms, the most this relay keeps: revoke some (ask-form list --status pending)", r.cfg.Register.MaxForms), http.StatusTooManyRequests)
-		return
+	if c == nil && r.self(name) {
+		if open, _ := r.claimsOf(name); open >= r.cfg.Register.MaxForms {
+			http.Error(w, r.fullMessage(name), http.StatusTooManyRequests)
+			return
+		}
 	}
-	r.claims[cr.ID] = &claim{machine: name, seen: time.Now()}
+	r.claims[cr.ID] = &claim{machine: name, seen: time.Now(), open: true}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"ok":true}`))
 }
@@ -413,6 +402,9 @@ type HealthInfo struct {
 	PublicURL string        `json:"publicUrl,omitempty"`
 	Machines  []MachineInfo `json:"machines"`
 	Forms     int           `json:"forms"`
+	// Open: the part of Forms still waiting for an answer, what a
+	// self-registered machine's cap counts.
+	Open int `json:"open"`
 }
 
 // MachineInfo describes one machine.
@@ -422,6 +414,7 @@ type MachineInfo struct {
 	LastPoll time.Time `json:"lastPoll"`
 	Version  string    `json:"version,omitempty"`
 	Forms    int       `json:"forms"`
+	Open     int       `json:"open"`
 }
 
 func (r *Relay) health(w http.ResponseWriter, req *http.Request) {
@@ -429,15 +422,97 @@ func (r *Relay) health(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(r.Health(req.Header.Get("X-Ask-Machine")))
 }
 
-// claimsOf counts a machine's routed forms (r.mu held).
-func (r *Relay) claimsOf(name string) int {
-	n := 0
+// claimsOf counts a machine's routed forms (r.mu held): the ones still
+// waiting for an answer, and the closed ones.
+func (r *Relay) claimsOf(name string) (open, closed int) {
 	for _, c := range r.claims {
-		if c.machine == name {
-			n++
+		if c.machine != name {
+			continue
+		}
+		if c.open {
+			open++
+		} else {
+			closed++
 		}
 	}
-	return n
+	return open, closed
+}
+
+// fullMessage tells a self-registered machine at its cap how to make room
+// (r.mu held). A machine that doesn't send PollRequest.Open counts its closed
+// forms too, and only an upgrade changes that: revoking frees nothing there.
+func (r *Relay) fullMessage(name string) string {
+	max := r.cfg.Register.MaxForms
+	if m := r.machines[name]; m == nil || !m.states {
+		return fmt.Sprintf("this machine has %d forms, the most this relay keeps, and its version counts the closed ones too: upgrade it (ask-form upgrade) so that only the forms waiting for an answer count", max)
+	}
+	return fmt.Sprintf("this machine has %d forms waiting for an answer, the most this relay keeps at once: revoke the ones nobody will answer (ask-form list --status pending, then ask-form revoke <id>)", max)
+}
+
+// announce records the forms a machine's poll lists (r.mu held). A
+// self-registered machine routes at most MaxForms forms waiting for an
+// answer and MaxClosed closed ones, which still show their thank-you page;
+// an older machine, which doesn't send PollRequest.Open, has every form it
+// lists counted as open. A form the machine stopped listing keeps its route
+// until claimTTL (prune), but no longer its slot.
+func (r *Relay) announce(name string, pr tunnel.PollRequest, now time.Time) {
+	var open map[string]bool
+	if pr.Open != nil {
+		open = make(map[string]bool, len(pr.Open))
+		for _, id := range pr.Open {
+			open[id] = true
+		}
+	}
+	isOpen := func(id string) bool { return open == nil || open[id] }
+	var fresh []string
+	for _, id := range pr.Forms {
+		if !store.ValidID(id) || r.cloudHas(id) {
+			continue
+		}
+		switch c := r.claims[id]; {
+		case c == nil:
+			fresh = append(fresh, id)
+		case c.machine == name:
+			c.seen, c.open = now, isOpen(id)
+		}
+	}
+	capped := r.self(name)
+	openRoom, closedRoom := 0, 0
+	if capped || open != nil {
+		nOpen, nClosed := 0, 0
+		for _, c := range r.claims {
+			if c.machine != name {
+				continue
+			}
+			if open != nil && !c.seen.Equal(now) {
+				c.open = false
+			}
+			if c.open {
+				nOpen++
+			} else {
+				nClosed++
+			}
+		}
+		openRoom = r.cfg.Register.MaxForms - nOpen
+		closedRoom = r.cfg.Register.MaxClosed - nClosed
+	}
+	for _, id := range fresh {
+		if r.claims[id] != nil { // listed twice
+			continue
+		}
+		isOpen := isOpen(id)
+		if capped {
+			room := &closedRoom
+			if isOpen {
+				room = &openRoom
+			}
+			if *room <= 0 {
+				continue
+			}
+			*room--
+		}
+		r.claims[id] = &claim{machine: name, seen: now, open: isOpen}
+	}
 }
 
 // Health summarises the machines and routes. A self-registered caller only
@@ -446,12 +521,16 @@ func (r *Relay) Health(caller string) HealthInfo {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	h := HealthInfo{Machine: caller, Forms: len(r.claims), PublicURL: r.cfg.PublicURL}
-	count := map[string]int{}
+	count, open := map[string]int{}, map[string]int{}
 	for _, c := range r.claims {
 		count[c.machine]++
+		if c.open {
+			open[c.machine]++
+			h.Open++
+		}
 	}
 	if r.self(caller) {
-		h.Forms = count[caller]
+		h.Forms, h.Open = count[caller], open[caller]
 	}
 	for _, m := range r.machines {
 		if r.self(caller) && m.name != caller {
@@ -459,7 +538,7 @@ func (r *Relay) Health(caller string) HealthInfo {
 		}
 		h.Machines = append(h.Machines, MachineInfo{
 			Name: m.name, Online: time.Since(m.lastPoll) < onlineAfter, LastPoll: m.lastPoll,
-			Version: m.version, Forms: count[m.name],
+			Version: m.version, Forms: count[m.name], Open: open[m.name],
 		})
 	}
 	sort.Slice(h.Machines, func(i, j int) bool { return h.Machines[i].Name < h.Machines[j].Name })

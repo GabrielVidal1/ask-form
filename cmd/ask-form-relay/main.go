@@ -37,7 +37,7 @@ import (
 const usage = `ask-form-relay — public relay for ask-form
 
   ask-form-relay serve [--listen :8080] [--machine-listen :8081] [--machines FILE] [--client-ip-header X-Real-Ip]
-                       [--register open|closed] [--max-forms 50] [--register-per-ip 5] [--forget-after 2160h]
+                       [--register open|closed] [--max-forms 50] [--max-closed 500] [--register-per-ip 5] [--forget-after 2160h]
                        [--keys FILE] [--register-per-key 20] [--forget-ephemeral 48h] [--web-keys-per-ip 3]
                        [--public-url https://ask-form.xyz] [--trust-cloudflare]
                        [--hosted DIR [--cloud-retention 24h] [--cloud-max-open 20] [--cloud-per-day 100]]
@@ -111,7 +111,8 @@ func serve(args []string, machines, keys string) int {
 	publicURL := fs.String("public-url", os.Getenv("ASK_FORM_RELAY_PUBLIC_URL"), "origin form links should use, announced to the machines (e.g. https://ask-form.xyz)")
 	trustCF := fs.Bool("trust-cloudflare", os.Getenv("ASK_FORM_RELAY_TRUST_CLOUDFLARE") == "1", "behind a Cloudflare-proxied domain: take the visitor from Cf-Connecting-Ip when the request comes from a Cloudflare edge")
 	register := fs.String("register", envOr("ASK_FORM_RELAY_REGISTER", "closed"), "open: machines may register themselves; closed: only `machine add` tokens")
-	maxForms := fs.Int("max-forms", envInt("ASK_FORM_RELAY_MAX_FORMS", 50), "open forms per self-registered machine")
+	maxForms := fs.Int("max-forms", envInt("ASK_FORM_RELAY_MAX_FORMS", 50), "forms waiting for an answer per self-registered machine")
+	maxClosed := fs.Int("max-closed", envInt("ASK_FORM_RELAY_MAX_CLOSED", 0), "closed forms a self-registered machine still routes to their thank-you page (0 = 10 × --max-forms)")
 	perIP := fs.Int("register-per-ip", envInt("ASK_FORM_RELAY_REGISTER_PER_IP", 5), "self-registrations per address per day")
 	maxMachines := fs.Int("max-machines", envInt("ASK_FORM_RELAY_MAX_MACHINES", 1000), "self-registered machines kept at most")
 	forget := fs.Duration("forget-after", 90*24*time.Hour, "drop a self-registered machine unseen this long (negative: never)")
@@ -166,7 +167,7 @@ func serve(args []string, machines, keys string) int {
 			return ""
 		}),
 		Register: relay.Registration{
-			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, ForgetAfter: *forget,
+			Open: *register == "open", PerIP: *perIP, MaxMachines: *maxMachines, MaxForms: *maxForms, MaxClosed: *maxClosed, ForgetAfter: *forget,
 			PerKey: *perKey, ForgetEphemeral: *forgetEph, WebKeysPerIP: *webKeys,
 		},
 		Files: map[string]relay.File{
