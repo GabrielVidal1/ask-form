@@ -2,7 +2,7 @@
 // prints a private link, the answers come back as JSON with `wait`.
 //
 //	ask-form serve                         run the form server (once per machine)
-//	ask-form create --title T --fields-file spec.json [--asset img.png]… [--multi [--max N]]
+//	ask-form create form.yaml [--asset img.png]… [--multi [--max N]]   (or --title T --fields-file spec.json)
 //	ask-form wait <id> [--timeout 30m]     block until answered (exit 0), closed (3), timeout (4)
 //	ask-form get <id> | list | revoke <id> | close <id> | delete <id> | prune | status
 //	ask-form secret <id> <key> --env FILE VAR | --file PATH | --stdout
@@ -32,11 +32,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/GabrielVidal1/ask-form/internal/brand"
+	"github.com/GabrielVidal1/ask-form/internal/form"
 	"github.com/GabrielVidal1/ask-form/internal/i18n"
 	"github.com/GabrielVidal1/ask-form/internal/server"
 	"github.com/GabrielVidal1/ask-form/internal/store"
@@ -68,7 +70,8 @@ Branding (once per machine; every form it serves):
   ask-form brand preview [FILE.css] [the flags of set] [--lang en|fr] [--no-open]
 
 Client (JSON on stdout):
-  ask-form create --title T (--fields JSON | --fields-file F | stdin) [--description D]
+  ask-form create FORM.yaml | - [--title T] [--description D] (the form file: title, description,
+                  sections; or the JSON field array via --fields JSON | --fields-file F | stdin)
                   [--asset FILE]… [--ttl 24h] [--name NAME] [--meta k=v]… [--notify-cmd CMD]
                   [--public]           url = the relay link (default for one person: this machine's)
                   [--open]             also open the url in this desktop's browser
@@ -544,10 +547,10 @@ func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func cmdCreate(args []string) int {
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
-	title := fs.String("title", "", "form title (required)")
-	desc := fs.String("description", "", "intro shown under the title (markdown)")
-	fieldsJSON := fs.String("fields", "", "field spec as a JSON array")
-	fieldsFile := fs.String("fields-file", "", "file holding the field spec")
+	title := fs.String("title", "", "form title (default: the form file's)")
+	desc := fs.String("description", "", "intro shown under the title, markdown (default: the form file's)")
+	fieldsJSON := fs.String("fields", "", "the form inline: a JSON field array, or a form file's text")
+	fieldsFile := fs.String("fields-file", "", "the form file (same as the FILE argument)")
 	ttl := fs.String("ttl", "24h", "how long the form stays open")
 	name := fs.String("name", "", "form name (default: from the title); a _<hash> suffix is always added")
 	notifyCmd := fs.String("notify-cmd", os.Getenv("ASK_FORM_NOTIFY_CMD"), "shell command run after create with ASK_FORM_ID/TITLE/URL/EXPIRES_AT in its env")
@@ -562,36 +565,67 @@ func cmdCreate(args []string) int {
 	var assets, meta multi
 	fs.Var(&assets, "asset", "image referenced as {{asset:<basename>}} (repeatable)")
 	fs.Var(&meta, "meta", "k=v label kept with the form (repeatable)")
-	if pos := interleaved(fs, args); len(pos) > 0 {
-		return fail(exitUsage, "create takes no positional argument (got %q)", pos[0])
+	pos := interleaved(fs, args)
+	if len(pos) > 1 {
+		return fail(exitUsage, "create takes one form file (got %q and %q)", pos[0], pos[1])
 	}
-	if strings.TrimSpace(*title) == "" {
-		return fail(exitUsage, "--title is required")
-	}
-	raw := *fieldsJSON
-	if *fieldsFile != "" {
-		b, err := os.ReadFile(*fieldsFile)
-		if err != nil {
-			return fail(exitErr, "--fields-file: %v", err)
+	file := *fieldsFile
+	if len(pos) == 1 {
+		if file != "" {
+			return fail(exitUsage, "give the form file once: as the argument or as --fields-file")
 		}
-		raw = string(b)
+		file = pos[0]
 	}
-	if raw == "" {
+	raw, where := *fieldsJSON, "--fields"
+	switch {
+	case file == "-":
+		b, _ := io.ReadAll(io.LimitReader(os.Stdin, 16<<20))
+		raw, where = string(b), "stdin"
+	case file != "":
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return fail(exitErr, "%v", err)
+		}
+		raw, where = string(b), file
+	case raw == "":
 		if fi, _ := os.Stdin.Stat(); fi != nil && fi.Mode()&os.ModeCharDevice == 0 {
 			b, _ := io.ReadAll(io.LimitReader(os.Stdin, 16<<20))
-			raw = string(b)
+			raw, where = string(b), "stdin"
 		}
 	}
 	if strings.TrimSpace(raw) == "" {
-		return fail(exitUsage, "no fields (use --fields, --fields-file or stdin)")
+		return fail(exitUsage, "no form: give the form file (ask-form create form.yaml), or --fields, or stdin")
 	}
-	if !json.Valid([]byte(raw)) {
-		return fail(exitUsage, "the field spec is not valid JSON")
+	doc, err := form.ParseDoc([]byte(raw))
+	if err != nil {
+		if ye := (*form.YAMLError)(nil); errors.As(err, &ye) {
+			return fail(exitUsage, "%s:%d: %s", where, ye.Line, ye.Msg)
+		}
+		return fail(exitUsage, "%s: %v", where, err)
 	}
+	for k := range doc.Extra {
+		if slices.Contains([]string{"ttl", "multi", "max", "public", "open", "name", "meta", "asset", "assets"}, k) {
+			return fail(exitUsage, "%s: %q goes on the command line (--%s), not in the form file", where, k, strings.TrimSuffix(k, "s"))
+		}
+		return fail(exitUsage, "%s: no key %q in a form file (%s)", where, k, strings.Join(form.DocKeys, ", "))
+	}
+	if strings.TrimSpace(*title) == "" {
+		*title = doc.Title
+	}
+	if strings.TrimSpace(*title) == "" {
+		return fail(exitUsage, "the form needs a title: title: in the form file, or --title")
+	}
+	if *desc == "" {
+		*desc = doc.Description
+	}
+	if *langFlag == "" {
+		*langFlag = doc.Lang
+	}
+	raw = string(doc.Fields)
 	if (*maxAnswers != 0 || *hideCount) && !*multiAnswers {
 		return fail(exitUsage, "--max and --hide-count go with --multi")
 	}
-	body := map[string]any{"title": *title, "description": *desc, "fields": json.RawMessage(raw), "ttl": *ttl, "name": *name}
+	body := map[string]any{"title": *title, "description": *desc, "fields": doc.Fields, "ttl": *ttl, "name": *name}
 	if *multiAnswers {
 		body["multi"], body["maxAnswers"], body["hideCount"] = true, *maxAnswers, *hideCount
 	}

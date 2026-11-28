@@ -1,0 +1,71 @@
+title: 'Stripe + Sentry: keys and settings'
+description: |-
+  The billing code is ready on `feat/billing`; it needs your keys. **Secret fields never reach me**: I only learn they're set and how long they are, and they go straight into `.env.local`. Test-mode keys are fine for now.
+summary: |-
+  Credentials without the chat: secret fields go straight into .env, the agent only learns they're set.
+order: 3
+sections:
+  Stripe:
+    fields:
+      where-to-find:
+        type: markdown
+        label: Where to find them
+        text: |-
+          Stripe dashboard → **Developers → API keys**, test mode on. The webhook secret can wait: if you leave it empty, I create the endpoint with the Stripe CLI and fill it in myself.
+      stripe_secret_key: {type: secret, label: Stripe secret key (`sk_test_…`), required: true}
+      stripe_webhook_secret: {type: secret, label: Webhook signing secret (`whsec_…`)}
+      billing_model:
+        type: radio
+        label: What do people pay for?
+        required: true
+        default: monthly
+        options:
+          one-time: A one-time purchase
+          monthly: A monthly subscription
+          monthly-yearly: {label: Monthly or yearly, description: Yearly = two months free}
+      pricing_page:
+        type: radio
+        label: Pricing page
+        required: true
+        default: toggle
+        help: If people can pay yearly, the toggle shows the saving up front.
+        options:
+          one:
+            label: One plan
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;"><div style="font-weight:750;font-size:16px;margin-bottom:2px">Pro</div><div style="font-size:34px;font-weight:800;letter-spacing:-.02em">€9<small style="font-size:13px;color:hsl(var(--muted-foreground));font-weight:500">/mo</small></div><div style="height:9px;width:70%;border-radius:5px;background:hsl(var(--muted))"></div><div style="height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))"></div><div style="height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))"></div><div style="margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0">Subscribe</div></div>
+          toggle:
+            label: Monthly / yearly toggle
+            html: <div style="width:240px;height:320px;box-sizing:border-box;padding:16px 14px;background:hsl(var(--card));color:hsl(var(--foreground));font:12px/1.25 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:9px;align-items:center;text-align:center;"><div style="display:flex;border:1px solid hsl(var(--border));border-radius:99px;padding:3px;font-size:11px;font-weight:600"><span style="padding:3px 10px;color:hsl(var(--muted-foreground))">Monthly</span><span style="padding:3px 10px;border-radius:99px;background:hsl(var(--primary));color:#fff">Yearly</span></div><div style="font-size:34px;font-weight:800;letter-spacing:-.02em">€90<small style="font-size:13px;color:hsl(var(--muted-foreground));font-weight:500">/yr</small></div><div style="font-size:11px;font-weight:700;color:hsl(140 55% 36%)">2 months free</div><div style="height:9px;width:60%;border-radius:5px;background:hsl(var(--muted))"></div><div style="height:9px;width:50%;border-radius:5px;background:hsl(var(--muted))"></div><div style="margin-top:auto;width:100%;border-radius:9px;background:hsl(var(--primary));color:#fff;font-weight:700;padding:9px 0">Subscribe</div></div>
+        aspect: 3/4
+      price: {type: number, label: Price per month, required: true, min: 1, step: 0.5, default: 9}
+      currency:
+        type: select
+        label: Currency
+        default: eur
+        options: {eur: EUR (€), usd: USD ($), gbp: GBP (£)}
+      stripe_tax: {type: checkbox, label: Let Stripe Tax work out VAT and sales tax, default: true}
+  Sentry:
+    fields:
+      sentry_dsn:
+        type: text
+        label: Sentry DSN
+        required: true
+        placeholder: https://…@o123456.ingest.sentry.io/789
+        help: 'Sentry → Project settings → Client Keys. Not a secret: it ships in the browser bundle.'
+      sentry_auth_token:
+        type: secret
+        label: Sentry auth token, for uploading source maps
+        help: Optional. Without it, stack traces point into minified code.
+      environments:
+        type: multiselect
+        label: Report errors from
+        default: [production, staging]
+        options: {production: Production, staging: Staging, local: Local dev}
+      trace_rate:
+        type: slider
+        label: Share of requests to trace (%)
+        min: 0
+        max: 100
+        step: 5
+        default: 10
+        help: 10 % stays well inside the free plan's quota at your traffic.

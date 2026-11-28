@@ -20,7 +20,9 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   session — Claude's code sandbox — registered with a key, detached, no local
   listener, no self-upgrade) and `skill export --claude-ai`.
   `cmd/ask-form-relay`: the relay (`machine` and `key` commands).
-- `internal/form` (spec, answers, markdown), `internal/store` (files),
+- `internal/form` (spec, answers, markdown; the form file: `doc.go` reads
+  YAML or JSON into the flat field array, `yaml.go` is the YAML subset reader),
+  `internal/store` (files),
   `internal/server` (answer pages under `/f/`, admin API, security),
   `internal/tunnel` (relay ⇄ machine long-poll), `internal/relay` (public
   side, machine API, open registration in `registry.go`, registration keys
@@ -148,13 +150,26 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   translations: a machine's language doesn't wait on a relay). A new string
   needs its French entry: `TestCatalogueComplete` fails otherwise, and a
   script string also goes in `jsKeys`. Another language = one file like
-  `fr.go` (catalogue, plural rule, date) plus `examples/*/spec.<lang>.json`.
-  The relay serves `/fr/examples` from `spec.fr.json`; the not-found page
+  `fr.go` (catalogue, plural rule, date) plus `examples/*/spec.<lang>.yaml`.
+  The relay serves `/fr/examples` from `spec.fr.yaml`; the not-found page
   stays English (same bytes for every unknown link).
-- `examples/<name>/spec.json` (+ images): adding one = a new folder plus a
+- `examples/<name>/spec.yaml` (+ images): adding one = a new folder plus a
   relay rebuild; `internal/server/examples_test.go` checks each renders. Its
-  French twin `spec.fr.json` keeps every key, type, option value and
-  condition; only the text a person reads changes.
+  French twin `spec.fr.yaml` keeps every key (display blocks' names
+  included), type, option value and condition; only the text a person reads
+  changes (section titles too: they are text, not keys of the answers).
+  `/spec.json` still answers for each, with the form compiled to JSON.
+- A form file (`form.ParseDoc`: YAML, or JSON of the same shape, or the old
+  flat JSON array) is compiled to the flat field array in the CLI, before
+  `POST /v1/forms`: sections become each field's `group`, a section's
+  `intro` a markdown block, its `showIf` AND-ed into its fields'. The
+  server, the relay, stored forms and MCP never see YAML, so a new CLI works
+  with an older `serve`. The YAML reader is a strict subset of YAML 1.2
+  (stdlib only): mappings keep their order (`*form.Map`: sections, fields,
+  options and columns appear as written), only true/false are booleans, a
+  number keeps its text (`json.Number`) and turns back into text wherever the
+  spec takes one (`textKeys` in `doc.go`: a new text key goes there); errors
+  carry the line. MCP's `create_form` still takes the JSON array.
 - The landing page is a React + Vite app in `landing/app/` (GSAP, lucide,
   `@gabvdl/ui` from public npm for `PhonePreview`/`ProgressiveText`). Its
   build in `landing/dist/` is **committed**, so the relay and CI build with Go
@@ -164,7 +179,7 @@ its flag table and the proxy limits (poll hold, body sizes) must follow
   The demo's examples (`app/src/examples/data.tsx`) mirror `examples/`.
   It exists in English (`/`) and French (`/fr`, `landing.PageFR`): every word
   is in `app/src/copy/{en,fr}.tsx` and `examples/data{,.fr}.tsx` (the French
-  one mirrors `spec.fr.json`), so a copy change touches both. The build
+  one mirrors `spec.fr.yaml`), so a copy change touches both. The build
   prerenders `dist/index.html` and `dist/fr/index.html` (shared `/assets/`);
   the relay gives each page the CSP of its own inline blocks.
 - `ASK_FORM_BENCH=1 go test -run TestTunnelLatency -v ./internal/relay`

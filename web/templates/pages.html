@@ -31,7 +31,7 @@
   <div class="demo-banner-in">
     {{if .Preview}}<p><strong>{{t "Brand preview."}}</strong> {{t "Your forms with this brand. Edit the CSS and reload to see the change; sending shows the JSON the agent reads back. Nothing is stored."}}</p>
     {{else}}<p><strong>{{t "Example form."}}</strong> {{t "What the person gets when an agent runs"}} <code>ask-form create</code>{{t "; sending shows the JSON the agent reads back. Nothing is stored."}}</p>{{end}}
-    <p class="demo-links"><a href="{{.Index}}">{{t "← All examples"}}</a> · <a href="{{.Spec}}">{{t "Field spec (JSON)"}}</a></p>
+    <p class="demo-links"><a href="{{.Index}}">{{t "← All examples"}}</a> · <a href="{{.Spec}}">{{t "Form file"}}</a></p>
   </div>
 </aside>{{end}}
 
@@ -441,7 +441,7 @@
   <header class="top">
     <p class="eyebrow">{{t "ask-form · examples"}}</p>
     <h1>{{t "Forms an agent might send"}}</h1>
-    <div class="md desc"><p>{{t "Each one is a real field spec, the JSON an agent passes to"}} <code>ask-form create</code>{{t ". Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored."}}</p></div>
+    <div class="md desc"><p>{{t "Each one is a real form file, the YAML an agent passes to"}} <code>ask-form create</code>{{t ". Open one, answer it, and see the JSON the agent gets back. Nothing you send here is stored."}}</p></div>
   </header>
   <ul class="examples">
   {{range .Examples}}
@@ -451,7 +451,7 @@
         <span class="example-summary">{{.Summary}}</span>
         <span class="example-meta">{{tn .Questions "%d question" "%d questions"}}{{if .Groups}} · {{tn .Groups "%d page" "%d pages"}}{{end}}</span>
       </a>
-      <a class="example-spec" href="{{$.Prefix}}/{{.Name}}/spec.json">spec.json</a>
+      <a class="example-spec" href="{{$.Prefix}}/{{.Name}}/{{.SpecFile}}">{{.SpecFile}}</a>
     </li>
   {{end}}
   </ul>

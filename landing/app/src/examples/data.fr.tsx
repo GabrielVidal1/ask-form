@@ -1,5 +1,5 @@
 // The French page's examples: data.tsx's list, same order and shape, in
-// French. Each one mirrors examples/<name>/spec.fr.json, the form
+// French. Each one mirrors examples/<name>/spec.fr.yaml, the form
 // /fr/examples/<name> serves. Commands, flags, paths and slugs stay as they are.
 import { Code, KeyRound, Sparkles, Users } from 'lucide-react'
 

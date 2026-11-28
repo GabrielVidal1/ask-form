@@ -1,0 +1,56 @@
+title: 'Dependencies: 14 behind'
+description: |-
+  `npm outdated` lists 14 packages. The 10 minor and patch updates pass the tests together. I read the changelogs of the 4 major ones against this codebase: here's what each would touch. Pick this round's scope.
+summary: |-
+  Upgrade round: the outdated packages with what each major bump breaks in this code, then which ones go in now.
+order: 7
+sections:
+  What's behind:
+    fields:
+      the-four-majors:
+        type: markdown
+        label: The four majors
+        text: |-
+          | Package | Now → latest | What it breaks here | Work |
+          |---|---|---|---|
+          | react, react-dom | 18.3 → 19.2 | `forwardRef` in 3 components (`ref` is a prop now) | ~1 h |
+          | vite | 5.4 → 7.1 | Node 20.19+ needed; our config is fine | ~15 min |
+          | eslint | 8.57 → 9.36 | `.eslintrc` must become a flat `eslint.config.js` | ~30 min |
+          | zod | 3.23 → 4.1 | error-message API renamed, 41 call sites | ~2 h |
+      majors:
+        type: multiselect
+        label: Which major upgrades now?
+        default: [vite, eslint, react]
+        help: Zod 4 is the only one with real churn; I'd give it its own round.
+        options:
+          react: {label: React 19, description: 3 components}
+          vite: Vite 7
+          eslint: {label: ESLint 9, description: I rewrite the config}
+          zod: {label: Zod 4, description: 41 call sites}
+      minor: {type: checkbox, label: Apply the 10 minor and patch updates too, default: true}
+  Delivery:
+    fields:
+      delivery:
+        type: radio
+        label: How do you want them?
+        required: true
+        default: pr-each
+        options:
+          pr-each: {label: 'One PR per major, one for the rest', description: Easy to revert one}
+          one-pr: One PR for everything
+          main: Straight to main once the tests pass
+      node:
+        type: select
+        label: Node version (.nvmrc and CI)
+        default: '22'
+        options: {'20': 20 (needs ≥ 20.19 for Vite 7), '22': 22 LTS, '24': '24'}
+      keep_current:
+        type: radio
+        label: After this round
+        default: renovate
+        options:
+          renovate:
+            label: Set up Renovate
+            description: Weekly grouped PRs; patches merge themselves when CI is green
+          dependabot: Set up Dependabot
+          nothing: 'Nothing: ask me again in a few months'

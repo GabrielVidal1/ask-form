@@ -41,8 +41,30 @@ When it fails, don't work around it. Tell the user what to change:
 
 ## 2. Ask
 
-Write the questions as a JSON array (the field types are in `reference.md`,
-next to this file), then create the form:
+Write the form as a YAML form file (its shape and the field types are in
+`reference.md`, next to this file), then create it:
+
+```bash
+FORM="$(mktemp)"
+cat > "$FORM" <<'YAML'
+title: Project setup
+description: Two choices before I start.
+fields:
+  stack:
+    type: radio
+    label: Which stack?
+    required: true
+    options: [Vite + React, Next.js]
+  notes: {type: textarea, label: Anything I should know?}
+YAML
+ask-form create "$FORM"
+rm -f "$FORM"
+```
+
+If `create` answers `create takes no positional argument`, npm gave you an
+ask-form older than form files (v0.21). Write the same questions as a JSON
+array instead, one object per field with its `key` (and its page as `group`),
+options as `{"value","label"}`, and pass the rest as flags:
 
 ```bash
 SPEC="$(mktemp)"
